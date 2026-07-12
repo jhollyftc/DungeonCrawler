@@ -36,6 +36,7 @@ namespace DungeonGen
             public Mesh Mesh;
             public int Submesh;
             public Material Material;
+            public bool CastShadows = true;                       // receiveShadows stays true for ALL batches
             public List<Matrix4x4> All = new List<Matrix4x4>();  // every instance
             public List<Vector3> Positions = new List<Vector3>(); // parallel, for culling
             public Matrix4x4[] Scratch;                           // per-frame visible set
@@ -49,12 +50,17 @@ namespace DungeonGen
                 = new List<(Mesh, int, Material, Matrix4x4)>();
         }
 
+        // CastShadows is part of the key: shadow-casting and non-casting
+        // instances of the same (mesh, submesh, material) must live in
+        // separate batches, since the flag maps to a per-RenderParams mode.
         struct BatchKey : System.IEquatable<BatchKey>
         {
-            public Mesh Mesh; public int Submesh; public Material Mat;
-            public bool Equals(BatchKey o) => Mesh == o.Mesh && Submesh == o.Submesh && Mat == o.Mat;
+            public Mesh Mesh; public int Submesh; public Material Mat; public bool CastShadows;
+            public bool Equals(BatchKey o) =>
+                Mesh == o.Mesh && Submesh == o.Submesh && Mat == o.Mat && CastShadows == o.CastShadows;
             public override int GetHashCode() =>
-                (Mesh ? Mesh.GetHashCode() : 0) ^ (Mat ? Mat.GetHashCode() * 397 : 0) ^ Submesh * 31;
+                (Mesh ? Mesh.GetHashCode() : 0) ^ (Mat ? Mat.GetHashCode() * 397 : 0) ^ Submesh * 31
+                ^ (CastShadows ? 0x10000 : 0);
             public override bool Equals(object o) => o is BatchKey k && Equals(k);
         }
 
@@ -73,7 +79,7 @@ namespace DungeonGen
             InstanceCount = 0;
         }
 
-        public void AddInstance(GameObject prefab, Matrix4x4 placement)
+        public void AddInstance(GameObject prefab, Matrix4x4 placement, bool castShadows = true)
         {
             if (prefab == null) return;
             if (!protoCache.TryGetValue(prefab, out Proto proto))
@@ -84,10 +90,10 @@ namespace DungeonGen
 
             foreach (var part in proto.Parts)
             {
-                var key = new BatchKey { Mesh = part.mesh, Submesh = part.submesh, Mat = part.mat };
+                var key = new BatchKey { Mesh = part.mesh, Submesh = part.submesh, Mat = part.mat, CastShadows = castShadows };
                 if (!batchLookup.TryGetValue(key, out Batch b))
                 {
-                    b = new Batch { Mesh = part.mesh, Submesh = part.submesh, Material = part.mat };
+                    b = new Batch { Mesh = part.mesh, Submesh = part.submesh, Material = part.mat, CastShadows = castShadows };
                     batchLookup[key] = b;
                     batches.Add(b);
                 }
@@ -202,7 +208,11 @@ namespace DungeonGen
                 var rp = new RenderParams(b.Material)
                 {
                     worldBounds = b.Bounds,
-                    shadowCastingMode = ShadowCastingMode.On,
+                    // Static shell batches don't cast (wall-on-wall shadows
+                    // are invisible but dominate the point-light cubemap
+                    // passes); everything still RECEIVES so detail shadows
+                    // fall across walls and floors.
+                    shadowCastingMode = b.CastShadows ? ShadowCastingMode.On : ShadowCastingMode.Off,
                     receiveShadows = true,
                 };
 

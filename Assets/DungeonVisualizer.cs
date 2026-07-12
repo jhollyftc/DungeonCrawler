@@ -149,7 +149,14 @@ namespace DungeonGen
                 DungeonKitPlacer.Enumerate(gen, kit, missing, (prefab, posCells, rot, offset) =>
                 {
                     var m = Matrix4x4.TRS(posCells * cellSize + offset + transform.position, rot, Vector3.one);
-                    ir.AddInstance(prefab, m);
+                    // The static shell (walls/floors/ceilings) casts NO shadows
+                    // — wall-on-wall shadows are invisible, but thousands of
+                    // shell instances redrawn into every shadowed torch's six
+                    // cubemap faces were THE torch-shadow performance killer.
+                    // The shell still receives, so detail shadows (columns,
+                    // arches, props — the placeWithCollider sink below and
+                    // PropInstancer paths, which keep casting) fall across it.
+                    ir.AddInstance(prefab, m, castShadows: false);
                 }, roomStyle, (prefab, posCells, rot, offset) =>
                 {
                     Vector3 worldPos = posCells * cellSize + offset + transform.position;

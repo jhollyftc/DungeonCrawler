@@ -52,7 +52,8 @@ namespace DungeonGen
             IEnumerable<PropPlacement> placements,
             PropTier tier,
             float cellSize,       // unused directly; kept for signature symmetry with kit placers
-            Transform functionalParent)
+            Transform functionalParent,
+            bool castShadows = true) // detail geometry casts; only the kit shell opts out
         {
             if (prefab == null) return;
 
@@ -70,7 +71,7 @@ namespace DungeonGen
                     // while the functional GameObject (which applies rootRot
                     // once, below) sat correct.
                     Matrix4x4 m = Matrix4x4.TRS(pl.position, pl.rotation, Vector3.one);
-                    instancer.AddInstance(prefab, m);
+                    instancer.AddInstance(prefab, m, castShadows);
                 }
 
                 // --- Function: a GameObject, when the tier needs one ---
