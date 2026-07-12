@@ -177,6 +177,9 @@ namespace DungeonGen
             var hDirs = HDirs;
 
             int totalPlaced = 0;
+            // Socket diagnostics — sockets fail silently by design (skips are
+            // legitimate outcomes), so the summary log says why.
+            int socketFilled = 0, socketOutside = 0, socketReserved = 0, socketFlood = 0;
 
             for (int ri = 0; ri < gen.Rooms.Count; ri++)
             {
@@ -191,6 +194,7 @@ namespace DungeonGen
                 var featureStream = new HashStream(room.Bounds.min, 11001);
                 var scatterStream = new HashStream(room.Bounds.min, 11002);
                 var ceilingStream = new HashStream(room.Bounds.min, 11003);
+                var socketStream  = new HashStream(room.Bounds.min, 11004);
 
                 // ---- Floor cells, thresholds, entrance, zones ----
                 // One shared computation (also drives the visualizer's
@@ -261,6 +265,86 @@ namespace DungeonGen
                         tier, cellSize, root.transform);
                     usedCells.Add(cell);
                     totalPlaced++;
+                    FillSockets(prefab, worldPos, rot, cell.y, 0);
+                }
+
+                // Resolves a placed prop's PropSockets and spawns children
+                // (recursing one level: parent -> child -> grandchild). Reads
+                // sockets from the PREFAB ASSET — décor-tier parents never
+                // spawn a GameObject, so there is no instance to read from.
+                // Children are independent placements (never parented), so
+                // batching stays intact.
+                void FillSockets(GameObject parentPrefab, Vector3 parentPos, Quaternion parentRot, int parentCellY, int depth)
+                {
+                    if (depth >= 2) return; // cap: grandchildren spawn, but have no children
+                    var sockets = parentPrefab.GetComponentsInChildren<PropSocket>(true);
+                    if (sockets.Length == 0) return;
+                    // Hierarchy order is stable, but sort by name anyway —
+                    // belt-and-braces for the socket stream's determinism.
+                    if (sockets.Length > 1)
+                        System.Array.Sort(sockets, (a, b) => string.CompareOrdinal(a.name, b.name));
+
+                    // The socket's world pose composes from the parent's FULL
+                    // visual pose: placement * the prefab root's own rotation
+                    // and scale (the same correction BuildProto/BuildFunctional
+                    // apply internally). The child's PlaceProps call below then
+                    // passes placement-only rotation again, per the invariant —
+                    // composing root rotation on the mesh path too would
+                    // double-rotate (see CLAUDE.md §5).
+                    Transform parentRoot = parentPrefab.transform;
+                    Matrix4x4 parentWorld =
+                        Matrix4x4.TRS(parentPos, parentRot * parentRoot.rotation, parentRoot.lossyScale)
+                        * parentRoot.worldToLocalMatrix;
+
+                    foreach (var s in sockets)
+                    {
+                        if (s.childPrefabs == null || s.childPrefabs.Length == 0) continue;
+                        if (socketStream.Next01() >= s.fillChance) continue;
+                        GameObject child = s.childPrefabs[socketStream.Next() % s.childPrefabs.Length];
+                        if (child == null) continue;
+
+                        Matrix4x4 m = parentWorld * s.transform.localToWorldMatrix;
+                        Quaternion childRot = m.rotation
+                            * Quaternion.Euler(0f, (socketStream.Next01() - 0.5f) * 2f * s.yawJitter, 0f);
+                        Vector3 jitter = new Vector3(
+                            (socketStream.Next01() - 0.5f) * 2f * s.positionJitter, 0f,
+                            (socketStream.Next01() - 0.5f) * 2f * s.positionJitter);
+                        Vector3 childPos = (Vector3)m.GetColumn(3) + childRot * jitter;
+
+                        // Occupancy: a child that lands outside the room's
+                        // footprint or on a reserved threshold is skipped (a
+                        // table near a door must not push a chair into the
+                        // doorway); blocking children claim their cell and
+                        // respect the flood-fill like any other blocker.
+                        // Cell Y comes from the PARENT's cell, never from the
+                        // child's float Y: a chair socket authored exactly at
+                        // floor height comes out of the matrix chain at
+                        // y ≈ ±0.0001, and FloorToInt on the negative side
+                        // would put it a story down — outside the footprint,
+                        // silently skipping every child.
+                        Vector3 local = (childPos - parent.position) / cellSize;
+                        var cell = new Vector3Int(Mathf.FloorToInt(local.x), parentCellY, Mathf.FloorToInt(local.z));
+                        if (!room.Cells.Contains(cell)) { socketOutside++; continue; }
+                        if (reserved.Contains(cell)) { socketReserved++; continue; }
+                        if (Blocking(s.childTier))
+                        {
+                            bool newlyBlocked = blocked.Add(cell);
+                            if (newlyBlocked && !ThresholdsConnected())
+                            {
+                                blocked.Remove(cell); // would seal a door off — skip
+                                socketFlood++;
+                                continue;
+                            }
+                        }
+
+                        PropTier childTier = instancer != null ? s.childTier : PropTier.FullGameObject;
+                        PropInstancer.PlaceProps(instancer, child,
+                            new[] { new PropPlacement { position = childPos, rotation = childRot } },
+                            childTier, cellSize, root.transform);
+                        totalPlaced++;
+                        socketFilled++;
+                        FillSockets(child, childPos, childRot, cell.y, depth + 1);
+                    }
                 }
 
                 // NOTE: props do NOT get kit.globalVisualOffset — that offset
@@ -605,7 +689,10 @@ namespace DungeonGen
             }
 
             if (totalPlaced > 0)
-                Debug.Log($"[Dungeon] {totalPlaced} prop(s) placed.");
+                Debug.Log($"[Dungeon] {totalPlaced} prop(s) placed. Sockets: {socketFilled} filled" +
+                          (socketOutside + socketReserved + socketFlood > 0
+                              ? $", skipped {socketOutside} outside footprint, {socketReserved} on thresholds, {socketFlood} flood-fill"
+                              : "") + ".");
             return root;
         }
     }

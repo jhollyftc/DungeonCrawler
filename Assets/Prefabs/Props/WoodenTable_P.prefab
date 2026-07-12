@@ -1,5 +1,105 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1429076319813654980
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4074017786529034876}
+  - component: {fileID: 5635910106190123262}
+  m_Layer: 0
+  m_Name: Socket_Chair_2
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4074017786529034876
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1429076319813654980}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.47733954, y: -0.521677, z: -0.5216772, w: 0.4773395}
+  m_LocalPosition: {x: -0.0019398831, y: -0.00289, z: 0}
+  m_LocalScale: {x: 0.0033333332, y: 0.003333334, z: 0.003333334}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7948687033450948168}
+  m_LocalEulerAnglesHint: {x: -5.082, y: -90, z: -90}
+--- !u!114 &5635910106190123262
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1429076319813654980}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
+  childPrefabs:
+  - {fileID: 2466494913561431473, guid: ea16df3bfd77f4a47a52293116c7bc4b, type: 3}
+  childTier: 0
+  fillChance: 1
+  yawJitter: 5
+  positionJitter: 0.05
+--- !u!1 &7949371829878183949
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6938524515859617755}
+  - component: {fileID: 866541121315320460}
+  m_Layer: 0
+  m_Name: Socket_Chair_1
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6938524515859617755
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7949371829878183949}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.606849, y: -0.36295217, z: -0.3629523, w: 0.6068489}
+  m_LocalPosition: {x: 0.0025999858, y: -0.00265, z: -0}
+  m_LocalScale: {x: 0.0033333332, y: 0.003333334, z: 0.003333334}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7948687033450948168}
+  m_LocalEulerAnglesHint: {x: 28.233, y: -90, z: -90}
+--- !u!114 &866541121315320460
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7949371829878183949}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
+  childPrefabs:
+  - {fileID: 2466494913561431473, guid: ea16df3bfd77f4a47a52293116c7bc4b, type: 3}
+  childTier: 0
+  fillChance: 1
+  yawJitter: 5
+  positionJitter: 0.05
 --- !u!1001 &7621728581137564067
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -54,7 +154,13 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6938524515859617755}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4074017786529034876}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
       insertIndex: -1
@@ -86,3 +192,8 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.009768676, y: 0.0049589523, z: 0.0037652578}
   m_Center: {x: 0, y: 0, z: 0.0018826289}
+--- !u!4 &7948687033450948168 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
+  m_PrefabInstance: {fileID: 7621728581137564067}
+  m_PrefabAsset: {fileID: 0}

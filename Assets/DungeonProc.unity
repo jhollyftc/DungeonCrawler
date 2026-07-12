@@ -8879,12 +8879,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 12
-  onLoopEdge: 0
-  edgeA: -1
-  edgeB: -1
-  hallwayCell: {x: 23, y: 5, z: 17}
-  direction: {x: 1, y: 0, z: 0}
 --- !u!114 &283903136
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9347,9 +9341,6 @@ MonoBehaviour:
   m_Script: {fileID: 1368271356}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PrisonDoorMarker
-  prisonIndex: 4
-  prisonCell: {x: 13, y: 6, z: 17}
-  direction: {x: 0, y: 0, z: -1}
 --- !u!23 &288782523
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -12227,12 +12218,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 2
-  onLoopEdge: 0
-  edgeA: 2
-  edgeB: 8
-  hallwayCell: {x: 8, y: 1, z: 17}
-  direction: {x: 0, y: 0, z: 1}
 --- !u!65 &424741633
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -12963,12 +12948,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 9
-  onLoopEdge: 0
-  edgeA: 6
-  edgeB: 9
-  hallwayCell: {x: 15, y: 3, z: 6}
-  direction: {x: 0, y: 0, z: -1}
 --- !u!114 &439061825
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -16522,12 +16501,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 1
-  onLoopEdge: 0
-  edgeA: 0
-  edgeB: 1
-  hallwayCell: {x: 8, y: 6, z: 12}
-  direction: {x: 0, y: 0, z: -1}
 --- !u!65 &605157360
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -17321,12 +17294,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 13
-  onLoopEdge: 0
-  edgeA: -1
-  edgeB: -1
-  hallwayCell: {x: 15, y: 3, z: 2}
-  direction: {x: 0, y: 0, z: -1}
 --- !u!114 &635337622
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -20824,9 +20791,6 @@ MonoBehaviour:
   m_Script: {fileID: 1368271356}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PrisonDoorMarker
-  prisonIndex: 0
-  prisonCell: {x: 4, y: 3, z: 14}
-  direction: {x: 0, y: 0, z: 1}
 --- !u!114 &768484471
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -22256,9 +22220,6 @@ MonoBehaviour:
   m_Script: {fileID: 1368271356}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PrisonDoorMarker
-  prisonIndex: 5
-  prisonCell: {x: 10, y: 8, z: 14}
-  direction: {x: 1, y: 0, z: 0}
 --- !u!114 &836200122
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -23794,12 +23755,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 7
-  onLoopEdge: 0
-  edgeA: 7
-  edgeB: 8
-  hallwayCell: {x: 6, y: 8, z: 16}
-  direction: {x: -1, y: 0, z: 0}
 --- !u!114 &891397461
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -31438,12 +31393,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 6
-  onLoopEdge: 0
-  edgeA: 6
-  edgeB: 9
-  hallwayCell: {x: 13, y: 9, z: 6}
-  direction: {x: 1, y: 0, z: 0}
 --- !u!65 &1164589812
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -33391,9 +33340,6 @@ MonoBehaviour:
   m_Script: {fileID: 1368271356}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PrisonDoorMarker
-  prisonIndex: 1
-  prisonCell: {x: 12, y: 4, z: 20}
-  direction: {x: 0, y: 0, z: -1}
 --- !u!114 &1237747752
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -33567,12 +33513,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 10
-  onLoopEdge: 0
-  edgeA: -1
-  edgeB: -1
-  hallwayCell: {x: 10, y: 6, z: 5}
-  direction: {x: 1, y: 0, z: 0}
 --- !u!114 &1243547729
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -34920,12 +34860,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 4
-  onLoopEdge: 1
-  edgeA: 4
-  edgeB: 5
-  hallwayCell: {x: 23, y: 5, z: 16}
-  direction: {x: 0, y: 0, z: 1}
 --- !u!114 &1306267576
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -35654,9 +35588,6 @@ MonoBehaviour:
   m_Script: {fileID: 1368271356}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PrisonDoorMarker
-  prisonIndex: 6
-  prisonCell: {x: 6, y: 8, z: 15}
-  direction: {x: 0, y: 0, z: 1}
 --- !u!23 &1345283791
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -37730,12 +37661,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 11
-  onLoopEdge: 0
-  edgeA: -1
-  edgeB: -1
-  hallwayCell: {x: 17, y: 1, z: 20}
-  direction: {x: -1, y: 0, z: 0}
 --- !u!114 &1408350740
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -43840,12 +43765,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 3
-  onLoopEdge: 0
-  edgeA: 3
-  edgeB: 4
-  hallwayCell: {x: 16, y: 1, z: 18}
-  direction: {x: 1, y: 0, z: 0}
 --- !u!114 &1622631635
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -48979,12 +48898,6 @@ MonoBehaviour:
   m_Script: {fileID: 2045712088}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonDoorMarker
-  roomIndex: 4
-  onLoopEdge: 0
-  edgeA: 3
-  edgeB: 4
-  hallwayCell: {x: 18, y: 6, z: 16}
-  direction: {x: 0, y: 0, z: 1}
 --- !u!114 &1832490686
 MonoBehaviour:
   m_ObjectHideFlags: 0
