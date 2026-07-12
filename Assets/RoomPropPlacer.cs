@@ -25,6 +25,22 @@ namespace DungeonGen
     }
 
     /// <summary>
+    /// One room's placement context: floor cells (stable order), reserved
+    /// threshold cells, primary entrance + entering direction, and the zone
+    /// classification of every floor cell. Computed by
+    /// RoomPropPlacer.ComputeZones — the single source of truth shared by
+    /// placement and DungeonVisualizer's colorCellsByZone debug gizmo.
+    /// </summary>
+    public class RoomZones
+    {
+        public List<Vector3Int> Floor = new List<Vector3Int>();
+        public HashSet<Vector3Int> Reserved = new HashSet<Vector3Int>();
+        public Vector3Int Entrance;
+        public Vector3Int EnterDir;
+        public Dictionary<Vector3Int, RoomZone> Zones = new Dictionary<Vector3Int, RoomZone>();
+    }
+
+    /// <summary>
     /// Places per-room-type props (from RoomStyle's PropSets) with an occupancy
     /// system that guarantees props never break the dungeon:
     ///   - Threshold cells (any floor cell at a doorway/arch opening) are
@@ -41,21 +57,32 @@ namespace DungeonGen
     /// </summary>
     public static class RoomPropPlacer
     {
-        public static GameObject Build(DungeonGenerator gen, DungeonKit kit, RoomStyle style,
-                                       float cellSize, Transform parent,
-                                       InstancedDungeonRenderer instancer)
+        static readonly Vector3Int[] HDirs =
         {
-            var root = new GameObject("DungeonProps");
-            root.transform.SetParent(parent, false);
-            if (style == null) return root;
+            new Vector3Int(1, 0, 0), new Vector3Int(-1, 0, 0),
+            new Vector3Int(0, 0, 1), new Vector3Int(0, 0, -1),
+        };
 
+        /// <summary>
+        /// Classifies a room's floor cells into RoomZones (first match wins):
+        ///   1. Entrance — reserved threshold cells, plus cells within 1 step.
+        ///   2. Perimeter — wall-adjacent cells that aren't Entrance.
+        ///   3. Back / Center — remainder, split by normalized distance along
+        ///      the entrance axis (>= 0.66 of the way in = Back).
+        /// Irregular rooms classify only real footprint cells; deterministic,
+        /// no RNG draws.
+        /// </summary>
+        public static RoomZones ComputeZones(DungeonGenerator gen, Room room)
+        {
             var grid = gen.Grid;
             bool Open(Vector3Int p) => grid.InBounds(p) && grid[p] != CellType.Empty;
-            var hDirs = new[]
-            {
-                new Vector3Int(1, 0, 0), new Vector3Int(-1, 0, 0),
-                new Vector3Int(0, 0, 1), new Vector3Int(0, 0, -1),
-            };
+
+            var rz = new RoomZones();
+            int yFloor = room.Bounds.yMin;
+            foreach (var c in room.Cells)
+                if (c.y == yFloor) rz.Floor.Add(c);
+            rz.Floor.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.z.CompareTo(b.z));
+            if (rz.Floor.Count == 0) return rz;
 
             // Room-side threshold cells from door records (covers satellite
             // closets, whose openings are Room↔Room and invisible to the
@@ -66,6 +93,88 @@ namespace DungeonGen
                 doorRoomCells.Add(door.HallwayCell + door.Direction);
                 doorRoomCells.Add(door.HallwayCell); // host side of satellite doors
             }
+
+            foreach (var c in rz.Floor)
+            {
+                if (doorRoomCells.Contains(c)) { rz.Reserved.Add(c); continue; }
+                foreach (var d in HDirs)
+                {
+                    Vector3Int nb = c + d;
+                    if (grid.InBounds(nb) && grid[nb] == CellType.Hallway)
+                    {
+                        rz.Reserved.Add(c);
+                        break;
+                    }
+                }
+            }
+
+            // Primary entrance: first threshold in stable order, else the
+            // room's interior cell.
+            rz.Entrance = room.InteriorFloorCell;
+            foreach (var c in rz.Floor)
+                if (rz.Reserved.Contains(c)) { rz.Entrance = c; break; }
+
+            // Direction from the entrance INTO the room. Zones and feature
+            // walls (Back/Left/Right/Front) are named relative to this —
+            // "which way you'd face walking in the door" — not
+            // world-cardinal directions.
+            rz.EnterDir = new Vector3Int(0, 0, 1); // degenerate fallback (no real threshold)
+            foreach (var d in HDirs)
+            {
+                Vector3Int nb = rz.Entrance + d;
+                if (Open(nb) && !room.Cells.Contains(nb)) { rz.EnterDir = -d; break; }
+            }
+
+            // Normalized depth along the entrance axis (0 = entrance side,
+            // 1 = far side), from the floor cells' own extent — irregular
+            // rooms just have no cells to classify in their bites.
+            int minDot = int.MaxValue, maxDot = int.MinValue;
+            foreach (var c in rz.Floor)
+            {
+                int dot = c.x * rz.EnterDir.x + c.z * rz.EnterDir.z;
+                if (dot < minDot) minDot = dot;
+                if (dot > maxDot) maxDot = dot;
+            }
+            float span = Mathf.Max(1, maxDot - minDot);
+
+            foreach (var c in rz.Floor)
+            {
+                bool nearEntrance = rz.Reserved.Contains(c);
+                if (!nearEntrance)
+                    foreach (var d in HDirs)
+                        if (rz.Reserved.Contains(c + d)) { nearEntrance = true; break; }
+
+                RoomZone zone;
+                if (nearEntrance) zone = RoomZone.Entrance;
+                else
+                {
+                    bool wallAdjacent = false;
+                    foreach (var d in HDirs)
+                        if (!Open(c + d)) { wallAdjacent = true; break; }
+                    if (wallAdjacent) zone = RoomZone.Perimeter;
+                    else
+                    {
+                        float t = (c.x * rz.EnterDir.x + c.z * rz.EnterDir.z - minDot) / span;
+                        zone = t >= 0.66f ? RoomZone.Back : RoomZone.Center;
+                    }
+                }
+                rz.Zones[c] = zone;
+            }
+            return rz;
+        }
+
+        public static GameObject Build(DungeonGenerator gen, DungeonKit kit, RoomStyle style,
+                                       float cellSize, Transform parent,
+                                       InstancedDungeonRenderer instancer,
+                                       WallFaceRegistry wallFaces = null)
+        {
+            var root = new GameObject("DungeonProps");
+            root.transform.SetParent(parent, false);
+            if (style == null) return root;
+
+            var grid = gen.Grid;
+            bool Open(Vector3Int p) => grid.InBounds(p) && grid[p] != CellType.Empty;
+            var hDirs = HDirs;
 
             int totalPlaced = 0;
 
@@ -83,52 +192,24 @@ namespace DungeonGen
                 var scatterStream = new HashStream(room.Bounds.min, 11002);
                 var ceilingStream = new HashStream(room.Bounds.min, 11003);
 
-                // ---- Floor cells, in a stable order ----
-                var floor = new List<Vector3Int>();
-                foreach (var c in room.Cells)
-                    if (c.y == yFloor) floor.Add(c);
-                floor.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.z.CompareTo(b.z));
+                // ---- Floor cells, thresholds, entrance, zones ----
+                // One shared computation (also drives the visualizer's
+                // colorCellsByZone gizmo, so debug view and placement can
+                // never disagree).
+                var rz = ComputeZones(gen, room);
+                var floor = rz.Floor;
                 if (floor.Count == 0) continue;
+                var reserved = rz.Reserved;
+                Vector3Int entrance = rz.Entrance;
+                Vector3Int enterDir = rz.EnterDir;
+                var zones = rz.Zones;
 
-                // ---- Thresholds: reserved, and the pathability anchors ----
-                var reserved = new HashSet<Vector3Int>();
-                foreach (var c in floor)
-                {
-                    if (doorRoomCells.Contains(c)) { reserved.Add(c); continue; }
-                    foreach (var d in hDirs)
-                    {
-                        Vector3Int nb = c + d;
-                        if (grid.InBounds(nb) && grid[nb] == CellType.Hallway)
-                        {
-                            reserved.Add(c);
-                            break;
-                        }
-                    }
-                }
-
-                // Primary entrance (for feature facing): first threshold in
-                // stable order, else the room's interior cell.
-                Vector3Int entrance = room.InteriorFloorCell;
-                foreach (var c in floor)
-                    if (reserved.Contains(c)) { entrance = c; break; }
-
-                // Direction from the entrance INTO the room. Feature walls
-                // (Back/Left/Right/Front) are named relative to this — "which
-                // way you'd face walking in the door" — not world-cardinal
-                // directions, since a room's orientation on the grid varies.
-                Vector3Int enterDir = new Vector3Int(0, 0, 1); // degenerate fallback (no real threshold)
-                foreach (var d in hDirs)
-                {
-                    Vector3Int nb = entrance + d;
-                    if (Open(nb) && !room.Cells.Contains(nb)) { enterDir = -d; break; }
-                }
-
-                bool WallAdjacent(Vector3Int c)
-                {
-                    foreach (var d in hDirs)
-                        if (!Open(c + d)) return true;
-                    return false;
-                }
+                // True footprint centroid — used by RoomCenter features and
+                // FaceRoomCenter scatter. NOT room.InteriorFloorCell, whose
+                // bbox-center snap lands beside the notch in L/T/plus rooms.
+                float sxAll = 0f, szAll = 0f;
+                foreach (var c in floor) { sxAll += c.x + 0.5f; szAll += c.z + 0.5f; }
+                Vector3 centroid = new Vector3(sxAll / floor.Count, yFloor, szAll / floor.Count);
 
                 var usedCells = new HashSet<Vector3Int>();    // one prop per cell
                 var blocked = new HashSet<Vector3Int>();      // collider-tier cells
@@ -200,8 +281,79 @@ namespace DungeonGen
                            + parent.position;
                 }
 
+                // Snap-to-wall variant of FloorWorld: the prop origin sits
+                // wallGap meters off the nominal wall plane; jitter applies
+                // along the wall tangent only, so a row of snapped props
+                // stays flush but still varies laterally.
+                Vector3 FloorWorldSnapped(Vector3Int cell, PropSet.PropEntry e, HashStream s, Vector3Int wallDir)
+                {
+                    float range = e.subCellJitter * (cellSize * 0.5f - 0.7f);
+                    float jt = (s.Next01() - 0.5f) * 2f * range;
+                    Vector3 tangent = new Vector3(-wallDir.z, 0f, wallDir.x);
+                    return new Vector3((cell.x + 0.5f) * cellSize, cell.y * cellSize, (cell.z + 0.5f) * cellSize)
+                           + (Vector3)wallDir * (cellSize * 0.5f - e.wallGap)
+                           + tangent * jt
+                           + parent.position;
+                }
+
                 Quaternion ScatterYaw(PropSet.PropEntry e, HashStream s) =>
                     Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, s.Next01()), 0f);
+
+                // The cell's nearest solid wall direction (stream-picked when
+                // a corner cell touches several). Shared by the wall facing
+                // rules AND snapToWall so a corner shelf can never face away
+                // from one wall while snapping to the other. With
+                // requirePropsAllowed, faces whose wall asset forbids props
+                // (recessed niches etc.) are excluded — a corner cell then
+                // snaps to its OTHER wall if that one allows props.
+                Vector3Int? NearestWallDir(Vector3Int cell, HashStream s, bool requirePropsAllowed = false)
+                {
+                    var solids = new List<Vector3Int>();
+                    foreach (var d in hDirs)
+                    {
+                        if (Open(cell + d)) continue;
+                        if (requirePropsAllowed && wallFaces != null &&
+                            !wallFaces.PropsAllowed(grid.Index(cell), d)) continue;
+                        solids.Add(d);
+                    }
+                    if (solids.Count == 0) return null;
+                    return solids[solids.Count == 1 ? 0 : s.Next() % solids.Count];
+                }
+
+                // Scatter yaw per FacingRule (A3). yawRange is applied ON TOP
+                // of every facing direction (Random = identity base, so the
+                // range IS the yaw) — narrow ranges give wall-aligned props
+                // slight natural variation. Wall rules with no wall at the
+                // cell fall back to the identity base (= Random).
+                Quaternion ScatterRotation(PropSet.PropEntry e, Vector3Int cell, HashStream s, Vector3Int? wallDir)
+                {
+                    Vector3 dir = Vector3.zero;
+                    switch (e.facing)
+                    {
+                        case FacingRule.FaceEntrance:
+                            dir = new Vector3(entrance.x - cell.x, 0f, entrance.z - cell.z);
+                            break;
+                        case FacingRule.FaceRoomCenter:
+                            dir = new Vector3(centroid.x - (cell.x + 0.5f), 0f, centroid.z - (cell.z + 0.5f));
+                            break;
+                        case FacingRule.FaceAwayFromNearestWall:
+                            if (wallDir.HasValue) dir = -(Vector3)wallDir.Value; // back to the wall, facing the room
+                            break;
+                        case FacingRule.AlignWithWall:
+                            if (wallDir.HasValue)
+                            {
+                                // Forward along the wall tangent; either way
+                                // along it, picked per placement.
+                                dir = Vector3.Cross(Vector3.up, -(Vector3)wallDir.Value);
+                                if (s.Next() % 2 == 1) dir = -dir;
+                            }
+                            break;
+                    }
+                    Quaternion baseRot = dir.sqrMagnitude > 0.01f
+                        ? Quaternion.LookRotation(dir.normalized)
+                        : Quaternion.identity;
+                    return baseRot * ScatterYaw(e, s);
+                }
 
                 bool TryPlaceAt(PropSet.PropEntry e, Vector3Int cell, Quaternion rot, Vector3 worldPos, HashStream s)
                 {
@@ -221,15 +373,26 @@ namespace DungeonGen
                 }
 
                 // Eligible cells for an entry, hash-shuffled (never scan order).
+                // FloorScatter filters by the entry's preferredZone unless the
+                // legacy allowCenter ("anywhere") toggle is on. Ceiling props
+                // ignore zones for now.
                 List<Vector3Int> Eligible(PropSet.PropEntry e, HashStream s)
                 {
+                    bool zoneFilter = e.anchor == PropAnchor.FloorScatter && !e.allowCenter;
                     var list = new List<Vector3Int>();
                     foreach (var c in floor)
                     {
                         if (reserved.Contains(c) || usedCells.Contains(c)) continue;
-                        if (!e.allowCenter && e.anchor == PropAnchor.FloorScatter && !WallAdjacent(c)) continue;
+                        if (zoneFilter && zones[c] != e.preferredZone) continue;
                         list.Add(c);
                     }
+                    // Guaranteed entries must land somewhere — an empty zone
+                    // (tiny room, L-bite ate it) falls back to any free cell.
+                    // Chance scatter just places nothing: spilling it outside
+                    // its authored zone would betray intent more than absence.
+                    if (list.Count == 0 && zoneFilter && e.guaranteed)
+                        foreach (var c in floor)
+                            if (!reserved.Contains(c) && !usedCells.Contains(c)) list.Add(c);
                     int shuffleSalt = s.Next();
                     list.Sort((a, b) =>
                         DungeonKitPlacer.Hash(a, shuffleSalt).CompareTo(DungeonKitPlacer.Hash(b, shuffleSalt)));
@@ -242,18 +405,10 @@ namespace DungeonGen
                     e.anchor == PropAnchor.Feature ? 0 : e.guaranteed ? 1 : 2;
                 ordered.Sort((a, b) => Rank(a).CompareTo(Rank(b)));
 
-                // Nearest free floor cell to the room's TRUE centroid (average
-                // of its own floor cells) — NOT room.InteriorFloorCell, which
-                // snaps to the nearest real cell to the bounding-box center.
-                // For an L/T/plus/notch room the bbox center sits in the bite,
-                // so that snap lands right next to the notch instead of at
-                // the footprint's actual visual center.
+                // Nearest free floor cell to the room's true centroid (hoisted
+                // above — shared with FaceRoomCenter scatter facing).
                 (Vector3Int cell, bool ok) PickRoomCenterCell()
                 {
-                    float sx = 0f, sz = 0f;
-                    foreach (var c in floor) { sx += c.x + 0.5f; sz += c.z + 0.5f; }
-                    Vector3 centroid = new Vector3(sx / floor.Count, yFloor, sz / floor.Count);
-
                     Vector3Int best = default; float bestDist = float.MaxValue; bool ok = false;
                     foreach (var c in floor)
                     {
@@ -267,7 +422,8 @@ namespace DungeonGen
                 // Finds the named wall's run and a spot on it. targetNormal
                 // is derived from enterDir, so Back/Left/Right/Front are
                 // stable regardless of how this room is oriented on the grid.
-                (Vector3Int cell, Vector3Int normal, bool ok) PickWallSideCell(FeatureWallSide side, FeatureSpot spot)
+                (Vector3Int cell, Vector3Int normal, bool ok) PickWallSideCell(FeatureWallSide side, FeatureSpot spot,
+                                                                               bool requirePropsAllowed)
                 {
                     Vector3Int targetNormal = side switch
                     {
@@ -310,7 +466,8 @@ namespace DungeonGen
                         : run.Count / 2;
 
                     // Nearest run cell to the target that's actually free
-                    // (target itself may be reserved/used).
+                    // (target itself may be reserved/used, or its wall asset
+                    // may forbid props when the feature snaps to the wall).
                     Vector3Int? pick = null;
                     for (int r = 0; r < run.Count && pick == null; r++)
                     {
@@ -319,6 +476,8 @@ namespace DungeonGen
                             if (idx < 0 || idx >= run.Count) continue;
                             var cand = run[idx];
                             if (reserved.Contains(cand) || usedCells.Contains(cand)) continue;
+                            if (requirePropsAllowed && wallFaces != null &&
+                                !wallFaces.PropsAllowed(grid.Index(cand), targetNormal)) continue;
                             pick = cand;
                             break;
                         }
@@ -362,7 +521,7 @@ namespace DungeonGen
                         }
                         else
                         {
-                            var (cell, normal, ok) = PickWallSideCell(e.featureWallSide, e.featureSpot);
+                            var (cell, normal, ok) = PickWallSideCell(e.featureWallSide, e.featureSpot, e.snapToWall);
                             chosen = cell; wallNormal = ok ? normal : (Vector3Int?)null; foundCell = ok;
                         }
                         if (!foundCell) continue;
@@ -371,6 +530,11 @@ namespace DungeonGen
                                                   chosen.y * cellSize,
                                                   (chosen.z + 0.5f) * cellSize)
                                       + parent.position;
+                        // Snap flush against the feature's own wall (throne
+                        // backed to the wall instead of floating at the cell
+                        // center, 1.5m off it).
+                        if (e.snapToWall && wallNormal.HasValue)
+                            pos += (Vector3)wallNormal.Value * (cellSize * 0.5f - e.wallGap);
 
                         Quaternion baseRot;
                         if (e.featureFacing == FeatureFacing.Fixed)
@@ -411,6 +575,9 @@ namespace DungeonGen
                     }
                     else // FloorScatter
                     {
+                        bool wantsWall = e.snapToWall ||
+                                         e.facing == FacingRule.FaceAwayFromNearestWall ||
+                                         e.facing == FacingRule.AlignWithWall;
                         var cells = Eligible(e, scatterStream);
                         int placedCount = 0;
                         int want = e.guaranteed ? e.count : int.MaxValue;
@@ -422,7 +589,16 @@ namespace DungeonGen
                                 if (e.maxPerRoom > 0 && placedCount >= e.maxPerRoom) break;
                                 if (scatterStream.Next01() >= e.chancePerCell) continue;
                             }
-                            if (TryPlaceAt(e, c, ScatterYaw(e, scatterStream), FloorWorld(c, e, scatterStream), scatterStream)) placedCount++;
+                            Vector3Int? wallDir = wantsWall ? NearestWallDir(c, scatterStream, e.snapToWall) : null;
+                            // A snap entry belongs against a wall: a cell with
+                            // no (props-allowed) wall is skipped, not placed
+                            // floating at its center.
+                            if (e.snapToWall && !wallDir.HasValue) continue;
+                            Quaternion rot = ScatterRotation(e, c, scatterStream, wallDir);
+                            Vector3 pos = e.snapToWall
+                                ? FloorWorldSnapped(c, e, scatterStream, wallDir.Value)
+                                : FloorWorld(c, e, scatterStream);
+                            if (TryPlaceAt(e, c, rot, pos, scatterStream)) placedCount++;
                         }
                     }
                 }

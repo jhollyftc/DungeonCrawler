@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace DungeonGen
@@ -35,10 +36,16 @@ namespace DungeonGen
         [Tooltip("Per-room-type torch color/intensity/spacing. Leave empty for uniform warm torches.")]
         public RoomStyle roomStyle;
 
+        [Header("Fog")]
+        [Tooltip("Runtime fog color blending toward the current/approaching room's torch palette. Needs a RoomStyle and fog enabled in Lighting > Environment.")]
+        public FogSettings fog = new FogSettings();
+
         public enum GeometryMode { GeneratedMesh, PrefabKit, InstancedKit }
 
         [Header("Gizmo colors")]
         public bool colorRoomsByType = false;
+        [Tooltip("Debug: color room floor cells by prop-placement zone (green = Entrance, red = Back, grey = Center, blue = Perimeter). Verifies RoomPropPlacer.ComputeZones; overrides colorRoomsByType on floor cells.")]
+        public bool colorCellsByZone = false;
         public Color roomColor = new Color(0.9f, 0.25f, 0.2f, 0.9f);
         public Color hallwayColor = new Color(0.2f, 0.45f, 0.95f, 0.9f);
         public Color stairColor = new Color(0.25f, 0.85f, 0.35f, 0.9f);
@@ -89,7 +96,7 @@ namespace DungeonGen
             }
 
             // Replace any previous geometry child (any mode) and torches.
-            foreach (string name in new[] { "DungeonMesh", "DungeonKit", "DungeonInstanced", "DungeonTorches", "DungeonDoors", "DungeonArchways", "DungeonColumns", "DungeonKitColliders", "DungeonProps" })
+            foreach (string name in new[] { "DungeonMesh", "DungeonKit", "DungeonInstanced", "DungeonTorches", "DungeonDoors", "DungeonArchways", "DungeonColumns", "DungeonKitColliders", "DungeonProps", "DungeonFog" })
             {
                 Transform old = transform.Find(name);
                 if (old != null)
@@ -101,9 +108,14 @@ namespace DungeonGen
 
             InstancedDungeonRenderer sharedInstancer = null;
 
+            // Per-face restrictions from RoomStyle.WallAsset flags. Filled by
+            // the kit placer as walls emit, queried by the torch and prop
+            // placers below (empty in GeneratedMesh mode = no restrictions).
+            var wallFaces = new WallFaceRegistry();
+
             if (geometryMode == GeometryMode.PrefabKit)
             {
-                DungeonKitPlacer.Build(gen, kit, cellSize, transform, roomStyle);
+                DungeonKitPlacer.Build(gen, kit, cellSize, transform, roomStyle, wallFaces);
                 DungeonKitPlacer.BuildDoors(gen, kit, cellSize, transform, roomStyle);
                 DungeonKitPlacer.BuildArchways(gen, kit, cellSize, transform, null, roomStyle);
                 DungeonKitPlacer.BuildInteriorColumns(gen, kit, cellSize, transform);
@@ -144,7 +156,7 @@ namespace DungeonGen
                     PropInstancer.PlaceProps(ir, prefab,
                         new[] { new PropPlacement { position = worldPos, rotation = rot } },
                         PropTier.StaticCollider, cellSize, kitColliders.transform);
-                });
+                }, wallFaces);
 
                 // Doors stay full GameObjects (they move). Archways split:
                 // mesh -> instancer, collider -> GameObject.
@@ -164,10 +176,17 @@ namespace DungeonGen
             }
 
             if (torches != null && torches.placeTorches)
-                TorchPlacer.Build(gen, torches, cellSize, transform, sharedInstancer, roomStyle);
+                TorchPlacer.Build(gen, torches, cellSize, transform, sharedInstancer, roomStyle, wallFaces);
 
             if (roomStyle != null)
-                RoomPropPlacer.Build(gen, kit, roomStyle, cellSize, transform, sharedInstancer);
+                RoomPropPlacer.Build(gen, kit, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
+
+            if (fog != null && fog.dynamicFogColor && roomStyle != null)
+            {
+                var fogGo = new GameObject("DungeonFog");
+                fogGo.transform.SetParent(transform, false);
+                fogGo.AddComponent<DungeonFogController>().Init(gen, roomStyle, cellSize, transform.position, fog);
+            }
 
             // Torch/prop meshes may have been added to the instancer after its
             // first Commit — re-bake so they render.
@@ -183,6 +202,18 @@ namespace DungeonGen
 
             if (gen == null) return;
 
+            // Zone debug view: recomputed per gizmo pass (editor-only, rooms
+            // are small) from the same code placement uses, so what you see
+            // is exactly what RoomPropPlacer will do.
+            Dictionary<Vector3Int, RoomZone> zoneMap = null;
+            if (colorCellsByZone)
+            {
+                zoneMap = new Dictionary<Vector3Int, RoomZone>();
+                foreach (var room in gen.Rooms)
+                    foreach (var kv in RoomPropPlacer.ComputeZones(gen, room).Zones)
+                        zoneMap[kv.Key] = kv.Value;
+            }
+
             var grid = gen.Grid;
             for (int i = 0; i < grid.Length; i++)
             {
@@ -191,7 +222,15 @@ namespace DungeonGen
 
                 switch (c)
                 {
-                    case CellType.Room:       Gizmos.color = colorRoomsByType ? RoomTypeColor(grid.Position(i)) : roomColor; break;
+                    case CellType.Room:
+                    {
+                        Vector3Int cellPos = grid.Position(i);
+                        if (zoneMap != null && zoneMap.TryGetValue(cellPos, out var zone))
+                            Gizmos.color = ZoneColor(zone);
+                        else
+                            Gizmos.color = colorRoomsByType ? RoomTypeColor(cellPos) : roomColor;
+                        break;
+                    }
                     case CellType.Hallway:    Gizmos.color = hallwayColor; break;
                     case CellType.StairLower:
                     case CellType.StairUpper: Gizmos.color = stairColor;   break;
@@ -221,6 +260,14 @@ namespace DungeonGen
                     DrawEdge(e);
             }
         }
+
+        static Color ZoneColor(RoomZone z) => z switch
+        {
+            RoomZone.Entrance => new Color(0.2f, 0.9f, 0.3f),   // green
+            RoomZone.Back     => new Color(0.9f, 0.25f, 0.2f),  // red
+            RoomZone.Center   => new Color(0.55f, 0.55f, 0.55f),// grey
+            _                 => new Color(0.25f, 0.5f, 0.95f), // Perimeter blue
+        };
 
         Color RoomTypeColor(Vector3Int cell)
         {

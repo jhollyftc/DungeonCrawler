@@ -47,6 +47,39 @@ namespace DungeonGen
         Corner,
     }
 
+    /// <summary>Coarse floor-cell zones within a room, relative to its primary
+    /// entrance. Scatter entries can prefer a zone; DungeonVisualizer's
+    /// colorCellsByZone gizmo shows the classification for verification.
+    /// Evaluated in order — first match wins: Entrance (thresholds + cells one
+    /// step from one), Perimeter (wall-adjacent), then Back/Center split by
+    /// distance along the entrance axis.</summary>
+    public enum RoomZone
+    {
+        /// <summary>Threshold cells and cells within 1 of one. Reserved-adjacent — keep clear-ish.</summary>
+        Entrance,
+        /// <summary>Non-perimeter cells in the far third of the room (relative to the entrance).</summary>
+        Back,
+        /// <summary>Non-perimeter cells in the near two-thirds.</summary>
+        Center,
+        /// <summary>Wall-adjacent cells that aren't Entrance. The classic scatter wall-bias.</summary>
+        Perimeter,
+    }
+
+    /// <summary>How a scatter placement's yaw is computed (FloorScatter entries).</summary>
+    public enum FacingRule
+    {
+        /// <summary>Random within yawRange — the classic scatter behavior. Rubble, crates.</summary>
+        Random,
+        /// <summary>Faces back toward the room's primary entrance.</summary>
+        FaceEntrance,
+        /// <summary>Faces the room's footprint centroid.</summary>
+        FaceRoomCenter,
+        /// <summary>Back against the nearest wall, facing into the room. Shelves, cabinets. Interior cells (no wall) fall back to Random.</summary>
+        FaceAwayFromNearestWall,
+        /// <summary>Forward along the nearest wall's tangent (direction picked per placement). Beds, benches. Interior cells fall back to Random.</summary>
+        AlignWithWall,
+    }
+
     /// <summary>How a Feature entry's yaw is computed (before featureYaw is added).</summary>
     public enum FeatureFacing
     {
@@ -81,19 +114,26 @@ namespace DungeonGen
             public string label;
             [Tooltip("Variants — deterministic hash-pick per placement.")]
             public GameObject[] prefabs;
+
+            [Header("Placement anchor type")]
             public PropAnchor anchor = PropAnchor.FloorScatter;
+            [Tooltip("StaticDecor: mesh only, never blocks. StaticCollider: mesh + collider (blocks movement — occupancy-checked). InstancedMeshWithLight: mesh + light GameObject (candles!). FullGameObject: everything (future interactives).")]
+            public PropTier tier = PropTier.StaticDecor;
+            
+            [Header("Feature placement")]
             [Tooltip("Feature only: a named wall, or the middle of the room.")]
             public FeaturePositionMode featurePositionMode = FeaturePositionMode.WallSide;
             [Tooltip("Feature + WallSide only: which wall, relative to the entrance.")]
             public FeatureWallSide featureWallSide = FeatureWallSide.Back;
             [Tooltip("Feature + WallSide only: middle of that wall, or one of its corners.")]
             public FeatureSpot featureSpot = FeatureSpot.Center;
+            
+            [Header("Feature orientation")]
             [Tooltip("Feature only: how its base yaw is computed before featureYaw is added.")]
             public FeatureFacing featureFacing = FeatureFacing.Outward;
             [Tooltip("Feature only: degrees added on top of featureFacing (or the absolute yaw when featureFacing = Fixed).")]
             public float featureYaw = 0f;
-            [Tooltip("StaticDecor: mesh only, never blocks. StaticCollider: mesh + collider (blocks movement — occupancy-checked). InstancedMeshWithLight: mesh + light GameObject (candles!). FullGameObject: everything (future interactives).")]
-            public PropTier tier = PropTier.StaticDecor;
+           
 
             [Header("Count")]
             [Tooltip("Guaranteed: place exactly Count (cells permitting). Otherwise scatter by chance per eligible cell.")]
@@ -105,12 +145,23 @@ namespace DungeonGen
             public int maxPerRoom = 0;
 
             [Header("Placement feel")]
-            [Tooltip("Scatter may use interior cells, not just wall-adjacent ones.")]
-            public bool allowCenter = false;
-            [Tooltip("Random yaw range in degrees (scatter/ceiling). Features use featureFacing/featureYaw instead.")]
+            [Tooltip("FloorScatter only: which zone's cells this entry scatters into. Perimeter reproduces the classic wall-bias. Ignored when Allow Center is on.")]
+            public RoomZone preferredZone = RoomZone.Perimeter;
+            [Tooltip("FloorScatter only: how each placement's yaw is computed. Random uses yawRange; the wall rules read the cell's nearest solid wall.")]
+            public FacingRule facing = FacingRule.Random;
+          
+            [Tooltip("Yaw variation in degrees, applied ON TOP of the facing direction (Random facing: this IS the yaw). Wall-aligned/facing entries want a NARROW range like (-5, 5) — the (0, 360) default will spin them randomly. Features use featureFacing/featureYaw instead.")]
             public Vector2 yawRange = new Vector2(0f, 360f);
-            [Tooltip("Free positioning within the cell, 0 = dead center, 1 = full safe range.")]
+            [Tooltip("Free positioning within the cell, 0 = dead center, 1 = full safe range. With Snap To Wall, jitter runs along the wall only.")]
             [Range(0f, 1f)] public float subCellJitter = 0.9f;
+            [Tooltip("Pull the placement flush to its wall: the prop origin sits Wall Gap meters off the nominal wall face instead of floating at the cell center. FloorScatter uses the cell's nearest wall (same wall the facing rules read); Feature + WallSide uses its chosen wall. No wall at the cell = normal placement.")]
+            public bool snapToWall = false;
+            [Tooltip("Meters between the nominal wall plane and the prop origin when Snap To Wall is on. Tune per asset (account for the wall kit's relief depth).")]
+            public float wallGap = 0.1f;
+
+            [Header("Legacy: Anywhere toggle")]
+            [Tooltip("Legacy 'anywhere' toggle: skip the zone filter entirely — scatter may use ANY free cell.")]
+            public bool allowCenter = false;
         }
 
         public List<PropEntry> entries = new List<PropEntry>();

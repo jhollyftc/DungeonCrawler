@@ -293,6 +293,23 @@ namespace DungeonGen
         void AllocateInteriorStairs()
         {
             Vector3Int up = Vector3Int.up;
+
+            // Room-side threshold cell of every recorded door, by room. The
+            // stair volume must never consume one, and after placement every
+            // ground-level entrance (and stair foot) must still reach every
+            // other — an elevated corner door above a ground-floor door
+            // would otherwise wall that entrance off with its own staircase,
+            // severing a possibly-required route. All doors exist by this
+            // stage (satellites come later and refuse stair adjacency).
+            var doorCellsByRoom = new Dictionary<int, List<Vector3Int>>();
+            foreach (var d in Doors)
+            {
+                if (!doorCellsByRoom.TryGetValue(d.RoomIndex, out var list))
+                    doorCellsByRoom[d.RoomIndex] = list = new List<Vector3Int>();
+                list.Add(d.HallwayCell + d.Direction);
+            }
+            var stairFeetByRoom = new Dictionary<int, List<Vector3Int>>();
+
             foreach (var door in Doors)
             {
                 if (!door.IsElevated) continue;
@@ -318,10 +335,41 @@ namespace DungeonGen
                     continue;
                 }
 
+                // The stair volume must not consume another door's threshold
+                // (u2 is this door's own). Covers both floors: a ground door
+                // whose entry cell is t1/t2, or another elevated door at u1.
+                Vector3Int ownThreshold = h + door.Direction;
+                bool consumesThreshold = false;
+                if (doorCellsByRoom.TryGetValue(door.RoomIndex, out var doorCells))
+                    foreach (var dc in doorCells)
+                        if (dc != ownThreshold && (dc == t1 || dc == t2 || dc == u1 || dc == u2))
+                        {
+                            consumesThreshold = true;
+                            break;
+                        }
+                if (consumesThreshold)
+                {
+                    door.HasDoor = false; // drop-in fallback, same as no-space
+                    continue;
+                }
+
+                // Tentatively place, then verify the room's ground floor is
+                // still one connected space (a stair strip can pinch a small
+                // room in two even without sitting on a threshold).
                 Grid[t1] = CellType.StairLower;
                 Grid[t2] = CellType.StairLower;
                 Grid[u1] = CellType.StairUpper;
                 Grid[u2] = CellType.StairUpper;
+
+                if (!GroundFloorConnected(door.RoomIndex, entry, doorCellsByRoom, stairFeetByRoom))
+                {
+                    Grid[t1] = CellType.Room;
+                    Grid[t2] = CellType.Room;
+                    Grid[u1] = CellType.Room;
+                    Grid[u2] = CellType.Room;
+                    door.HasDoor = false; // drop-in fallback
+                    continue;
+                }
 
                 var stair = new Stair { Entry = entry, Dir = cd };
                 Stairs[Grid.Index(t1)] = stair;
@@ -329,9 +377,58 @@ namespace DungeonGen
                 Stairs[Grid.Index(u1)] = stair;
                 Stairs[Grid.Index(u2)] = stair;
 
+                if (!stairFeetByRoom.TryGetValue(door.RoomIndex, out var feet))
+                    stairFeetByRoom[door.RoomIndex] = feet = new List<Vector3Int>();
+                feet.Add(entry);
+
                 door.HasInteriorStair = true;
                 door.HasDoor = true;
             }
+        }
+
+        /// <summary>
+        /// True if every ground-level door threshold and every interior-stair
+        /// foot in the room (including the candidate foot) can reach every
+        /// other across the room's remaining floor cells. Elevated doors'
+        /// thresholds live a story up and connect via their stair feet, so
+        /// only the ground plane needs checking.
+        /// </summary>
+        bool GroundFloorConnected(int roomIndex, Vector3Int newFoot,
+                                  Dictionary<int, List<Vector3Int>> doorCellsByRoom,
+                                  Dictionary<int, List<Vector3Int>> stairFeetByRoom)
+        {
+            Room room = Rooms[roomIndex];
+            int yFloor = room.Bounds.yMin;
+
+            var required = new List<Vector3Int> { newFoot };
+            if (doorCellsByRoom.TryGetValue(roomIndex, out var doorCells))
+                foreach (var c in doorCells)
+                    if (c.y == yFloor && room.Contains(c) && Grid[c] == CellType.Room)
+                        required.Add(c);
+            if (stairFeetByRoom.TryGetValue(roomIndex, out var feet))
+                required.AddRange(feet);
+            if (required.Count <= 1) return true;
+
+            bool Walkable(Vector3Int c) =>
+                c.y == yFloor && room.Contains(c) && Grid[c] == CellType.Room;
+
+            var seen = new HashSet<Vector3Int> { required[0] };
+            var queue = new Queue<Vector3Int>();
+            queue.Enqueue(required[0]);
+            while (queue.Count > 0)
+            {
+                var c = queue.Dequeue();
+                foreach (var d in HorizontalDirs)
+                {
+                    var n = c + d;
+                    if (seen.Contains(n) || !Walkable(n)) continue;
+                    seen.Add(n);
+                    queue.Enqueue(n);
+                }
+            }
+            foreach (var c in required)
+                if (!seen.Contains(c)) return false;
+            return true;
         }
 
         void RecordDoor(Vector3Int hallwayCell, int roomIndex, DEdge e, bool loopEdge)

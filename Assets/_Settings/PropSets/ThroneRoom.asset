@@ -15,31 +15,18 @@ MonoBehaviour:
   entries:
   - label: 
     prefabs:
-    - {fileID: 919132149155446097, guid: 6cb7f497be3d27a4f8ef4921af60ced0, type: 3}
+    - {fileID: 2261073350949710241, guid: dfbe1588070c90541b97661e7e90d98d, type: 3}
     anchor: 2
-    featurePosition: 0
-    featureFacing: 2
-    featureYaw: 180
-    tier: 0
-    guaranteed: 0
+    featurePositionMode: 0
+    featureWallSide: 1
+    featureSpot: 0
+    featureFacing: 1
+    featureYaw: 0
+    tier: 1
+    guaranteed: 1
     count: 0
     chancePerCell: 0
     maxPerRoom: 0
-    allowCenter: 0
-    yawRange: {x: 0, y: 0}
-    subCellJitter: 0
-  - label: 
-    prefabs:
-    - {fileID: 5527588616426762877, guid: f7c9b50012688d3428840a576ca800cc, type: 3}
-    anchor: 0
-    featurePosition: 1
-    featureFacing: 2
-    featureYaw: 0
-    tier: 0
-    guaranteed: 0
-    count: 4
-    chancePerCell: 1
-    maxPerRoom: 4
     allowCenter: 0
     yawRange: {x: 0, y: 0}
     subCellJitter: 0

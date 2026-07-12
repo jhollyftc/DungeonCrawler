@@ -69,7 +69,8 @@ namespace DungeonGen
         };
 
         public static GameObject Build(DungeonGenerator gen, TorchSettings s, float cellSize, Transform parent,
-                                       InstancedDungeonRenderer instancer = null, RoomStyle style = null)
+                                       InstancedDungeonRenderer instancer = null, RoomStyle style = null,
+                                       WallFaceRegistry wallFaces = null)
         {
             var grid = gen.Grid;
             var root = new GameObject("DungeonTorches");
@@ -103,7 +104,8 @@ namespace DungeonGen
                 Vector3Int c = grid.Position(i);
                 if (Open(c + Vector3Int.down)) continue;   // floor level only
                 foreach (var d in HDirs)
-                    if (!Open(c + d))                       // solid wall to mount on
+                    if (!Open(c + d) &&                     // solid wall to mount on
+                        (wallFaces == null || wallFaces.TorchAllowed(i, d))) // wall asset accepts a torch
                         slots.Add((c, d, t));
             }
 

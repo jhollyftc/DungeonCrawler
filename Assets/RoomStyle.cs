@@ -83,6 +83,10 @@ namespace DungeonGen
             public bool top = true;
             [Tooltip("Max placements of this asset per room. 0 = unlimited. A fireplace: 1. A banner wall: maybe 2.")]
             public int maxPerRoom = 0;
+            [Tooltip("Floor props (snapToWall scatter/features) may sit against this wall. Turn OFF for walls whose face must stay visible — recessed niches, murals, wall fountains.")]
+            public bool allowPropsInFront = true;
+            [Tooltip("Torches may mount on this wall. Turn OFF for walls with their own light sources or busy relief where a sconce reads wrong.")]
+            public bool allowTorch = true;
 
             public bool Allows(WallBand b) =>
                 (b == WallBand.Bottom && bottom) ||
@@ -165,12 +169,51 @@ namespace DungeonGen
             return prisonWallCache.Length > 0 ? prisonWallCache : null;
         }
 
+        Dictionary<GameObject, (bool props, bool torch)> wallFlagCache;
+
+        /// <summary>Placement restrictions for a wall prefab (allowPropsInFront /
+        /// allowTorch), merged most-restrictive if the prefab appears in several
+        /// WallAssets. Unknown prefabs (kit generics) allow everything.</summary>
+        public void WallFlagsFor(GameObject prefab, out bool allowProps, out bool allowTorch)
+        {
+            if (wallFlagCache == null)
+            {
+                wallFlagCache = new Dictionary<GameObject, (bool, bool)>();
+                void Add(List<WallAsset> list)
+                {
+                    if (list == null) return;
+                    foreach (var w in list)
+                    {
+                        if (w.prefab == null) continue;
+                        if (wallFlagCache.TryGetValue(w.prefab, out var f))
+                            wallFlagCache[w.prefab] = (f.props && w.allowPropsInFront, f.torch && w.allowTorch);
+                        else
+                            wallFlagCache[w.prefab] = (w.allowPropsInFront, w.allowTorch);
+                    }
+                }
+                foreach (var set in roomWalls) Add(set.walls);
+                Add(hallwayWalls);
+                Add(prisonWalls);
+            }
+            if (wallFlagCache.TryGetValue(prefab, out var flags))
+            {
+                allowProps = flags.props;
+                allowTorch = flags.torch;
+            }
+            else
+            {
+                allowProps = true;
+                allowTorch = true;
+            }
+        }
+
         /// <summary>Clear caches after inspector edits (called on regenerate).</summary>
         public void InvalidateWallCache()
         {
             wallCache = null;
             hallwayWallCache = null;
             prisonWallCache = null;
+            wallFlagCache = null;
             lookup = null;
         }
 

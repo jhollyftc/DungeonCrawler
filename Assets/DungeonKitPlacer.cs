@@ -84,7 +84,8 @@ namespace DungeonGen
         /// no behavior change.
         /// </summary>
         public static void Enumerate(DungeonGenerator gen, DungeonKit kit, HashSet<string> missing, PlaceCallback place,
-                                     RoomStyle style = null, PlaceCallback placeWithCollider = null)
+                                     RoomStyle style = null, PlaceCallback placeWithCollider = null,
+                                     WallFaceRegistry wallFaces = null)
         {
             placeWithCollider ??= place;
             var grid = gen.Grid;
@@ -194,12 +195,15 @@ namespace DungeonGen
                 return result;
             }
 
-            void Emit(GameObject[] slot, string slotName, Vector3 posCells, Quaternion rot, Vector3 offset)
+            // Returns the picked prefab (null if the slot was empty) so wall
+            // emission can record per-face restrictions for it.
+            GameObject Emit(GameObject[] slot, string slotName, Vector3 posCells, Quaternion rot, Vector3 offset)
             {
-                if (slot == null || slot.Length == 0) { missing.Add(slotName); return; }
+                if (slot == null || slot.Length == 0) { missing.Add(slotName); return null; }
                 GameObject prefab = slot[Hash(Vector3Int.RoundToInt(posCells * 4f), 11) % slot.Length];
-                if (prefab == null) { missing.Add(slotName); return; }
+                if (prefab == null) { missing.Add(slotName); return null; }
                 place(prefab, posCells, rot, offset + kit.globalVisualOffset);
+                return prefab;
             }
 
             // Same as Emit, but for placements needing real collision even
@@ -250,6 +254,7 @@ namespace DungeonGen
                     if (!Open(nb))
                     {
                         bool emitted = false;
+                        GameObject placedWall = null;
                         if (style != null)
                         {
                             // Stairs are usually carved as part of the hallway
@@ -270,6 +275,7 @@ namespace DungeonGen
                                 {
                                     place(reserved, facePos, Quaternion.LookRotation(-(Vector3)d),
                                           kit.wallOffset + kit.globalVisualOffset);
+                                    placedWall = reserved;
                                     emitted = true;
                                 }
                                 else
@@ -277,7 +283,7 @@ namespace DungeonGen
                                     var unlimited = UnlimitedWalls(room.Type, BandOf(room, c));
                                     if (unlimited != null)
                                     {
-                                        Emit(unlimited, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
+                                        placedWall = Emit(unlimited, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
                                         emitted = true;
                                     }
                                 }
@@ -287,7 +293,7 @@ namespace DungeonGen
                                 var styled = style.HallwayWalls();
                                 if (styled != null)
                                 {
-                                    Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
+                                    placedWall = Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
                                     emitted = true;
                                 }
                             }
@@ -296,13 +302,23 @@ namespace DungeonGen
                                 var styled = style.PrisonWalls();
                                 if (styled != null)
                                 {
-                                    Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
+                                    placedWall = Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
                                     emitted = true;
                                 }
                             }
                         }
                         if (!emitted)
                             Emit(kit.wallPrefabs, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
+
+                        // Record this face's restrictions for the torch/prop
+                        // placers (wall real estate). Kit generic walls carry
+                        // no WallAsset metadata — they allow everything.
+                        if (wallFaces != null && style != null && placedWall != null)
+                        {
+                            style.WallFlagsFor(placedWall, out bool allowProps, out bool allowTorch);
+                            if (!allowProps || !allowTorch)
+                                wallFaces.Record(i, d, allowProps, allowTorch);
+                        }
                     }
 
                     // Prison doorway bars: emitted once per face, owned by the
@@ -618,7 +634,7 @@ namespace DungeonGen
 
         /// <summary>GameObject mode: instantiate a prefab per placement.</summary>
         public static GameObject Build(DungeonGenerator gen, DungeonKit kit, float cellSize, Transform parent,
-                                       RoomStyle style = null)
+                                       RoomStyle style = null, WallFaceRegistry wallFaces = null)
         {
             var root = new GameObject("DungeonKit");
             root.transform.SetParent(parent, false);
@@ -633,7 +649,7 @@ namespace DungeonGen
                     rot * prefab.transform.rotation,
                     root.transform);
                 go.isStatic = true;
-            }, style);
+            }, style, null, wallFaces);
 
             if (missing.Count > 0)
                 Debug.LogWarning($"[DungeonKit] Missing prefab slot(s): {string.Join(", ", missing)} — those pieces were skipped.");
