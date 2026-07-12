@@ -1,0 +1,89 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9e1eb810f3a67cc4d92c5a3f67e5e9fc, type: 3}
+  m_Name: DepthProfile
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DepthProfile
+  baseRoomCount: 4
+  roomsPerDepth: 1
+  maxRoomCount: 40
+  gridCellsPerRoom: 3
+  minGridEdge: 30
+  gridHeight: 10
+  throneMinDepth: 6
+  merchantMinDepth: 3
+  categories:
+  - type: 5
+    minDepth: 2
+    baseCount: 1
+    countPerDepth: 0.25
+    maxCount: 4
+  - type: 6
+    minDepth: 3
+    baseCount: 1
+    countPerDepth: 0.15
+    maxCount: 2
+  - type: 7
+    minDepth: 5
+    baseCount: 1
+    countPerDepth: 0.1
+    maxCount: 2
+  - type: 8
+    minDepth: 4
+    baseCount: 1
+    countPerDepth: 0.15
+    maxCount: 3
+  grandRoomEdge: {x: 7, y: 8}
+  grandRoomHeight: 2
+  largeBaseCount: 1
+  largePerDepth: 0.25
+  largeMaxCount: 4
+  largeRoomEdge: {x: 5, y: 6}
+  shapedRoomChance: 0.5
+  shapeMinEdge: 5
+  guaranteedSatellites:
+  - host: 3
+    satellite: 10
+    minDepth: 6
+    chance: 0
+  chancedSatellites:
+  - host: 5
+    satellite: 11
+    minDepth: 2
+    chance: 0.6
+  - host: 6
+    satellite: 12
+    minDepth: 3
+    chance: 0.7
+  - host: 7
+    satellite: 13
+    minDepth: 5
+    chance: 0.7
+  - host: 8
+    satellite: 14
+    minDepth: 4
+    chance: 0.5
+  - host: 0
+    satellite: 9
+    minDepth: 1
+    chance: 0.25
+  columnSpacing: 2
+  columnWallInset: 2
+  columnRules:
+  - type: 3
+    chance: 1
+    minRoomEdge: 6
+  - type: 7
+    chance: 0.5
+    minRoomEdge: 6
+  - type: 0
+    chance: 0.2
+    minRoomEdge: 7

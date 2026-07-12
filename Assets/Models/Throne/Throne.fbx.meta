@@ -1,0 +1,329 @@
+fileFormatVersion: 2
+guid: 6cb7f497be3d27a4f8ef4921af60ced0
+ModelImporter:
+  serializedVersion: 24501
+  internalIDToNameTable: []
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Altar_material
+    second: {fileID: 2100000, guid: b6441ffce32a6cd468d5d1040c6c08f0, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Alter_material
+    second: {fileID: 2100000, guid: 77d8d17a38fc1c6448657d4c3ef2803c, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: ArchMaterial
+    second: {fileID: 2100000, guid: 7da2c1726db12f34b9c7eb2a660a03fa, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Archway_Stone_Doorway
+    second: {fileID: 2100000, guid: c78206f717ef41b429d7a4d191c6a53a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Archway_WoodSupported
+    second: {fileID: 2100000, guid: 53fc3488c32142e458ff7a5c810c7f11, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Barrel_Mat
+    second: {fileID: 2100000, guid: af1c5f309ff856e40a2d6a7eac7a613b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: BlackBars
+    second: {fileID: 2100000, guid: fbfc41c58a7b94b468bf5d447f8a1d08, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Bridge_Mat
+    second: {fileID: 2100000, guid: f7be84fdcfaa5024fbc364e0f10b5de6, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Candle_Emissive
+    second: {fileID: 2100000, guid: 0a20d0600759e9641ad6fc8fb1b69cf4, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Chest_Material
+    second: {fileID: 2100000, guid: b21be2a307c94394ebe2d9cf8562873e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Dark Mortar
+    second: {fileID: 2100000, guid: db2a9b7532b1a394b968dd581d150c7c, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Fountain_Wall_Mat
+    second: {fileID: 2100000, guid: 7aa9a21d3ed8a7a4cbbfb94be14382e4, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: MetalDoor_Material
+    second: {fileID: 2100000, guid: fffafc0650a26dd469372c9f784b0a4e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Pillar_Corner_Mat
+    second: {fileID: 2100000, guid: 248267af311868a45b33235ae1922abc, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Shield_Mat
+    second: {fileID: 2100000, guid: 77bcb7d791b210c4aaac2fde00833058, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Signil_Emissive_Material
+    second: {fileID: 2100000, guid: 273f024110a3ef74b81c85a05a3e40a1, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Stairs_01_MAT
+    second: {fileID: 2100000, guid: 034ca3dadd90f1e49b7f8b51d56f49b9, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Stairs_Material
+    second: {fileID: 2100000, guid: dfaef70b5188b364d972b8b0671ebed8, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Stone_Wall_03_MAT
+    second: {fileID: 2100000, guid: 4f432a2fb314d08499f9d2ca9cf34ca4, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Throne_material
+    second: {fileID: 2100000, guid: 50737b23990d8e14a9a45fdb5bd79d6f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Torch_Wall_MAT
+    second: {fileID: 2100000, guid: 51aca9113ab35fb44b996f677cc745ed, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_ArmorRecess_Material
+    second: {fileID: 2100000, guid: ca7c2648d8f4a6d4dacbafbfb812ac89, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_BarracksGeneric_Material
+    second: {fileID: 2100000, guid: 4e16ab0b810a8db41a218456e7dfdd11, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_Candle01_Material
+    second: {fileID: 2100000, guid: e264bd29aaf7b594b902acf44ec45be4, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_Candle02_Material
+    second: {fileID: 2100000, guid: 98602b897ecaffb4f93568867c601bba, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_Drain_Mat
+    second: {fileID: 2100000, guid: 495a53e16b58d6a448febf35ef6a24ed, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_FlagBanner_Material
+    second: {fileID: 2100000, guid: 1eab2f002d79b254e81ab9f91b64e37b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_Sigil_Material
+    second: {fileID: 2100000, guid: e6239998dd5113a46be0e36c23a1c361, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_fireplace_material
+    second: {fileID: 2100000, guid: 010ae2d151a45da44b6bb8b579cd17e2, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_pikes_material
+    second: {fileID: 2100000, guid: 2a66d9200e0938f499735aeed6f2f988, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Well_Material
+    second: {fileID: 2100000, guid: c389f9983928371498c3b490f30ed100, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: WoodenChair_Material
+    second: {fileID: 2100000, guid: 7b3a47ba2adab1a4aa0ede6ce722c112, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: WoodenTable_Material
+    second: {fileID: 2100000, guid: 7202c20f686b13545a9f3b07534d960e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: archway_mat
+    second: {fileID: 2100000, guid: 6ab57427e0c95504d924a2fe5cc10f1b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: cool gray stone
+    second: {fileID: 2100000, guid: fab67de1b6d51f34d8b5104d2dfd9b55, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: dark gray stone
+    second: {fileID: 2100000, guid: 0a41120931dd6864eaa47be662b6ffd6, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: stonewall_window
+    second: {fileID: 2100000, guid: 03010c30fe38705468b9b21e3860e1f1, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: sword_mat
+    second: {fileID: 2100000, guid: 7efcd797f0ff96c4b9e60cc76dad3c59, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: tripo_mat_0331ee27-7957-42df-843f-c9614a249caa
+    second: {fileID: 2100000, guid: 458e8dd69cf921d4ba3975527cd955b5, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: tripo_mat_1947cd83
+    second: {fileID: 2100000, guid: 14c30fc0b5847224bab9a57921554b4c, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: tripo_mat_3371d0c4-d0b7-4633-863b-afebfade0f3e
+    second: {fileID: 2100000, guid: 486b6bd44e09b2b40be4ecc5887ea1cb, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: tripo_mat_66006240-3f97-4758-a820-ec1b2f4e4d60
+    second: {fileID: 2100000, guid: 7a32e62d36314cd47bb58e059c108c49, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: tripo_mat_d49d7fc7-765b-450b-a484-5d6c4dd23c68
+    second: {fileID: 2100000, guid: 41caf1b95c62bad44bc6154e4e22f164, type: 2}
+  materials:
+    materialImportMode: 2
+    materialName: 0
+    materialSearch: 1
+    materialLocation: 1
+    searchTexturesGlobally: 0
+  animations:
+    legacyGenerateAnimations: 4
+    bakeSimulation: 0
+    resampleCurves: 1
+    optimizeGameObjects: 0
+    removeConstantScaleCurves: 0
+    motionNodeName: 
+    animationImportErrors: 
+    animationImportWarnings: 
+    animationRetargetingWarnings: 
+    animationDoRetargetingWarnings: 0
+    importAnimatedCustomProperties: 0
+    importConstraints: 0
+    animationCompression: 1
+    animationRotationError: 0.5
+    animationPositionError: 0.5
+    animationScaleError: 0.5
+    animationWrapMode: 0
+    extraExposedTransformPaths: []
+    extraUserProperties: []
+    clipAnimations: []
+    isReadable: 0
+  meshes:
+    lODScreenPercentages: []
+    globalScale: 1
+    meshCompression: 0
+    addColliders: 0
+    useSRGBMaterialColor: 1
+    sortHierarchyByName: 1
+    importPhysicalCameras: 1
+    importVisibility: 1
+    importBlendShapes: 1
+    importCameras: 1
+    importLights: 1
+    nodeNameCollisionStrategy: 1
+    fileIdsGeneration: 2
+    swapUVChannels: 0
+    generateSecondaryUV: 0
+    useFileUnits: 1
+    keepQuads: 0
+    weldVertices: 1
+    bakeAxisConversion: 0
+    preserveHierarchy: 0
+    skinWeightsMode: 0
+    maxBonesPerVertex: 4
+    minBoneWeight: 0.001
+    optimizeBones: 1
+    generateMeshLods: 0
+    meshLodGenerationFlags: 0
+    maximumMeshLod: -1
+    importUVs: -1
+    importVertexColors: 1
+    meshOptimizationFlags: -1
+    indexFormat: 0
+    secondaryUVAngleDistortion: 8
+    secondaryUVAreaDistortion: 15.000001
+    secondaryUVHardAngle: 88
+    secondaryUVMarginMethod: 1
+    secondaryUVMinLightmapResolution: 40
+    secondaryUVMinObjectScale: 1
+    secondaryUVPackMargin: 4
+    useFileScale: 1
+    strictVertexDataChecks: 0
+  tangentSpace:
+    normalSmoothAngle: 60
+    normalImportMode: 0
+    tangentImportMode: 3
+    normalCalculationMode: 4
+    legacyComputeAllNormalsFromSmoothingGroupsWhenMeshHasBlendShapes: 0
+    blendShapeNormalImportMode: 1
+    normalSmoothingSource: 0
+    calculateBlendshapeNormalsDeltaFromImportedNormals: 0
+  referencedClips: []
+  importAnimation: 1
+  humanDescription:
+    serializedVersion: 3
+    human: []
+    skeleton: []
+    armTwist: 0.5
+    foreArmTwist: 0.5
+    upperLegTwist: 0.5
+    legTwist: 0.5
+    armStretch: 0.05
+    legStretch: 0.05
+    feetSpacing: 0
+    globalScale: 1
+    rootMotionBoneName: 
+    hasTranslationDoF: 0
+    hasExtraRoot: 0
+    skeletonHasParents: 1
+  lastHumanDescriptionAvatarSource: {instanceID: 0}
+  autoGenerateAvatarMappingIfUnspecified: 1
+  animationType: 2
+  humanoidOversampling: 1
+  avatarSetup: 0
+  addHumanoidExtraRootOnlyWhenUsingAvatar: 1
+  importBlendShapeDeformPercent: 1
+  remapMaterialsIfMaterialImportModeIsNone: 0
+  additionalBone: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

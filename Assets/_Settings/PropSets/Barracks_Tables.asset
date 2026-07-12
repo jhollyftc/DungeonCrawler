@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
+  m_Name: Barracks_Tables
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
+  entries:
+  - label: Tables
+    prefabs:
+    - {fileID: 919132149155446097, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
+    - {fileID: 919132149155446097, guid: c3f807c3ead7076409b36ebe02f3eb5b, type: 3}
+    - {fileID: 919132149155446097, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
+    anchor: 0
+    featurePosition: 0
+    featureFacing: 0
+    featureYaw: 0
+    tier: 0
+    guaranteed: 0
+    count: 4
+    chancePerCell: 0.707
+    maxPerRoom: 10
+    allowCenter: 1
+    yawRange: {x: 0, y: 180}
+    subCellJitter: 0.595
