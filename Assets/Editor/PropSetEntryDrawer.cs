@@ -65,6 +65,18 @@ namespace DungeonGen
                     yield return "sharesTile";
                     break;
 
+                case PropAnchor.NearWallAsset:
+                    yield return "§Host";
+                    yield return "hostLabel";     // matches WallAsset.featureLabel
+                    yield return "chancePerHost";
+                    yield return "§Placement";
+                    yield return "wallGap";       // distance off the wall
+                    yield return "subCellJitter"; // lateral along the wall
+                    yield return "yawRange";
+                    yield return "minSpacing";
+                    yield return "sharesTile";
+                    break;
+
                 case PropAnchor.CeilingHung:
                 {
                     yield return "§Count";
@@ -168,7 +180,11 @@ namespace DungeonGen
                     break;
                 case PropAnchor.NearPropAsset:
                     string hl = prop.FindPropertyRelative("hostLabel").stringValue;
-                    detail = $"Near · {(string.IsNullOrEmpty(hl) ? "(no host)" : hl)}";
+                    detail = $"Near prop · {(string.IsNullOrEmpty(hl) ? "(no host)" : hl)}";
+                    break;
+                case PropAnchor.NearWallAsset:
+                    string wl = prop.FindPropertyRelative("hostLabel").stringValue;
+                    detail = $"Near wall · {(string.IsNullOrEmpty(wl) ? "(no host)" : wl)}";
                     break;
                 default:
                     string zones = ZonesLabel(prop.FindPropertyRelative("preferredZones").intValue);

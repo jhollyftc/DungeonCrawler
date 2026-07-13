@@ -555,13 +555,21 @@ namespace DungeonGen
                     return list;
                 }
 
-                // ---- Entry order: features, guaranteed, scatter, near-prop ----
-                // NearPropAsset runs LAST so all its potential hosts are placed.
+                // ---- Entry order (most-constrained first, so tight
+                // placements claim their cells before flexible ones):
+                //   0 Feature        — the centrepiece spot
+                //   1 NearWallAsset  — beside a feature WALL (kit-placed, so
+                //                      its cells exist now); claim before fill
+                //   2 guaranteed     — must place N, but anywhere eligible
+                //   3 scatter        — chance filler
+                //   4 NearPropAsset  — beside a HOST PROP, so must run last
                 // Stable sort preserves author order within a rank.
                 var ordered = new List<PropSet.PropEntry>(set.entries);
                 int Rank(PropSet.PropEntry e) =>
-                    e.anchor == PropAnchor.NearPropAsset ? 3 :
-                    e.anchor == PropAnchor.Feature ? 0 : e.guaranteed ? 1 : 2;
+                    e.anchor == PropAnchor.Feature ? 0 :
+                    e.anchor == PropAnchor.NearWallAsset ? 1 :
+                    e.anchor == PropAnchor.NearPropAsset ? 4 :
+                    e.guaranteed ? 2 : 3;
                 ordered = ordered.OrderBy(Rank).ToList();
 
                 // Nearest free floor cell to the room's true centroid (hoisted
@@ -934,6 +942,46 @@ namespace DungeonGen
                             Vector3Int cell = neighbors[0];
                             Quaternion rot = ScatterYaw(e, nearStream);
                             Vector3 pos = FloorWorld(cell, e, nearStream);
+                            TryPlaceAt(e, cell, rot, pos, nearStream);
+                        }
+                    }
+                    else if (e.anchor == PropAnchor.NearWallAsset)
+                    {
+                        // Place BESIDE a labeled feature wall (firewood next to
+                        // a fireplace), snapped to that same wall — never ON the
+                        // feature cell (that would cover it). Feature faces are
+                        // recorded by the kit placer; match Host Label.
+                        if (wallFaces == null || string.IsNullOrEmpty(e.hostLabel)) continue;
+                        foreach (var (fc, d, lbl) in wallFaces.FeatureFaces)
+                        {
+                            if (lbl != e.hostLabel) continue;
+                            // Floor props attach only to floor-level features
+                            // (a woodpile by a hearth, not a mid-wall banner).
+                            if (fc.y != room.Bounds.yMin || !room.Cells.Contains(fc)) continue;
+                            if (nearStream.Next01() >= e.chancePerHost) continue;
+                            // Candidates: the two neighbors ALONG the wall (NOT
+                            // the feature cell itself) — beside, not in front —
+                            // each still fronting that same wall.
+                            Vector3Int tangent = new Vector3Int(-d.z, 0, d.x);
+                            var cands = new List<Vector3Int> { fc + tangent, fc - tangent };
+                            var valid = new List<Vector3Int>();
+                            foreach (var cc in cands)
+                            {
+                                if (!room.Cells.Contains(cc) || !Placeable(cc)) continue;
+                                if (reserved.Contains(cc) || usedCells.Contains(cc)) continue;
+                                if (Open(cc + d)) continue; // must still front the same wall
+                                if (TooCloseSameLabel(cc, e.label, e.minSpacing)) continue;
+                                valid.Add(cc);
+                            }
+                            if (valid.Count == 0) continue;
+                            int salt = nearStream.Next();
+                            valid.Sort((a, b) =>
+                                DungeonKitPlacer.Hash(a, salt).CompareTo(DungeonKitPlacer.Hash(b, salt)));
+                            Vector3Int cell = valid[0];
+                            // Face into the room (away from the wall) + variation.
+                            Quaternion rot = Quaternion.LookRotation(-(Vector3)d)
+                                * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, nearStream.Next01()), 0f);
+                            Vector3 pos = FloorWorldSnapped(cell, e, nearStream, d);
                             TryPlaceAt(e, cell, rot, pos, nearStream);
                         }
                     }

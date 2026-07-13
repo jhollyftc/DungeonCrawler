@@ -87,6 +87,8 @@ namespace DungeonGen
             public bool allowPropsInFront = true;
             [Tooltip("Torches may mount on this wall. Turn OFF for walls with their own light sources or busy relief where a sconce reads wrong.")]
             public bool allowTorch = true;
+            [Tooltip("Name this a feature wall so NearWallAsset props can target it (a fireplace tagged 'Fireplace' → firewood with Host Label 'Fireplace' places beside it). Empty = not a NearWallAsset host. Usually paired with a per-room cap.")]
+            public string featureLabel = "";
 
             public bool Allows(WallBand b) =>
                 (b == WallBand.Bottom && bottom) ||

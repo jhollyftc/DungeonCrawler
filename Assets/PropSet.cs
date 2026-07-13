@@ -16,6 +16,8 @@ namespace DungeonGen
         Feature,
         /// <summary>Placed on a free cell BESIDE an already-placed prop whose Label matches Host Label (a bucket beside a crate). Runs after all other floor props. Chance-gated per host; cell-adjacency prevents overlap.</summary>
         NearPropAsset,
+        /// <summary>Placed on a free cell BESIDE a capped/feature WALL asset (a woodpile beside a fireplace), snapped to that wall. Chance-gated per feature wall.</summary>
+        NearWallAsset,
     }
 
     /// <summary>Top-level placement mode for a Feature entry.</summary>
@@ -163,7 +165,7 @@ namespace DungeonGen
             [Header("Near-prop / spacing")]
             [Tooltip("NearPropAsset only: attach beside already-placed props whose Label equals this (case-sensitive).")]
             public string hostLabel = "";
-            [Tooltip("NearPropAsset only: chance to place a prop beside each matching host.")]
+            [Tooltip("NearPropAsset / NearWallAsset: chance to place a prop beside each matching host (a labeled prop, or a feature wall).")]
             [Range(0f, 1f)] public float chancePerHost = 0.6f;
             [Tooltip("Keep same-Label props at least this many cells apart (0 = off). E.g. two statue entries sharing Label 'Statue' won't clump. Floor/feature props only.")]
             public int minSpacing = 0;

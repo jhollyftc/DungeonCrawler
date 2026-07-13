@@ -112,7 +112,7 @@ namespace DungeonGen
             // clump every special into the room's first-scanned corner. Caps
             // thus become guaranteed counts (faces permitting), placed
             // uniformly. Unreserved faces draw from the set's unlimited assets.
-            var reservations = new Dictionary<Room, Dictionary<long, GameObject>>();
+            var reservations = new Dictionary<Room, Dictionary<long, RoomStyle.WallAsset>>();
 
             RoomStyle.WallBand BandOf(Room room, Vector3Int cell)
             {
@@ -124,10 +124,10 @@ namespace DungeonGen
                 return RoomStyle.WallBand.Bottom;
             }
 
-            Dictionary<long, GameObject> GetReservations(Room room)
+            Dictionary<long, RoomStyle.WallAsset> GetReservations(Room room)
             {
                 if (reservations.TryGetValue(room, out var res)) return res;
-                res = new Dictionary<long, GameObject>();
+                res = new Dictionary<long, RoomStyle.WallAsset>();
                 reservations[room] = res;
                 if (style == null) return res;
 
@@ -173,7 +173,7 @@ namespace DungeonGen
                         long key = FaceKey(grid.Index(f.cell), HDirs[f.dirIdx]);
                         if (usedFaces.Contains(key)) continue;
                         usedFaces.Add(key);
-                        res[key] = a.prefab;
+                        res[key] = a;
                         placedCount++;
                     }
                 }
@@ -276,10 +276,16 @@ namespace DungeonGen
                                 var res = GetReservations(room);
                                 if (res.TryGetValue(FaceKey(i, d), out var reserved))
                                 {
-                                    place(reserved, facePos, Quaternion.LookRotation(-(Vector3)d),
+                                    place(reserved.prefab, facePos, Quaternion.LookRotation(-(Vector3)d),
                                           kit.wallOffset + kit.globalVisualOffset);
-                                    placedWall = reserved;
+                                    placedWall = reserved.prefab;
                                     emitted = true;
+                                    // A labeled feature wall (fireplace etc.) —
+                                    // NearWallAsset props with a matching Host
+                                    // Label attach beside it. Unlabeled capped
+                                    // assets are NOT hosts.
+                                    if (!string.IsNullOrEmpty(reserved.featureLabel))
+                                        wallFaces?.RecordFeature(c, d, reserved.featureLabel);
                                 }
                                 else
                                 {

@@ -27,6 +27,10 @@ namespace DungeonGen
         readonly HashSet<long> noProps = new HashSet<long>();
         readonly HashSet<long> noTorch = new HashSet<long>();
         readonly HashSet<long> claimed = new HashSet<long>();
+        // Faces that got a LABELED feature wall asset (fireplace, altar wall) —
+        // NearWallAsset props with a matching Host Label attach beside these.
+        readonly List<(Vector3Int cell, Vector3Int dir, string label)> featureFaces
+            = new List<(Vector3Int, Vector3Int, string)>();
 
         static long Key(int cellIndex, Vector3Int dir)
         {
@@ -47,5 +51,10 @@ namespace DungeonGen
         /// <summary>Mark a face as occupied by a torch or wall-mounted prop.</summary>
         public void Claim(int cellIndex, Vector3Int dir) => claimed.Add(Key(cellIndex, dir));
         public bool IsClaimed(int cellIndex, Vector3Int dir) => claimed.Contains(Key(cellIndex, dir));
+
+        /// <summary>Record that this face got a labeled feature wall asset.
+        /// cell = the open room cell in front of the wall, dir = toward it.</summary>
+        public void RecordFeature(Vector3Int cell, Vector3Int dir, string label) => featureFaces.Add((cell, dir, label));
+        public IReadOnlyList<(Vector3Int cell, Vector3Int dir, string label)> FeatureFaces => featureFaces;
     }
 }

@@ -23,6 +23,9 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 0
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 0
     chancePerCell: 0.546
@@ -51,6 +54,9 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 0
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 0
     chancePerCell: 0.444
@@ -79,6 +85,9 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 0
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 4
     guaranteed: 0
     count: 0
     chancePerCell: 0.444
@@ -107,6 +116,9 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 4
     featureYaw: 180
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 1
     chancePerCell: 0.444
@@ -135,6 +147,9 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 4
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 2
     guaranteed: 0
     count: 0
     chancePerCell: 1
@@ -163,11 +178,14 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 4
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 0
     chancePerCell: 1
-    maxPerRoom: 1
-    preferredZones: -1
+    maxPerRoom: 0
+    preferredZones: 4
     facing: 0
     yawRange: {x: 0, y: 5}
     subCellJitter: 0.21
@@ -191,6 +209,9 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 4
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 0
     chancePerCell: 1
@@ -203,6 +224,37 @@ MonoBehaviour:
     snapToInsideCorner: 1
     sharesTile: 1
     wallGap: 0
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Firewood
+    prefabs:
+    - {fileID: 919132149155446097, guid: 8c1c11c0015f49942800b2e19adf0d50, type: 3}
+    anchor: 5
+    tier: 0
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    hostLabel: Fireplace
+    chancePerHost: 1
+    minSpacing: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: -5, y: 5}
+    subCellJitter: 1
+    snapToWall: 1
+    snapToInsideCorner: 1
+    sharesTile: 0
+    wallGap: 1
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0

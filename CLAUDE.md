@@ -304,7 +304,10 @@ One RoomStyle asset defines a room type's whole look. What it holds:
   reserved onto hash-SHUFFLED faces before emission (never scan order, which
   clumped them into a corner). Caps are guaranteed counts, dealt once per asset
   across its allowed bands, with a shared used-face set. Authoring shape: one
-  unlimited base wall + capped/band-locked accents per set.
+  unlimited base wall + capped/band-locked accents per set. A capped asset can
+  carry a `featureLabel` (e.g. "Fireplace") so NearWallAsset props target it
+  (§8); the reservation dict stores the `WallAsset` so the label reaches
+  emission.
 - **Openings** (`OpeningSet` per type): archway + door prefabs. Chosen by the
   room the opening leads INTO (a throne entrance gets the throne arch; a treasury
   closet door styles the treasury). Empty = kit generic.
@@ -388,6 +391,16 @@ scatter just places nothing.
   so all hosts exist; `chancePerHost` gates each attachment; cell-adjacency
   (a free 8-neighbour cell) prevents overlap, reusing `usedCells`. Placed
   props record `(cell, label)` in `placedProps`, which also drives spacing.
+- `NearWallAsset` — placed BESIDE a labeled feature wall (firewood next to a
+  fireplace). A `WallAsset.featureLabel` (e.g. "Fireplace") tags it; the kit
+  placer records only labeled capped faces into
+  `WallFaceRegistry.RecordFeature(cell,dir,label)`. The anchor matches its
+  `hostLabel` to that label, and snaps to a wall-adjacent cell BESIDE the
+  feature (a tangent neighbour, never the feature cell itself — that would
+  cover it), floor-level only. Runs early (rank 1, after features, before
+  guaranteed/scatter): its 1-2 valid cells must be claimed before flexible
+  props take them, and it depends only on the kit-placed wall, not on other
+  props. (NearPropAsset stays rank 4 — it depends on host props.)
 - `label` is a prop's KIND: `minSpacing` (cells) keeps same-Label floor props
   apart (two "Statue" entries won't clump — checked in scatter + feature
   picks), and NearPropAsset targets a Label. Floor plane only.
