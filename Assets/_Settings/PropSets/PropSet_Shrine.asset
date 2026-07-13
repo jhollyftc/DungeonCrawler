@@ -37,5 +37,5 @@ MonoBehaviour:
     mountHeightJitter: 0
     ceilingLayout: 0
     gridStride: 2
-    snapToCeilingCorner: 0
+    snapToCeilingWall: 0
     allowCenter: 1

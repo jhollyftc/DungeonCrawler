@@ -68,9 +68,12 @@ namespace DungeonGen
                     yield return "subCellJitter";
                     if (!grid)
                     {
-                        yield return "snapToCeilingCorner";
-                        if (prop.FindPropertyRelative("snapToCeilingCorner").boolValue) yield return "wallGap";
+                        yield return "snapToInsideCorner";
+                        bool ceilCorner = prop.FindPropertyRelative("snapToInsideCorner").boolValue;
+                        if (!ceilCorner) yield return "snapToCeilingWall";
+                        if (ceilCorner || prop.FindPropertyRelative("snapToCeilingWall").boolValue) yield return "wallGap";
                     }
+                    yield return "sharesTile";
                     break;
 
                 case PropAnchor.WallMounted:
@@ -108,8 +111,11 @@ namespace DungeonGen
                     yield return "facing";
                     yield return "yawRange";
                     yield return "subCellJitter";
-                    yield return "snapToWall";
-                    if (snap) yield return "wallGap";
+                    yield return "snapToInsideCorner";
+                    bool floorCorner = prop.FindPropertyRelative("snapToInsideCorner").boolValue;
+                    if (!floorCorner) yield return "snapToWall";
+                    if (floorCorner || snap) yield return "wallGap";
+                    yield return "sharesTile";
                     break;
             }
         }
@@ -139,8 +145,10 @@ namespace DungeonGen
                 case PropAnchor.CeilingHung:
                     if ((CeilingLayout)prop.FindPropertyRelative("ceilingLayout").enumValueIndex == CeilingLayout.Grid)
                         detail = $"Ceiling · grid ÷{prop.FindPropertyRelative("gridStride").intValue}";
+                    else if (prop.FindPropertyRelative("snapToInsideCorner").boolValue)
+                        detail = "Ceiling · inside corner";
                     else
-                        detail = prop.FindPropertyRelative("snapToCeilingCorner").boolValue ? "Ceiling · corner" : "Ceiling";
+                        detail = prop.FindPropertyRelative("snapToCeilingWall").boolValue ? "Ceiling · wall" : "Ceiling";
                     break;
                 case PropAnchor.WallMounted:
                     detail = $"Wall-mounted · {prop.FindPropertyRelative("mountHeight").floatValue:0.#}m";

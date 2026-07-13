@@ -32,12 +32,14 @@ MonoBehaviour:
     yawRange: {x: 0, y: 0}
     subCellJitter: 0
     snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
     wallGap: 0.1
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
     gridStride: 2
-    snapToCeilingCorner: 0
+    snapToCeilingWall: 0
     allowCenter: 0
   - label: Fountain Wall
     prefabs:
@@ -58,12 +60,14 @@ MonoBehaviour:
     yawRange: {x: 0, y: 0}
     subCellJitter: 0
     snapToWall: 1
+    snapToInsideCorner: 0
+    sharesTile: 0
     wallGap: 0.1
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
     gridStride: 2
-    snapToCeilingCorner: 0
+    snapToCeilingWall: 0
     allowCenter: 0
   - label: Statue King
     prefabs:
@@ -84,17 +88,19 @@ MonoBehaviour:
     yawRange: {x: -3, y: 3}
     subCellJitter: 0
     snapToWall: 1
+    snapToInsideCorner: 0
+    sharesTile: 0
     wallGap: 0.7
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
     gridStride: 2
-    snapToCeilingCorner: 0
+    snapToCeilingWall: 0
     allowCenter: 0
   - label: Well
     prefabs:
     - {fileID: 8092874129027547640, guid: a37885a67eabb2840b7e1af0587aa663, type: 3}
-    anchor: 2
+    anchor: 3
     tier: 1
     featurePositionMode: 1
     featureWallSide: 0
@@ -110,12 +116,14 @@ MonoBehaviour:
     yawRange: {x: -3, y: 3}
     subCellJitter: 0
     snapToWall: 1
+    snapToInsideCorner: 0
+    sharesTile: 0
     wallGap: 1
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
     gridStride: 2
-    snapToCeilingCorner: 0
+    snapToCeilingWall: 0
     allowCenter: 0
   - label: Barrel
     prefabs:
@@ -136,18 +144,48 @@ MonoBehaviour:
     yawRange: {x: 87, y: 93}
     subCellJitter: 1
     snapToWall: 1
+    snapToInsideCorner: 0
+    sharesTile: 0
     wallGap: 0.5
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
     gridStride: 2
-    snapToCeilingCorner: 0
+    snapToCeilingWall: 0
     allowCenter: 0
-  - label: Barrel
+  - label: Hanging Lights
     prefabs:
-    - {fileID: 8418309518360107936, guid: 26210594d958cc14ebdec7eb22c3ae0f, type: 3}
-    anchor: 0
-    tier: 1
+    - {fileID: 919132149155446097, guid: 8c1c11c0015f49942800b2e19adf0d50, type: 3}
+    anchor: 1
+    tier: 0
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 1
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 0, y: 5}
+    subCellJitter: 0.21
+    snapToWall: 1
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0.5
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 1
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Cobwebs
+    prefabs:
+    - {fileID: 919132149155446097, guid: e073a4d06a281954db3ad6019b5b0cdc, type: 3}
+    anchor: 1
+    tier: 0
     featurePositionMode: 1
     featureWallSide: 0
     featureSpot: 0
@@ -157,15 +195,17 @@ MonoBehaviour:
     count: 0
     chancePerCell: 1
     maxPerRoom: 0
-    preferredZones: 8
-    facing: 3
-    yawRange: {x: 87, y: 93}
-    subCellJitter: 1
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 45, y: 45}
+    subCellJitter: 0
     snapToWall: 1
-    wallGap: 0.5
+    snapToInsideCorner: 1
+    sharesTile: 1
+    wallGap: 0
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
     gridStride: 2
-    snapToCeilingCorner: 0
+    snapToCeilingWall: 0
     allowCenter: 0

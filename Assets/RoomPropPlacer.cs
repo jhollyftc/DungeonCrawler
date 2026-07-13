@@ -277,7 +277,7 @@ namespace DungeonGen
                     PropInstancer.PlaceProps(instancer, prefab,
                         new[] { new PropPlacement { position = worldPos, rotation = rot } },
                         tier, cellSize, root.transform);
-                    usedCells.Add(cell);
+                    if (!e.sharesTile) usedCells.Add(cell); // sharesTile doesn't reserve
                     totalPlaced++;
                     FillSockets(prefab, worldPos, rot, cell.y, 0);
                 }
@@ -477,15 +477,19 @@ namespace DungeonGen
                 // cell's zone is its floor column's zone (same x/z cell).
                 List<Vector3Int> Eligible(PropSet.PropEntry e, HashStream s)
                 {
+                    // Inside-corner is its own geometric selection (corners are
+                    // inherently wall-adjacent) — don't also zone-filter it, or
+                    // a non-Perimeter zone silently drops every corner.
                     bool zoneFilter = (e.anchor == PropAnchor.FloorScatter || e.anchor == PropAnchor.CeilingHung)
-                                      && !e.allowCenter;
+                                      && !e.allowCenter && !e.snapToInsideCorner;
                     // Ceiling props occupy their own plane — a floor rack and a
                     // ceiling light can share a cell.
                     var used = e.anchor == PropAnchor.CeilingHung ? usedCeilingCells : usedCells;
                     var list = new List<Vector3Int>();
                     foreach (var c in floor)
                     {
-                        if (!Placeable(c) || reserved.Contains(c) || used.Contains(c)) continue;
+                        if (!Placeable(c) || reserved.Contains(c)) continue;
+                        if (!e.sharesTile && used.Contains(c)) continue; // sharesTile ignores prop occupancy
                         if (zoneFilter && (e.preferredZones & (RoomZoneMask)(1 << (int)zones[c])) == 0) continue;
                         list.Add(c);
                     }
@@ -495,7 +499,7 @@ namespace DungeonGen
                     // its authored zone would betray intent more than absence.
                     if (list.Count == 0 && zoneFilter && e.guaranteed)
                         foreach (var c in floor)
-                            if (!reserved.Contains(c) && !used.Contains(c)) list.Add(c);
+                            if (Placeable(c) && !reserved.Contains(c) && (e.sharesTile || !used.Contains(c))) list.Add(c);
                     int shuffleSalt = s.Next();
                     list.Sort((a, b) =>
                         DungeonKitPlacer.Hash(a, shuffleSalt).CompareTo(DungeonKitPlacer.Hash(b, shuffleSalt)));
@@ -687,11 +691,13 @@ namespace DungeonGen
                     {
                         int ceilY = room.Bounds.yMax; // top plane of the room
                         float ceilWorldY = ceilY * cellSize;
-                        bool gridLayout = e.ceilingLayout == CeilingLayout.Grid;
+                        // Inside-corner snap wins over grid/wall-snap.
+                        bool insideCorner = e.snapToInsideCorner;
+                        bool gridLayout = !insideCorner && e.ceilingLayout == CeilingLayout.Grid;
                         int stride = Mathf.Max(1, e.gridStride);
-                        // Corner-snap is a Scatter feature; a grid places at
-                        // cell centers on the lattice.
-                        bool cornerSnap = !gridLayout && e.snapToCeilingCorner;
+                        // Corner-snap (single wall) is a Scatter feature; a grid
+                        // places at cell centers on the lattice.
+                        bool cornerSnap = !insideCorner && !gridLayout && e.snapToCeilingWall;
                         bool wantsWall = cornerSnap ||
                                          e.facing == FacingRule.FaceAwayFromNearestWall ||
                                          e.facing == FacingRule.AlignWithWall;
@@ -724,6 +730,11 @@ namespace DungeonGen
                             // Skipped BEFORE the chance roll so gaps come only
                             // from chance, not lattice misses.
                             if (gridLayout && !OnCeilingGrid(c)) continue;
+                            // Inside-corner: only concave-corner cells qualify.
+                            Vector3Int ca = default, cb = default;
+                            if (insideCorner &&
+                                !PropSnap.TryInsideCorner(grid, c, null, false, ceilingStream.Next(), out ca, out cb))
+                                continue;
                             if (!e.guaranteed)
                             {
                                 if (e.maxPerRoom > 0 && placedCount >= e.maxPerRoom) break;
@@ -733,10 +744,19 @@ namespace DungeonGen
                             // A corner-snap entry belongs against a wall: no
                             // (props-allowed) wall at the cell = skip.
                             if (cornerSnap && !wallDir.HasValue) continue;
-                            Quaternion rot = ScatterRotation(e, c, ceilingStream, wallDir);
+                            Quaternion rot;
                             Vector3 pos;
-                            if (cornerSnap)
+                            if (insideCorner)
                             {
+                                pos = new Vector3((c.x + 0.5f) * cellSize, ceilWorldY, (c.z + 0.5f) * cellSize)
+                                      + PropSnap.CornerOffset(ca, cb, cellSize, e.wallGap) + parent.position;
+                                Vector3 f = PropSnap.CornerFacing(ca, cb);
+                                rot = Quaternion.LookRotation(f.normalized)
+                                      * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, ceilingStream.Next01()), 0f);
+                            }
+                            else if (cornerSnap)
+                            {
+                                rot = ScatterRotation(e, c, ceilingStream, wallDir);
                                 float range = e.subCellJitter * (cellSize * 0.5f - 0.7f);
                                 Vector3 tangent = new Vector3(-wallDir.Value.z, 0f, wallDir.Value.x);
                                 pos = new Vector3((c.x + 0.5f) * cellSize, ceilWorldY, (c.z + 0.5f) * cellSize)
@@ -746,6 +766,7 @@ namespace DungeonGen
                             }
                             else
                             {
+                                rot = ScatterRotation(e, c, ceilingStream, wallDir);
                                 float range = e.subCellJitter * (cellSize * 0.5f - 0.7f);
                                 pos = new Vector3((c.x + 0.5f) * cellSize + (ceilingStream.Next01() - 0.5f) * 2f * range,
                                                   ceilWorldY,
@@ -760,7 +781,7 @@ namespace DungeonGen
                             PropInstancer.PlaceProps(instancer, cprefab,
                                 new[] { new PropPlacement { position = pos, rotation = rot } },
                                 ctier, cellSize, root.transform);
-                            usedCeilingCells.Add(c);
+                            if (!e.sharesTile) usedCeilingCells.Add(c); // sharesTile doesn't reserve
                             totalPlaced++;
                             placedCount++;
                         }
@@ -809,15 +830,21 @@ namespace DungeonGen
                     }
                     else // FloorScatter
                     {
-                        bool wantsWall = e.snapToWall ||
+                        bool insideCorner = e.snapToInsideCorner;
+                        bool wantsWall = !insideCorner && (e.snapToWall ||
                                          e.facing == FacingRule.FaceAwayFromNearestWall ||
-                                         e.facing == FacingRule.AlignWithWall;
+                                         e.facing == FacingRule.AlignWithWall);
                         var cells = Eligible(e, scatterStream);
                         int placedCount = 0;
                         int want = e.guaranteed ? e.count : int.MaxValue;
                         foreach (var c in cells)
                         {
                             if (placedCount >= want) break;
+                            // Inside-corner: only concave-corner cells qualify.
+                            Vector3Int ca = default, cb = default;
+                            if (insideCorner &&
+                                !PropSnap.TryInsideCorner(grid, c, null, false, scatterStream.Next(), out ca, out cb))
+                                continue;
                             if (!e.guaranteed)
                             {
                                 if (e.maxPerRoom > 0 && placedCount >= e.maxPerRoom) break;
@@ -827,11 +854,23 @@ namespace DungeonGen
                             // A snap entry belongs against a wall: a cell with
                             // no (props-allowed) wall is skipped, not placed
                             // floating at its center.
-                            if (e.snapToWall && !wallDir.HasValue) continue;
-                            Quaternion rot = ScatterRotation(e, c, scatterStream, wallDir);
-                            Vector3 pos = e.snapToWall
-                                ? FloorWorldSnapped(c, e, scatterStream, wallDir.Value)
-                                : FloorWorld(c, e, scatterStream);
+                            if (e.snapToWall && !insideCorner && !wallDir.HasValue) continue;
+                            Quaternion rot;
+                            Vector3 pos;
+                            if (insideCorner)
+                            {
+                                pos = new Vector3((c.x + 0.5f) * cellSize, c.y * cellSize, (c.z + 0.5f) * cellSize)
+                                      + PropSnap.CornerOffset(ca, cb, cellSize, e.wallGap) + parent.position;
+                                rot = Quaternion.LookRotation(PropSnap.CornerFacing(ca, cb).normalized)
+                                      * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, scatterStream.Next01()), 0f);
+                            }
+                            else
+                            {
+                                rot = ScatterRotation(e, c, scatterStream, wallDir);
+                                pos = e.snapToWall
+                                    ? FloorWorldSnapped(c, e, scatterStream, wallDir.Value)
+                                    : FloorWorld(c, e, scatterStream);
+                            }
                             if (TryPlaceAt(e, c, rot, pos, scatterStream)) placedCount++;
                         }
                     }

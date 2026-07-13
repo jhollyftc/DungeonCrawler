@@ -236,3 +236,4 @@ MonoBehaviour:
     props: {fileID: 11400000, guid: a595edc14d0a4fa4bbb610c818d3bcb3, type: 2}
   - type: 11
     props: {fileID: 11400000, guid: 068433a7c4626834bafc83d9c5ff0414, type: 2}
+  hallwayProps: {fileID: 11400000, guid: f091b7636f761184fb6292fa86c06da5, type: 2}

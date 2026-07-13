@@ -12,4 +12,144 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
   m_Name: Hallway_PropSet
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
-  entries: []
+  entries:
+  - label: 
+    prefabs:
+    - {fileID: 919132149155446097, guid: cbb77804f802a34468b856452c4e2182, type: 3}
+    anchor: 0
+    tier: 0
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 0.322
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 3
+    yawRange: {x: -85, y: -95}
+    subCellJitter: 0
+    snapToWall: 1
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0.35
+    mountHeight: 0
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 0
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: 
+    prefabs:
+    - {fileID: 919132149155446097, guid: e073a4d06a281954db3ad6019b5b0cdc, type: 3}
+    anchor: 1
+    tier: 0
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 45, y: 45}
+    subCellJitter: 0
+    snapToWall: 0
+    snapToInsideCorner: 1
+    sharesTile: 1
+    wallGap: 0
+    mountHeight: 0
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 0
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: 
+    prefabs:
+    - {fileID: 919132149155446097, guid: 0dac0604be32fc346a5e1a47dff6d65a, type: 3}
+    anchor: 1
+    tier: 0
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 0, y: 0}
+    subCellJitter: 0.137
+    snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 1
+    wallGap: 0
+    mountHeight: 0
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 0
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: 
+    prefabs:
+    - {fileID: 919132149155446097, guid: e9a17474b19a1d74d86c798a8621787a, type: 3}
+    anchor: 1
+    tier: 0
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 0.318
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 0, y: 180}
+    subCellJitter: 0.137
+    snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0
+    mountHeight: 0
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 0
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: 
+    prefabs:
+    - {fileID: 919132149155446097, guid: 03b752ee3c35d644c9392b97688c7df6, type: 3}
+    anchor: 2
+    tier: 0
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 0, y: 0}
+    subCellJitter: 0
+    snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0
+    mountHeight: 0
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 0
+    snapToCeilingWall: 0
+    allowCenter: 0

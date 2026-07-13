@@ -17,16 +17,51 @@ MonoBehaviour:
     prefabs:
     - {fileID: 2261073350949710241, guid: dfbe1588070c90541b97661e7e90d98d, type: 3}
     anchor: 2
+    tier: 1
     featurePositionMode: 0
     featureWallSide: 1
     featureSpot: 0
     featureFacing: 1
     featureYaw: 0
-    tier: 1
     guaranteed: 1
     count: 0
     chancePerCell: 0
     maxPerRoom: 0
-    allowCenter: 0
+    preferredZones: 8
+    facing: 0
     yawRange: {x: 0, y: 0}
     subCellJitter: 0
+    snapToWall: 0
+    wallGap: 0.1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Ceiling
+    prefabs:
+    - {fileID: 919132149155446097, guid: 8c1c11c0015f49942800b2e19adf0d50, type: 3}
+    anchor: 1
+    tier: 0
+    featurePositionMode: 0
+    featureWallSide: 1
+    featureSpot: 0
+    featureFacing: 1
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 0, y: 0}
+    subCellJitter: 0
+    snapToWall: 0
+    wallGap: 0.1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0

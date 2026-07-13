@@ -180,6 +180,10 @@ namespace DungeonGen
             [Range(0f, 1f)] public float subCellJitter = 0.9f;
             [Tooltip("Pull the placement flush to its wall: the prop origin sits Wall Gap meters off the nominal wall face instead of floating at the cell center. FloorScatter uses the cell's nearest wall (same wall the facing rules read); Feature + WallSide uses its chosen wall. No wall at the cell = normal placement.")]
             public bool snapToWall = false;
+            [Tooltip("FloorScatter / CeilingHung: place ONLY at inside corners (where two perpendicular walls meet), tucked into the corner. Cobwebs, corner debris. Rooms + hallways (hallway corners = corridor bends/junctions). Ignores zones and the wall's Allow Props In Front flag. Takes precedence over Snap To Wall / Snap To Ceiling Wall. Uses Wall Gap.")]
+            public bool snapToInsideCorner = false;
+            [Tooltip("FloorScatter / CeilingHung: this prop does NOT reserve its tile — another prop may occupy the same tile, and this one may sit on an already-used tile. E.g. a corner cobweb that shouldn't block a hanging lantern on that tile. Physical collision (blocking tiers) still applies; this only affects the one-prop-per-tile visual rule.")]
+            public bool sharesTile = false;
             [Tooltip("Meters between the nominal wall plane and the prop origin when Snap To Wall is on. Tune per asset (account for the wall kit's relief depth). WallMounted also uses this as its distance off the wall face.")]
             public float wallGap = 0.1f;
 
@@ -192,8 +196,8 @@ namespace DungeonGen
             public CeilingLayout ceilingLayout = CeilingLayout.Scatter;
             [Tooltip("CeilingHung + Grid: cells between placements. 1 = every tile, 2 = every other tile, 3 = every third. Anchored to the room's corner so it's stable across regens.")]
             public int gridStride = 2;
-            [Tooltip("CeilingHung + Scatter: snap to a ceiling corner (nearest wall), the classic cobweb placement. Uses Wall Gap and tangent-only jitter, same as floor snap but at the ceiling plane. Ignored in Grid layout.")]
-            public bool snapToCeilingCorner = false;
+            [Tooltip("CeilingHung + Scatter: snap flush to the nearest wall at the ceiling plane (the ceiling equivalent of Snap To Wall — one wall, not a corner). Uses Wall Gap and tangent-only jitter. Ignored in Grid layout. For true two-wall corners use Snap To Inside Corner.")]
+            public bool snapToCeilingWall = false;
 
             [Header("Legacy: Anywhere toggle")]
             [Tooltip("Legacy 'anywhere' toggle: skip the zone filter entirely — scatter may use ANY free cell.")]

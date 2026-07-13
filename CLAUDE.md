@@ -358,8 +358,18 @@ scatter just places nothing.
   with no allowed wall skips the cell rather than floating at its center.
 - `CeilingHung` — ceiling plane, with floor-scatter parity: `preferredZones`
   (a ceiling cell's zone = its floor column's zone), `facing` rules, and
-  `snapToCeilingCorner` (cobweb in a ceiling corner — shared wall pick +
-  tangent jitter at the ceiling plane, reuses `wallGap`). `ceilingLayout`:
+  `snapToCeilingCorner` (single-wall snap at the ceiling plane — shared wall
+  pick + tangent jitter, reuses `wallGap`).
+- `snapToInsideCorner` (FloorScatter + CeilingHung, rooms AND hallways) —
+  places ONLY at concave corners (a cell solid in one X dir AND one Z dir),
+  tucked diagonally into the corner `wallGap` off each wall, facing out.
+  Cobwebs, corner debris; hallway corners = corridor bends/junctions. Ignores
+  zones AND `allowPropsInFront` (a corner prop occupies only the corner; that
+  flag is about keeping a wall face clear of snapped props — a different
+  intent). Takes precedence over grid / snap-to-wall. Shared detection in
+  `PropSnap.TryInsideCorner` so the room and hallway placers can't diverge.
+  (`snapToCeilingWall` = the single-wall ceiling snap, formerly the
+  misleadingly-named snapToCeilingCorner.) `ceilingLayout`:
   Scatter (random by chance) or **Grid** — a stride lattice anchored to the
   room corner (hanging lights in rows; `gridStride` cells apart, 2 = every
   other tile). The chance roll still applies in Grid, so a grid can have
@@ -390,6 +400,25 @@ scatter just places nothing.
   placement is rolled back. Crank density safely.
 - Décor never blocks. Entry order per room: features → guaranteed → chance
   scatter. Deterministic (hash-shuffled cells).
+- Ceiling props have their OWN occupancy plane (`usedCeilingCells`) and never
+  touch the floor blocked/flood-fill set — a floor rack and a ceiling light
+  share a cell. Interior-stair cells are excluded as placement targets
+  (`Placeable` = grid[c] == Room) but stay walkable for the flood-fill.
+- `sharesTile` (FloorScatter/CeilingHung): the entry doesn't reserve its tile
+  AND may sit on an already-used one — a corner cobweb that co-exists with a
+  hanging lantern on the same tile. Bypasses only the one-prop-per-tile visual
+  rule; physical blocking (collider tiers, flood-fill) still applies.
+
+**Hallways (HallwayPropPlacer + RoomStyle.hallwayProps):** one GLOBAL corridor
+PropSet — debris, cobwebs, roots. Corridors aren't rooms (no zones/centroid/
+entrance), so it's a separate pass scanning CellType.Hallway cells. Supports
+FloorScatter (snapToWall + facing; zone/feature fields ignored), CeilingHung
+(scatter, or Grid stride ALONG the corridor), and WallMounted (torch-
+negotiated). Door hallway cells are reserved. Blocking props run a
+connectivity BFS over the hallway+stair network keeping every door mutually
+reachable — so a collider pile only lands in wide spots/junctions, never
+sealing a 1-wide corridor. Global streams 12002/12003/12005 (distinct from
+rooms' per-room 110xx). Wired after RoomPropPlacer so torch face-claims exist.
 
 **Sockets (`PropSocket`)** — parent props spawn child props (table → chairs):
 - Authored as empty child transforms on the prefab, positioned/oriented where

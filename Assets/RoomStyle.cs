@@ -308,6 +308,8 @@ namespace DungeonGen
 
         [Header("Props (per room type; sets are shareable assets)")]
         public List<PropSetEntry> roomProps = new List<PropSetEntry>();
+        [Tooltip("One global prop set for ALL corridors — debris, cobwebs, roots. Hallways have no zones, so zone/feature fields are ignored; scatter (snapToWall works), ceiling, and wall-mounted anchors apply. Empty = no hallway props.")]
+        public PropSet hallwayProps;
 
         /// <summary>Prop set for a room type, or null (no props).</summary>
         public PropSet PropsFor(RoomType type)
@@ -317,5 +319,8 @@ namespace DungeonGen
                     return e.props;
             return null;
         }
+
+        /// <summary>The global corridor prop set, or null.</summary>
+        public PropSet HallwayProps() => hallwayProps;
     }
 }

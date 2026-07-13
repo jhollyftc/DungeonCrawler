@@ -96,7 +96,7 @@ namespace DungeonGen
             }
 
             // Replace any previous geometry child (any mode) and torches.
-            foreach (string name in new[] { "DungeonMesh", "DungeonKit", "DungeonInstanced", "DungeonTorches", "DungeonDoors", "DungeonArchways", "DungeonColumns", "DungeonLadders", "DungeonKitColliders", "DungeonProps", "DungeonFog" })
+            foreach (string name in new[] { "DungeonMesh", "DungeonKit", "DungeonInstanced", "DungeonTorches", "DungeonDoors", "DungeonArchways", "DungeonColumns", "DungeonLadders", "DungeonKitColliders", "DungeonProps", "DungeonHallwayProps", "DungeonFog" })
             {
                 Transform old = transform.Find(name);
                 if (old != null)
@@ -188,7 +188,10 @@ namespace DungeonGen
                 TorchPlacer.Build(gen, torches, cellSize, transform, sharedInstancer, roomStyle, wallFaces);
 
             if (roomStyle != null)
+            {
                 RoomPropPlacer.Build(gen, kit, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
+                HallwayPropPlacer.Build(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
+            }
 
             if (fog != null && fog.dynamicFogColor && roomStyle != null)
             {

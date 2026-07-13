@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
-  m_Name: ChestPropTest
+  m_Name: Chest_PropTest
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
   entries:
   - label: 
