@@ -289,7 +289,12 @@ One RoomStyle asset defines a room type's whole look. What it holds:
   it afterward (build order guarantees walls first). A recessed candle niche:
   both flags off — no snapped fountain in front, no sconce on it. Torch slots
   are filtered BEFORE spacing-thinning, so a skipped face doesn't leave a dark
-  gap. Kit generic walls carry no metadata = allow everything.
+  gap. Kit generic walls carry no metadata = allow everything. The registry
+  also tracks **claimed** faces (one occupant per face): TorchPlacer claims
+  each accepted face, and RoomPropPlacer's WallMounted pass skips claimed
+  faces and claims its own — so a banner never lands behind a torch flame.
+  `allowPropsInFront` gates both floor-in-front props and wall-mounted props
+  (one flag; split only if a real asset needs the distinction).
 - **Hallway / prison / stair walls:** `hallwayWalls` and `prisonWalls` lists
   (band always Bottom). Stair cells resolve their owner: interior stairs carved
   INSIDE a room (their cells never leave `Room.Cells` — only the CellType
@@ -324,7 +329,7 @@ variants, **anchor**, tier, guaranteed-count OR chance-per-cell (+ optional
 cap), zone/facing/snap fields, yaw range, sub-cell jitter.
 
 **RNG streams:** per-room `HashStream`s — feature 11001, scatter 11002,
-ceiling 11003, sockets 11004 (golden rule 4).
+ceiling 11003, sockets 11004, wall-mounted 11005 (golden rule 4).
 
 **Zones (`RoomZone`)** — every floor cell classifies once, first match wins:
 `Entrance` (reserved thresholds + cells within 1 step), `Perimeter`
@@ -333,10 +338,12 @@ the entrance axis. Entrance-relative, not world-cardinal: `enterDir` is "which
 way you'd face walking in the main door." `RoomPropPlacer.ComputeZones` is the
 single source of truth — the placer AND DungeonVisualizer's `colorCellsByZone`
 debug gizmo (Entrance green, Back red, Center grey, Perimeter blue) both call
-it, so the debug view can never lie. Scatter entries filter by `preferredZone`
-(default Perimeter ≈ the classic wall bias; `allowCenter` = legacy "anywhere"
-escape hatch that skips the filter). Guaranteed entries fall back to any free
-cell if their zone is empty; chance scatter just places nothing.
+it, so the debug view can never lie. Scatter/ceiling entries filter by
+`preferredZones` — a `[Flags]` RoomZoneMask (multi-select, e.g. Center+Back;
+bit = `1 << (int)RoomZone`), default Perimeter ≈ the classic wall bias;
+`allowCenter` = legacy "anywhere" escape hatch that skips the filter.
+Guaranteed entries fall back to any free cell if their zone is empty; chance
+scatter just places nothing.
 
 **Anchors:**
 - `FloorScatter` — density-driven. `facing` (FacingRule): Random /
@@ -349,7 +356,23 @@ cell if their zone is empty; chance scatter just places nothing.
   facing and snap (a corner shelf never faces one wall while snapping to the
   other), skips faces whose wall asset forbids props (§7), and a snap entry
   with no allowed wall skips the cell rather than floating at its center.
-- `CeilingHung` — ceiling plane; ignores zones (for now).
+- `CeilingHung` — ceiling plane, with floor-scatter parity: `preferredZones`
+  (a ceiling cell's zone = its floor column's zone), `facing` rules, and
+  `snapToCeilingCorner` (cobweb in a ceiling corner — shared wall pick +
+  tangent jitter at the ceiling plane, reuses `wallGap`). `ceilingLayout`:
+  Scatter (random by chance) or **Grid** — a stride lattice anchored to the
+  room corner (hanging lights in rows; `gridStride` cells apart, 2 = every
+  other tile). The chance roll still applies in Grid, so a grid can have
+  deliberate gaps; corner-snap is a Scatter-only feature. NOTE: the zone
+  filter now applies (default `preferredZones` = Perimeter) — set Center on
+  existing chandelier entries or they migrate to the walls.
+- `WallMounted` — mounted ON a wall face (banners, shields, mirrors) at
+  `mountHeight` (+ optional `mountHeightJitter`), `wallGap` off the face,
+  `subCellJitter` lateral spread along the wall, forward = away from the wall
+  (+ yawRange variation — narrow it). No floor occupancy / no flood-fill;
+  negotiates faces via the WallFaceRegistry claim system (§7). Faces whose
+  wall asset has `allowPropsInFront` off, or that a torch/earlier mount
+  claimed, are skipped.
 - `Feature` — THE placed prop (throne, altar, counter). Position: `WallSide`
   (Back/Left/Right/Front relative to the entrance × wall-run Center/Corner,
   free-cell fallback walks the run; sides without a wall — L-bites — skip) or
@@ -483,10 +506,9 @@ Cosmetic-first; combat is far off ("get the world together first").
 10. ✅ Torch shadow perf (per-batch castShadows; shell receives only)
 11. ✅ Ladders for drop-in elevated entrances (generator sites → kit segments
     → LadderClimbZone climbing)
-12. ⏳ **Wall-mounted props** (mounting pass on the WallFaceRegistry
-    foundation, negotiating faces with torches), NearWallAsset anchor,
-    richer clusters — AND **ceiling-mounted upgrade**: parity with floor
-    scatter (zones, facing, snap-to-ceiling) for CeilingHung entries
+12. ✅ Wall-mounted props (WallMounted anchor; torch-face negotiation via
+    WallFaceRegistry claims) + ceiling-mounted parity (zones, facing,
+    snap-to-corner). ⏳ still: NearWallAsset anchor, richer clusters
 13. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material)
 14. ⏳ Home-base meta loop + depth progression tuning
 15. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance

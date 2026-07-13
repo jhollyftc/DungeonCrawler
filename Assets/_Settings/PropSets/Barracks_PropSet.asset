@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
-  m_Name: BarracksPropSet
+  m_Name: Barracks_PropSet
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
   entries:
   - label: Tables
@@ -27,12 +27,17 @@ MonoBehaviour:
     count: 0
     chancePerCell: 0.546
     maxPerRoom: 3
-    preferredZone: 2
+    preferredZones: 4
     facing: 2
     yawRange: {x: 0, y: 0}
     subCellJitter: 0
     snapToWall: 0
     wallGap: 0.1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingCorner: 0
     allowCenter: 0
   - label: Fountain Wall
     prefabs:
@@ -48,12 +53,17 @@ MonoBehaviour:
     count: 0
     chancePerCell: 0.444
     maxPerRoom: 3
-    preferredZone: 3
+    preferredZones: 8
     facing: 3
     yawRange: {x: 0, y: 0}
     subCellJitter: 0
     snapToWall: 1
     wallGap: 0.1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingCorner: 0
     allowCenter: 0
   - label: Statue King
     prefabs:
@@ -69,12 +79,17 @@ MonoBehaviour:
     count: 0
     chancePerCell: 0.444
     maxPerRoom: 3
-    preferredZone: 3
+    preferredZones: 8
     facing: 3
     yawRange: {x: -3, y: 3}
     subCellJitter: 0
     snapToWall: 1
     wallGap: 0.7
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingCorner: 0
     allowCenter: 0
   - label: Well
     prefabs:
@@ -90,12 +105,17 @@ MonoBehaviour:
     count: 1
     chancePerCell: 0.444
     maxPerRoom: 1
-    preferredZone: 3
+    preferredZones: 8
     facing: 3
     yawRange: {x: -3, y: 3}
     subCellJitter: 0
     snapToWall: 1
     wallGap: 1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingCorner: 0
     allowCenter: 0
   - label: Barrel
     prefabs:
@@ -111,10 +131,41 @@ MonoBehaviour:
     count: 0
     chancePerCell: 1
     maxPerRoom: 0
-    preferredZone: 3
+    preferredZones: 8
     facing: 3
     yawRange: {x: 87, y: 93}
     subCellJitter: 1
     snapToWall: 1
     wallGap: 0.5
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingCorner: 0
+    allowCenter: 0
+  - label: Barrel
+    prefabs:
+    - {fileID: 8418309518360107936, guid: 26210594d958cc14ebdec7eb22c3ae0f, type: 3}
+    anchor: 0
+    tier: 1
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: 8
+    facing: 3
+    yawRange: {x: 87, y: 93}
+    subCellJitter: 1
+    snapToWall: 1
+    wallGap: 0.5
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingCorner: 0
     allowCenter: 0

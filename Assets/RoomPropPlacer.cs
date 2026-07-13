@@ -199,6 +199,7 @@ namespace DungeonGen
                 var scatterStream = new HashStream(room.Bounds.min, 11002);
                 var ceilingStream = new HashStream(room.Bounds.min, 11003);
                 var socketStream  = new HashStream(room.Bounds.min, 11004);
+                var wallStream    = new HashStream(room.Bounds.min, 11005);
 
                 // ---- Floor cells, thresholds, entrance, zones ----
                 // One shared computation (also drives the visualizer's
@@ -219,8 +220,17 @@ namespace DungeonGen
                 foreach (var c in floor) { sxAll += c.x + 0.5f; szAll += c.z + 0.5f; }
                 Vector3 centroid = new Vector3(sxAll / floor.Count, yFloor, szAll / floor.Count);
 
-                var usedCells = new HashSet<Vector3Int>();    // one prop per cell
-                var blocked = new HashSet<Vector3Int>();      // collider-tier cells
+                // A cell is placeable only if it's actual room floor — NOT an
+                // interior-stair cell (StairLower/StairUpper carved inside the
+                // room keep their spot in room.Cells, so `floor` still lists
+                // them and they'd otherwise get props under/inside the stairs).
+                // Stairs stay in `floor` so the flood-fill treats them as
+                // walkable; they're just excluded as placement candidates.
+                bool Placeable(Vector3Int c) => grid[c] == CellType.Room;
+
+                var usedCells = new HashSet<Vector3Int>();        // one FLOOR prop per cell
+                var usedCeilingCells = new HashSet<Vector3Int>(); // one CEILING prop per cell (separate plane)
+                var blocked = new HashSet<Vector3Int>();          // collider-tier FLOOR cells
 
                 // Pathability: all thresholds mutually reachable across
                 // unblocked floor cells. Rooms are small; BFS is trivial.
@@ -461,17 +471,22 @@ namespace DungeonGen
                 }
 
                 // Eligible cells for an entry, hash-shuffled (never scan order).
-                // FloorScatter filters by the entry's preferredZone unless the
-                // legacy allowCenter ("anywhere") toggle is on. Ceiling props
-                // ignore zones for now.
+                // FloorScatter and CeilingHung keep cells whose zone is in the
+                // entry's preferredZones mask (multi-select), unless the
+                // legacy allowCenter ("anywhere") toggle is on. A ceiling
+                // cell's zone is its floor column's zone (same x/z cell).
                 List<Vector3Int> Eligible(PropSet.PropEntry e, HashStream s)
                 {
-                    bool zoneFilter = e.anchor == PropAnchor.FloorScatter && !e.allowCenter;
+                    bool zoneFilter = (e.anchor == PropAnchor.FloorScatter || e.anchor == PropAnchor.CeilingHung)
+                                      && !e.allowCenter;
+                    // Ceiling props occupy their own plane — a floor rack and a
+                    // ceiling light can share a cell.
+                    var used = e.anchor == PropAnchor.CeilingHung ? usedCeilingCells : usedCells;
                     var list = new List<Vector3Int>();
                     foreach (var c in floor)
                     {
-                        if (reserved.Contains(c) || usedCells.Contains(c)) continue;
-                        if (zoneFilter && zones[c] != e.preferredZone) continue;
+                        if (!Placeable(c) || reserved.Contains(c) || used.Contains(c)) continue;
+                        if (zoneFilter && (e.preferredZones & (RoomZoneMask)(1 << (int)zones[c])) == 0) continue;
                         list.Add(c);
                     }
                     // Guaranteed entries must land somewhere — an empty zone
@@ -480,10 +495,38 @@ namespace DungeonGen
                     // its authored zone would betray intent more than absence.
                     if (list.Count == 0 && zoneFilter && e.guaranteed)
                         foreach (var c in floor)
-                            if (!reserved.Contains(c) && !usedCells.Contains(c)) list.Add(c);
+                            if (!reserved.Contains(c) && !used.Contains(c)) list.Add(c);
                     int shuffleSalt = s.Next();
                     list.Sort((a, b) =>
                         DungeonKitPlacer.Hash(a, shuffleSalt).CompareTo(DungeonKitPlacer.Hash(b, shuffleSalt)));
+                    return list;
+                }
+
+                int DirIndex(Vector3Int d) => d.x > 0 ? 0 : d.x < 0 ? 1 : d.z > 0 ? 2 : 3;
+
+                // Wall faces available to a WallMounted entry: every solid
+                // face of every floor cell, minus faces whose wall asset
+                // forbids props and faces already CLAIMED by a torch or an
+                // earlier wall mount (one occupant per face). Hash-shuffled.
+                List<(Vector3Int cell, Vector3Int dir)> WallFaces(HashStream s)
+                {
+                    var list = new List<(Vector3Int, Vector3Int)>();
+                    foreach (var c in floor)
+                    {
+                        if (!Placeable(c)) continue; // no wall mounts off a stair cell
+                        foreach (var d in hDirs)
+                        {
+                            if (Open(c + d)) continue; // need a solid wall
+                            if (wallFaces != null &&
+                                (!wallFaces.PropsAllowed(grid.Index(c), d) || wallFaces.IsClaimed(grid.Index(c), d)))
+                                continue;
+                            list.Add((c, d));
+                        }
+                    }
+                    int salt = s.Next();
+                    list.Sort((a, b) =>
+                        DungeonKitPlacer.Hash(a.Item1, salt + DirIndex(a.Item2))
+                            .CompareTo(DungeonKitPlacer.Hash(b.Item1, salt + DirIndex(b.Item2))));
                     return list;
                 }
 
@@ -500,7 +543,7 @@ namespace DungeonGen
                     Vector3Int best = default; float bestDist = float.MaxValue; bool ok = false;
                     foreach (var c in floor)
                     {
-                        if (reserved.Contains(c) || usedCells.Contains(c)) continue;
+                        if (!Placeable(c) || reserved.Contains(c) || usedCells.Contains(c)) continue;
                         float dist = (new Vector3(c.x + 0.5f, c.y, c.z + 0.5f) - centroid).sqrMagnitude;
                         if (dist < bestDist) { bestDist = dist; best = c; ok = true; }
                     }
@@ -528,7 +571,7 @@ namespace DungeonGen
                     Vector3Int seed = default; bool found = false;
                     foreach (var c in floor)
                     {
-                        if (reserved.Contains(c) || usedCells.Contains(c) || Open(c + targetNormal)) continue;
+                        if (!Placeable(c) || reserved.Contains(c) || usedCells.Contains(c) || Open(c + targetNormal)) continue;
                         seed = c; found = true; break;
                     }
                     if (!found) return (default, default, false);
@@ -536,9 +579,10 @@ namespace DungeonGen
                     Vector3Int tangent = new Vector3Int(-targetNormal.z, 0, targetNormal.x);
 
                     // Walk the wall run both ways from the seed (same outward
-                    // normal); run ends are the room's real corners.
+                    // normal); run ends are the room's real corners. Stair
+                    // cells break the run (not placeable).
                     bool OnRun(Vector3Int c) =>
-                        room.Cells.Contains(c) && c.y == yFloor && !Open(c + targetNormal);
+                        room.Cells.Contains(c) && c.y == yFloor && grid[c] == CellType.Room && !Open(c + targetNormal);
                     var run = new List<Vector3Int>();
                     Vector3Int cur = seed;
                     while (true) { cur -= tangent; if (!OnRun(cur)) break; run.Add(cur); }
@@ -642,23 +686,125 @@ namespace DungeonGen
                     else if (e.anchor == PropAnchor.CeilingHung)
                     {
                         int ceilY = room.Bounds.yMax; // top plane of the room
+                        float ceilWorldY = ceilY * cellSize;
+                        bool gridLayout = e.ceilingLayout == CeilingLayout.Grid;
+                        int stride = Mathf.Max(1, e.gridStride);
+                        // Corner-snap is a Scatter feature; a grid places at
+                        // cell centers on the lattice.
+                        bool cornerSnap = !gridLayout && e.snapToCeilingCorner;
+                        bool wantsWall = cornerSnap ||
+                                         e.facing == FacingRule.FaceAwayFromNearestWall ||
+                                         e.facing == FacingRule.AlignWithWall;
+
+                        // Grid membership, anchored to the room corner. A
+                        // PERIMETER cell steps ALONG its wall (every `stride`
+                        // cells down the wall) — a 2D lattice would drop whole
+                        // walls whose fixed coordinate isn't on the lattice,
+                        // which is why perimeter grids came out nearly empty.
+                        // An INTERIOR cell uses the true 2D lattice (light grid
+                        // across the ceiling).
+                        bool OnCeilingGrid(Vector3Int c)
+                        {
+                            if (stride <= 1) return true;
+                            int dx = c.x - room.Bounds.xMin, dz = c.z - room.Bounds.zMin;
+                            bool wallX = !Open(c + new Vector3Int(1, 0, 0)) || !Open(c + new Vector3Int(-1, 0, 0));
+                            bool wallZ = !Open(c + new Vector3Int(0, 0, 1)) || !Open(c + new Vector3Int(0, 0, -1));
+                            if (wallX && wallZ) return dx % stride == 0 || dz % stride == 0; // corner
+                            if (wallX) return dz % stride == 0;  // left/right wall runs along z
+                            if (wallZ) return dx % stride == 0;  // top/bottom wall runs along x
+                            return dx % stride == 0 && dz % stride == 0; // interior 2D lattice
+                        }
+
                         var cells = Eligible(e, ceilingStream);
                         int placedCount = 0;
                         int want = e.guaranteed ? e.count : int.MaxValue;
                         foreach (var c in cells)
                         {
                             if (placedCount >= want) break;
+                            // Skipped BEFORE the chance roll so gaps come only
+                            // from chance, not lattice misses.
+                            if (gridLayout && !OnCeilingGrid(c)) continue;
                             if (!e.guaranteed)
                             {
                                 if (e.maxPerRoom > 0 && placedCount >= e.maxPerRoom) break;
                                 if (ceilingStream.Next01() >= e.chancePerCell) continue;
                             }
-                            float range = e.subCellJitter * (cellSize * 0.5f - 0.7f);
-                            Vector3 pos = new Vector3((c.x + 0.5f) * cellSize + (ceilingStream.Next01() - 0.5f) * 2f * range,
-                                                      ceilY * cellSize,
-                                                      (c.z + 0.5f) * cellSize + (ceilingStream.Next01() - 0.5f) * 2f * range)
+                            Vector3Int? wallDir = wantsWall ? NearestWallDir(c, ceilingStream, cornerSnap) : null;
+                            // A corner-snap entry belongs against a wall: no
+                            // (props-allowed) wall at the cell = skip.
+                            if (cornerSnap && !wallDir.HasValue) continue;
+                            Quaternion rot = ScatterRotation(e, c, ceilingStream, wallDir);
+                            Vector3 pos;
+                            if (cornerSnap)
+                            {
+                                float range = e.subCellJitter * (cellSize * 0.5f - 0.7f);
+                                Vector3 tangent = new Vector3(-wallDir.Value.z, 0f, wallDir.Value.x);
+                                pos = new Vector3((c.x + 0.5f) * cellSize, ceilWorldY, (c.z + 0.5f) * cellSize)
+                                      + (Vector3)wallDir.Value * (cellSize * 0.5f - e.wallGap)
+                                      + tangent * ((ceilingStream.Next01() - 0.5f) * 2f * range)
+                                      + parent.position;
+                            }
+                            else
+                            {
+                                float range = e.subCellJitter * (cellSize * 0.5f - 0.7f);
+                                pos = new Vector3((c.x + 0.5f) * cellSize + (ceilingStream.Next01() - 0.5f) * 2f * range,
+                                                  ceilWorldY,
+                                                  (c.z + 0.5f) * cellSize + (ceilingStream.Next01() - 0.5f) * 2f * range)
+                                      + parent.position;
+                            }
+                            // Ceiling plane: no floor blocking / flood-fill (a
+                            // hanging prop doesn't obstruct walking), own used-set.
+                            GameObject cprefab = PickPrefab(e, ceilingStream);
+                            if (cprefab == null) continue;
+                            PropTier ctier = instancer != null ? e.tier : PropTier.FullGameObject;
+                            PropInstancer.PlaceProps(instancer, cprefab,
+                                new[] { new PropPlacement { position = pos, rotation = rot } },
+                                ctier, cellSize, root.transform);
+                            usedCeilingCells.Add(c);
+                            totalPlaced++;
+                            placedCount++;
+                        }
+                    }
+                    else if (e.anchor == PropAnchor.WallMounted)
+                    {
+                        // Mounted ON wall faces (banners, shields). No floor
+                        // occupancy — a wall mount doesn't block movement — so
+                        // no flood-fill; it just claims its face so a torch or
+                        // another mount won't share it.
+                        var faces = WallFaces(wallStream);
+                        int placedCount = 0;
+                        int want = e.guaranteed ? e.count : int.MaxValue;
+                        foreach (var (c, d) in faces)
+                        {
+                            if (placedCount >= want) break;
+                            if (!e.guaranteed)
+                            {
+                                if (e.maxPerRoom > 0 && placedCount >= e.maxPerRoom) break;
+                                if (wallStream.Next01() >= e.chancePerCell) continue;
+                            }
+                            GameObject prefab = PickPrefab(e, wallStream);
+                            if (prefab == null) continue;
+
+                            float h = e.mountHeight + (e.mountHeightJitter > 0f
+                                ? (wallStream.Next01() - 0.5f) * 2f * e.mountHeightJitter : 0f);
+                            Vector3 tangent = new Vector3(-d.z, 0f, d.x);
+                            float latRange = e.subCellJitter * (cellSize * 0.5f - 0.3f);
+                            float lat = (wallStream.Next01() - 0.5f) * 2f * latRange;
+                            Vector3 pos = new Vector3((c.x + 0.5f) * cellSize, c.y * cellSize, (c.z + 0.5f) * cellSize)
+                                          + (Vector3)d * (cellSize * 0.5f - e.wallGap) // out to the face, then off it
+                                          + tangent * lat
+                                          + Vector3.up * h
                                           + parent.position;
-                            if (TryPlaceAt(e, c, ScatterYaw(e, ceilingStream), pos, ceilingStream)) placedCount++;
+                            Quaternion rot = Quaternion.LookRotation(-(Vector3)d) // forward = away from wall
+                                             * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, wallStream.Next01()), 0f);
+
+                            PropTier tier = instancer != null ? e.tier : PropTier.FullGameObject;
+                            PropInstancer.PlaceProps(instancer, prefab,
+                                new[] { new PropPlacement { position = pos, rotation = rot } },
+                                tier, cellSize, root.transform);
+                            wallFaces?.Claim(grid.Index(c), d);
+                            totalPlaced++;
+                            placedCount++;
                         }
                     }
                     else // FloorScatter

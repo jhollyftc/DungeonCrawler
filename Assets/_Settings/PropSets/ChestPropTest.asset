@@ -27,7 +27,7 @@ MonoBehaviour:
     count: 0
     chancePerCell: 1
     maxPerRoom: 0
-    preferredZone: 0
+    preferredZones: 1
     facing: 0
     yawRange: {x: 0, y: 0}
     subCellJitter: 0

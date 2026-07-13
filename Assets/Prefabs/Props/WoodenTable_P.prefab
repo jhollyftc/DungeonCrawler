@@ -100,56 +100,6 @@ MonoBehaviour:
   fillChance: 0.542
   yawJitter: 5
   positionJitter: 0.05
---- !u!1 &5164273421674558087
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2983236554018383236}
-  - component: {fileID: 8687177776852103012}
-  m_Layer: 0
-  m_Name: Socket_Chest
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &2983236554018383236
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5164273421674558087}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
-  m_LocalPosition: {x: 0, y: -0, z: 0.00363}
-  m_LocalScale: {x: 0.0033333332, y: 0.003333334, z: 0.003333334}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 7948687033450948168}
-  m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
---- !u!114 &8687177776852103012
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5164273421674558087}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 6030789269779412111, guid: 82f79d5c05277a84fa11157c42ca45d7, type: 3}
-  childTier: 3
-  fillChance: 0.644
-  yawJitter: 45
-  positionJitter: 0.2
 --- !u!1 &6696369824526567129
 GameObject:
   m_ObjectHideFlags: 0
@@ -317,9 +267,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
       insertIndex: -1
       addedObject: {fileID: 3611801763273556948}
-    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 2983236554018383236}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
       insertIndex: -1

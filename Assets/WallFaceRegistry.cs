@@ -16,11 +16,17 @@ namespace DungeonGen
     /// — the same convention TorchPlacer's slots and RoomPropPlacer's wall
     /// picks already use. Only restricted faces are stored; unknown faces
     /// (kit generic walls, GeneratedMesh mode) allow everything.
+    ///
+    /// Also tracks CLAIMED faces (a torch or wall-mounted prop took this
+    /// face) so the two don't overlap — one occupant per face. TorchPlacer
+    /// claims as it accepts; RoomPropPlacer's WallMounted pass skips claimed
+    /// faces and claims its own.
     /// </summary>
     public class WallFaceRegistry
     {
         readonly HashSet<long> noProps = new HashSet<long>();
         readonly HashSet<long> noTorch = new HashSet<long>();
+        readonly HashSet<long> claimed = new HashSet<long>();
 
         static long Key(int cellIndex, Vector3Int dir)
         {
@@ -37,5 +43,9 @@ namespace DungeonGen
 
         public bool PropsAllowed(int cellIndex, Vector3Int dir) => !noProps.Contains(Key(cellIndex, dir));
         public bool TorchAllowed(int cellIndex, Vector3Int dir) => !noTorch.Contains(Key(cellIndex, dir));
+
+        /// <summary>Mark a face as occupied by a torch or wall-mounted prop.</summary>
+        public void Claim(int cellIndex, Vector3Int dir) => claimed.Add(Key(cellIndex, dir));
+        public bool IsClaimed(int cellIndex, Vector3Int dir) => claimed.Contains(Key(cellIndex, dir));
     }
 }

@@ -180,7 +180,7 @@ MonoBehaviour:
   openAngle: 100
   swingSpeed: 160
   invertSwing: 0
-  oneWaySwing: 0
+  oneWaySwing: 1
   locked: 0
   startOpen: 0
   openClip: {fileID: 8300000, guid: 64230446058a66a409f922c30ffe416c, type: 3}

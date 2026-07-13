@@ -10,21 +10,32 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
-  m_Name: PropSet_Altar_Feature
+  m_Name: PropSet_Shrine
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
   entries:
   - label: Feature
     prefabs:
     - {fileID: 6181867370672032273, guid: a9784d7279d91e940b48f3b18e8f92cf, type: 3}
-    anchor: 2
-    featurePosition: 2
-    featureFacing: 2
-    featureYaw: 0
+    anchor: 3
     tier: 1
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
     guaranteed: 0
     count: 0
     chancePerCell: 0
     maxPerRoom: 0
-    allowCenter: 1
+    preferredZones: 8
+    facing: 0
     yawRange: {x: 0, y: 0}
     subCellJitter: 1
+    snapToWall: 0
+    wallGap: 0.1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingCorner: 0
+    allowCenter: 1

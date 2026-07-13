@@ -10,6 +10,8 @@ namespace DungeonGen
         FloorScatter,
         /// <summary>Hung from the ceiling plane. Chandeliers, chains, cobwebs. Prefab origin = attachment point.</summary>
         CeilingHung,
+        /// <summary>Mounted ON a wall face at a set height. Banners, shields, mirrors, sconces. Negotiates faces with torches (one occupant per face). Prefab forward = away from the wall.</summary>
+        WallMounted,
         /// <summary>THE feature: placed at a specific spot in the room (a named wall, or room center). Throne, altar, merchant counter. Use guaranteed + count 1.</summary>
         Feature,
     }
@@ -63,6 +65,28 @@ namespace DungeonGen
         Center,
         /// <summary>Wall-adjacent cells that aren't Entrance. The classic scatter wall-bias.</summary>
         Perimeter,
+    }
+
+    /// <summary>Multi-select over RoomZone for a scatter/ceiling entry's
+    /// preferred cells. Bit values are 1 &lt;&lt; (int)RoomZone, so
+    /// <c>1 &lt;&lt; (int)zone</c> tests membership.</summary>
+    [System.Flags]
+    public enum RoomZoneMask
+    {
+        None = 0,
+        Entrance = 1 << (int)RoomZone.Entrance,   // 1
+        Back = 1 << (int)RoomZone.Back,           // 2
+        Center = 1 << (int)RoomZone.Center,       // 4
+        Perimeter = 1 << (int)RoomZone.Perimeter, // 8
+    }
+
+    /// <summary>How CeilingHung entries distribute across the ceiling.</summary>
+    public enum CeilingLayout
+    {
+        /// <summary>Random cells by chance/zone — cobwebs, hanging chains, clutter.</summary>
+        Scatter,
+        /// <summary>A regular lattice (every Grid Stride cells) — hanging lights, chandeliers in rows. The chance roll still applies, so a grid can have occasional gaps.</summary>
+        Grid,
     }
 
     /// <summary>How a scatter placement's yaw is computed (FloorScatter entries).</summary>
@@ -145,8 +169,8 @@ namespace DungeonGen
             public int maxPerRoom = 0;
 
             [Header("Placement feel")]
-            [Tooltip("FloorScatter only: which zone's cells this entry scatters into. Perimeter reproduces the classic wall-bias. Ignored when Allow Center is on.")]
-            public RoomZone preferredZone = RoomZone.Perimeter;
+            [Tooltip("FloorScatter / CeilingHung: which zone(s) this entry places into — multi-select (e.g. Center + Back). Perimeter alone reproduces the classic wall-bias. Ignored when Allow Center is on.")]
+            public RoomZoneMask preferredZones = RoomZoneMask.Perimeter;
             [Tooltip("FloorScatter only: how each placement's yaw is computed. Random uses yawRange; the wall rules read the cell's nearest solid wall.")]
             public FacingRule facing = FacingRule.Random;
           
@@ -156,8 +180,20 @@ namespace DungeonGen
             [Range(0f, 1f)] public float subCellJitter = 0.9f;
             [Tooltip("Pull the placement flush to its wall: the prop origin sits Wall Gap meters off the nominal wall face instead of floating at the cell center. FloorScatter uses the cell's nearest wall (same wall the facing rules read); Feature + WallSide uses its chosen wall. No wall at the cell = normal placement.")]
             public bool snapToWall = false;
-            [Tooltip("Meters between the nominal wall plane and the prop origin when Snap To Wall is on. Tune per asset (account for the wall kit's relief depth).")]
+            [Tooltip("Meters between the nominal wall plane and the prop origin when Snap To Wall is on. Tune per asset (account for the wall kit's relief depth). WallMounted also uses this as its distance off the wall face.")]
             public float wallGap = 0.1f;
+
+            [Header("Wall / Ceiling mount")]
+            [Tooltip("WallMounted: meters above the floor the prop mounts. Torches default ~2.2; hang banners higher, shields lower.")]
+            public float mountHeight = 2.2f;
+            [Tooltip("WallMounted: +/- meters of deterministic height variation on top of Mount Height. 0 = every instance at the same height.")]
+            public float mountHeightJitter = 0f;
+            [Tooltip("CeilingHung: Scatter = random cells; Grid = a regular lattice (hanging lights). The chance roll applies either way, so a Grid can have gaps.")]
+            public CeilingLayout ceilingLayout = CeilingLayout.Scatter;
+            [Tooltip("CeilingHung + Grid: cells between placements. 1 = every tile, 2 = every other tile, 3 = every third. Anchored to the room's corner so it's stable across regens.")]
+            public int gridStride = 2;
+            [Tooltip("CeilingHung + Scatter: snap to a ceiling corner (nearest wall), the classic cobweb placement. Uses Wall Gap and tangent-only jitter, same as floor snap but at the ceiling plane. Ignored in Grid layout.")]
+            public bool snapToCeilingCorner = false;
 
             [Header("Legacy: Anywhere toggle")]
             [Tooltip("Legacy 'anywhere' toggle: skip the zone filter entirely — scatter may use ANY free cell.")]

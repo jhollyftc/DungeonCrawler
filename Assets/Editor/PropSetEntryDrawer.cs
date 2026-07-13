@@ -48,7 +48,6 @@ namespace DungeonGen
                     break;
 
                 case PropAnchor.CeilingHung:
-                    // Ceiling ignores zones/facing/snap (for now).
                     yield return "guaranteed";
                     if (prop.FindPropertyRelative("guaranteed").boolValue)
                     {
@@ -59,8 +58,38 @@ namespace DungeonGen
                         yield return "chancePerCell";
                         yield return "maxPerRoom";
                     }
+                    yield return "ceilingLayout";
+                    bool grid = (CeilingLayout)prop.FindPropertyRelative("ceilingLayout").enumValueIndex == CeilingLayout.Grid;
+                    if (grid) yield return "gridStride";
+                    yield return "preferredZones";
+                    yield return "allowCenter";
+                    yield return "facing";
                     yield return "yawRange";
                     yield return "subCellJitter";
+                    if (!grid)
+                    {
+                        yield return "snapToCeilingCorner";
+                        if (prop.FindPropertyRelative("snapToCeilingCorner").boolValue) yield return "wallGap";
+                    }
+                    break;
+
+                case PropAnchor.WallMounted:
+                    // Mounted on a wall face — no floor cell, no zones.
+                    yield return "guaranteed";
+                    if (prop.FindPropertyRelative("guaranteed").boolValue)
+                    {
+                        yield return "count";
+                    }
+                    else
+                    {
+                        yield return "chancePerCell";
+                        yield return "maxPerRoom";
+                    }
+                    yield return "mountHeight";
+                    yield return "mountHeightJitter";
+                    yield return "wallGap";     // distance off the wall face
+                    yield return "subCellJitter"; // lateral spread along the wall
+                    yield return "yawRange";      // narrow — variation on the out-from-wall facing
                     break;
 
                 default: // FloorScatter
@@ -74,7 +103,7 @@ namespace DungeonGen
                         yield return "chancePerCell";
                         yield return "maxPerRoom";
                     }
-                    yield return "preferredZone";
+                    yield return "preferredZones";
                     yield return "allowCenter";
                     yield return "facing";
                     yield return "yawRange";
@@ -108,16 +137,32 @@ namespace DungeonGen
                           $"{(FeatureSpot)prop.FindPropertyRelative("featureSpot").enumValueIndex}";
                     break;
                 case PropAnchor.CeilingHung:
-                    detail = "Ceiling";
+                    if ((CeilingLayout)prop.FindPropertyRelative("ceilingLayout").enumValueIndex == CeilingLayout.Grid)
+                        detail = $"Ceiling · grid ÷{prop.FindPropertyRelative("gridStride").intValue}";
+                    else
+                        detail = prop.FindPropertyRelative("snapToCeilingCorner").boolValue ? "Ceiling · corner" : "Ceiling";
+                    break;
+                case PropAnchor.WallMounted:
+                    detail = $"Wall-mounted · {prop.FindPropertyRelative("mountHeight").floatValue:0.#}m";
                     break;
                 default:
-                    var zone = (RoomZone)prop.FindPropertyRelative("preferredZone").enumValueIndex;
+                    string zones = ZonesLabel(prop.FindPropertyRelative("preferredZones").intValue);
                     detail = prop.FindPropertyRelative("guaranteed").boolValue
-                        ? $"Scatter ×{prop.FindPropertyRelative("count").intValue} · {zone}"
-                        : $"Scatter · {zone}";
+                        ? $"Scatter ×{prop.FindPropertyRelative("count").intValue} · {zones}"
+                        : $"Scatter · {zones}";
                     break;
             }
             return $"{name}  —  {detail}";
+        }
+
+        static string ZonesLabel(int mask)
+        {
+            if (mask == 0) return "no zone";
+            if (mask == (int)RoomZoneMask.Perimeter) return "Perimeter";
+            var parts = new System.Collections.Generic.List<string>();
+            foreach (RoomZone z in System.Enum.GetValues(typeof(RoomZone)))
+                if ((mask & (1 << (int)z)) != 0) parts.Add(z.ToString());
+            return string.Join("+", parts);
         }
 
         public override void OnGUI(Rect position, SerializedProperty prop, GUIContent label)

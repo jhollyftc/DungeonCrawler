@@ -172,6 +172,8 @@ namespace DungeonGen
             {
                 Vector3Int c = slot.cell;
                 Vector3Int d = slot.dir;
+                // Claim this face so wall-mounted props don't overlap a torch.
+                wallFaces?.Claim(grid.Index(c), d);
                 Vector3 faceCenter = new Vector3(c.x + 0.5f + d.x * 0.5f, c.y, c.z + 0.5f + d.z * 0.5f);
 
                 // Sideways shift ALONG the wall (perpendicular to the mount
