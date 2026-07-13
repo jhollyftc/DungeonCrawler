@@ -325,7 +325,7 @@ classifier's frame-capability checks key off the kit slots.
 
 ---
 
-## 8. Props (RoomPropPlacer + PropSet) — phases 1–3 built
+## 8. Props (RoomPropPlacer + PropSet) — mature
 
 **PropSet** (ScriptableObject, shareable across types). Each entry: prefab
 variants, **anchor**, tier, guaranteed-count OR chance-per-cell (+ optional
@@ -361,7 +361,7 @@ scatter just places nothing.
   with no allowed wall skips the cell rather than floating at its center.
 - `CeilingHung` — ceiling plane, with floor-scatter parity: `preferredZones`
   (a ceiling cell's zone = its floor column's zone), `facing` rules, and
-  `snapToCeilingCorner` (single-wall snap at the ceiling plane — shared wall
+  `snapToCeilingWall` (single-wall snap at the ceiling plane — shared wall
   pick + tangent jitter, reuses `wallGap`).
 - `snapToInsideCorner` (FloorScatter + CeilingHung, rooms AND hallways) —
   places ONLY at concave corners (a cell solid in one X dir AND one Z dir),
@@ -371,8 +371,8 @@ scatter just places nothing.
   flag is about keeping a wall face clear of snapped props — a different
   intent). Takes precedence over grid / snap-to-wall. Shared detection in
   `PropSnap.TryInsideCorner` so the room and hallway placers can't diverge.
-  (`snapToCeilingWall` = the single-wall ceiling snap, formerly the
-  misleadingly-named snapToCeilingCorner.) `ceilingLayout`:
+  (`snapToCeilingWall` above = the single-wall ceiling snap; `snapToInsideCorner`
+  is the true two-wall corner.) `ceilingLayout`:
   Scatter (random by chance) or **Grid** — a stride lattice anchored to the
   room corner (hanging lights in rows; `gridStride` cells apart, 2 = every
   other tile). The chance roll still applies in Grid, so a grid can have
@@ -387,7 +387,7 @@ scatter just places nothing.
   wall asset has `allowPropsInFront` off, or that a torch/earlier mount
   claimed, are skipped.
 - `NearPropAsset` — placed on a free cell BESIDE an already-placed floor
-  prop whose Label = `hostLabel` (a bucket beside a crate). Runs LAST (rank 3)
+  prop whose Label = `hostLabel` (a bucket beside a crate). Runs LAST (rank 4)
   so all hosts exist; `chancePerHost` gates each attachment; cell-adjacency
   (a free 8-neighbour cell) prevents overlap, reusing `usedCells`. Placed
   props record `(cell, label)` in `placedProps`, which also drives spacing.
@@ -419,8 +419,10 @@ scatter just places nothing.
 - Blocking props (collider tiers) claim cells; after each blocking placement a
   **flood-fill confirms all thresholds still mutually reachable** — if not, that
   placement is rolled back. Crank density safely.
-- Décor never blocks. Entry order per room: features → guaranteed → chance
-  scatter. Deterministic (hash-shuffled cells).
+- Décor never blocks. Entry order per room (most-constrained first, so tight
+  placements claim cells before flexible ones): Feature 0 → NearWallAsset 1 →
+  guaranteed 2 → chance scatter 3 → NearPropAsset 4. Deterministic
+  (hash-shuffled cells).
 - Ceiling props have their OWN occupancy plane (`usedCeilingCells`) and never
   touch the floor blocked/flood-fill set — a floor rack and a ceiling light
   share a cell. Interior-stair cells are excluded as placement targets
@@ -468,10 +470,13 @@ drawers (`Assets/Editor/`) — summary foldout labels instead of "Element N",
 and PropSet entries show only the fields their anchor uses. Editor-only; when
 adding a PropEntry field, add it to the drawer's VisibleFields too.
 
-**Not yet built:** wall-mounted props (the WallFaceRegistry is their
-foundation; the mounting itself — negotiating faces with torches — is
-pending), clusters beyond sockets, NearWallAsset anchor (woodpile beside
-fireplace).
+**Built out:** every anchor above (floor scatter, ceiling scatter/grid/
+wall-snap/inside-corner, wall-mounted, feature, near-prop, near-wall),
+sockets (authored composites), hallway props, label spacing, tile sharing,
+and the wall-real-estate negotiation (§7) under all of it. **Not yet built:**
+procedural clump-scatter (variable-count piles that clump rather than spread
+— near-prop + spacing gets close but isn't a true clumper); a NearWallAsset
+that reads a wall feature on a NON-floor band.
 
 ---
 
@@ -556,11 +561,14 @@ Cosmetic-first; combat is far off ("get the world together first").
 10. ✅ Torch shadow perf (per-batch castShadows; shell receives only)
 11. ✅ Ladders for drop-in elevated entrances (generator sites → kit segments
     → LadderClimbZone climbing)
-12. ✅ Wall-mounted props (WallMounted anchor; torch-face negotiation via
-    WallFaceRegistry claims) + ceiling-mounted parity (zones, facing,
-    snap-to-corner). ⏳ still: NearWallAsset anchor, richer clusters
+12. ✅ Props phase 4: wall-mounted, ceiling parity (zones/facing/grid/
+    inside-corner), hallway props, near-prop + near-wall (labeled),
+    label spacing, tile sharing. Remaining prop idea: procedural
+    clump-scatter (see §8 "Not yet built").
 13. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material)
-14. ⏳ Home-base meta loop + depth progression tuning
+    — mostly Blender/texture work; toon shader packed-mask already ready.
+14. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit →
+    home base → depth increment → sell/replenish). Design chat first.
 15. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
     doored rooms = lockable set), difficulty gradient by graph depth, equipment
     + SwayProfiles, then combat.
