@@ -3,7 +3,177 @@ guid: 8ffc6e64b20d3b14c8748cfb5f5fd009
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Ladder_Plane
+    second: {fileID: 2100000, guid: 55d79b3bdf13b0d48ac4f9d74903d2ff, type: 2}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Altar_normal
+    second: {fileID: 2800000, guid: 9cbde395e95c2064f83099b2041f00d9, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Alter_basecolor
+    second: {fileID: 2800000, guid: 1b9557a2b494bd94792c93e3274d1e23, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Archway_Woodsupported_basecolor
+    second: {fileID: 2800000, guid: 344499ab68436e94c8492588bcb25a56, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Archway_stone_basecolor
+    second: {fileID: 2800000, guid: a510caf449935ad4e8692a2ac6313394, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Archway_stone_normal
+    second: {fileID: 2800000, guid: f844847703f123543aac21452dfb5b02, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: BrickWall_basecolor
+    second: {fileID: 2800000, guid: 111baa7871d77a54c9f0d973e8bba14d, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: ChatGPT Image Jul 12, 2026, 05_29_27 AM
+    second: {fileID: 2800000, guid: 285fb01c95a9b094583fc3f2fe1e33c8, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Goblin_basecolor
+    second: {fileID: 2800000, guid: 0cbcb210bdc4aa0489302e2a19970031, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Stairs_basecolor
+    second: {fileID: 2800000, guid: ce94bf41e6b57da4b878644e008fcce1, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Statue_King_basecolor
+    second: {fileID: 2800000, guid: bfe37b2d547ee8842aef693f6c653b1e, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: StoneWall_basecolor
+    second: {fileID: 2800000, guid: 2f81a8f01db7bfd4dabf6dc9acb99713, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Throne_basecolor
+    second: {fileID: 2800000, guid: a2e0ec45d4d449249b34badf0f6949fb, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Throne_normal
+    second: {fileID: 2800000, guid: 4458579c021e5a448baa1c7f5e1f4d52, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Wall_Drain_basecolor
+    second: {fileID: 2800000, guid: f2c78ef183fc53f45b8ea3084427f731, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Wall_Signil_basecolor
+    second: {fileID: 2800000, guid: fe090c3c75b62a6419f14dd2f48e951f, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Wall_Signil_normal
+    second: {fileID: 2800000, guid: fbefbad283f12fe44857d83e23b96a7e, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Wall_skeletons_basecolor
+    second: {fileID: 2800000, guid: 05478d0e5a8d5dd4f932df683d67186c, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Wall_skeletons_normal
+    second: {fileID: 2800000, guid: 2c0428d480766b54b936acad61e1b421, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Well_basecolor
+    second: {fileID: 2800000, guid: d903dd07e13ef514b937d2d099787283, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: WoodenTable_BaseColor
+    second: {fileID: 2800000, guid: 456d147bd8cfb77439d8a587bd66f087, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: WoodenTable_Normal
+    second: {fileID: 2800000, guid: 740bcb63cb5725f43bb8d0e1ada8aa23, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: bridge_texture
+    second: {fileID: 2800000, guid: 304148162ac51f54bb81c0a0e65703d8, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: iron_jail_door_3d_model_basecolor
+    second: {fileID: 2800000, guid: aad36a0c3a4439b40866218228bf9f6a, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: medieval_shield_3d_model_basecolor
+    second: {fileID: 2800000, guid: 3916d40ca63f79944ae91bd5c49a569d, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: medieval_sword_3d_model_basecolor
+    second: {fileID: 2800000, guid: 8593120d350208d48b6a53e08217de48, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: stone_arch_fountain_3d_model_basecolor
+    second: {fileID: 2800000, guid: a5cf34bb0d371254985f5d25b83af53f, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: stone_archway_3d_model_basecolor_w
+    second: {fileID: 2800000, guid: 0b98e98e89aa820419ae7d9246a17523, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: stone_staircase_3d_model_basecolor
+    second: {fileID: 2800000, guid: 462c64e16024a03499e11a5a3e1d4331, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: tripo_image_1e2eb0b3-88a3-45a9-a94c-8e1ddd41dab0_0_1
+    second: {fileID: 2800000, guid: 874f882ab56d07d4598cd05a56decbea, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: tripo_image_1e2eb0b3-88a3-45a9-a94c-8e1ddd41dab0_0_Metallic
+    second: {fileID: 2800000, guid: b6dd5feee1bf48f4fa478611a2ac23e5, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: tripo_image_1e2eb0b3-88a3-45a9-a94c-8e1ddd41dab0_0_Roughness
+    second: {fileID: 2800000, guid: 038d448174bae9149baf16b44c39f563, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: wall_torch_3d_model_basecolor
+    second: {fileID: 2800000, guid: 934d2c2aeba87314194a7e62906d6d18, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: wooden_barrel_3d_model_basecolor
+    second: {fileID: 2800000, guid: 9830b57e8a276b742bb0d496508af355, type: 3}
   materials:
     materialImportMode: 2
     materialName: 0

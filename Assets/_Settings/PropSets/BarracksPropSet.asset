@@ -1,0 +1,120 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
+  m_Name: BarracksPropSet
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
+  entries:
+  - label: Tables
+    prefabs:
+    - {fileID: 7279145288024505586, guid: 20e2a5cb1a1d776429cf1a12807c85e5, type: 3}
+    anchor: 0
+    tier: 1
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 0.546
+    maxPerRoom: 3
+    preferredZone: 2
+    facing: 2
+    yawRange: {x: 0, y: 0}
+    subCellJitter: 0
+    snapToWall: 0
+    wallGap: 0.1
+    allowCenter: 0
+  - label: Fountain Wall
+    prefabs:
+    - {fileID: 7330853218907696171, guid: 000566a8dc503d64ea731fb8730e1283, type: 3}
+    anchor: 0
+    tier: 1
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 0.444
+    maxPerRoom: 3
+    preferredZone: 3
+    facing: 3
+    yawRange: {x: 0, y: 0}
+    subCellJitter: 0
+    snapToWall: 1
+    wallGap: 0.1
+    allowCenter: 0
+  - label: Statue King
+    prefabs:
+    - {fileID: 5527588616426762877, guid: f7c9b50012688d3428840a576ca800cc, type: 3}
+    anchor: 0
+    tier: 1
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 0.444
+    maxPerRoom: 3
+    preferredZone: 3
+    facing: 3
+    yawRange: {x: -3, y: 3}
+    subCellJitter: 0
+    snapToWall: 1
+    wallGap: 0.7
+    allowCenter: 0
+  - label: Well
+    prefabs:
+    - {fileID: 8092874129027547640, guid: a37885a67eabb2840b7e1af0587aa663, type: 3}
+    anchor: 2
+    tier: 1
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 180
+    guaranteed: 0
+    count: 1
+    chancePerCell: 0.444
+    maxPerRoom: 1
+    preferredZone: 3
+    facing: 3
+    yawRange: {x: -3, y: 3}
+    subCellJitter: 0
+    snapToWall: 1
+    wallGap: 1
+    allowCenter: 0
+  - label: Barrel
+    prefabs:
+    - {fileID: 8418309518360107936, guid: 26210594d958cc14ebdec7eb22c3ae0f, type: 3}
+    anchor: 0
+    tier: 1
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZone: 3
+    facing: 3
+    yawRange: {x: 87, y: 93}
+    subCellJitter: 1
+    snapToWall: 1
+    wallGap: 0.5
+    allowCenter: 0

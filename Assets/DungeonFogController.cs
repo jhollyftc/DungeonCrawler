@@ -8,8 +8,10 @@ namespace DungeonGen
     {
         [Tooltip("Drive RenderSettings.fogColor at runtime toward the torch palette of the room the camera is in (or approaching). Fog itself must be enabled in Lighting > Environment — this only steers its color.")]
         public bool dynamicFogColor = false;
-        [Tooltip("Meters outside a room's bounds over which its color fades in as you approach. 0 = colors switch only on entry.")]
+        [Tooltip("Meters outside a room's bounds over which its color fades in as you approach — regardless of look direction (room air spills out of doorways).")]
         public float transitionDistance = 6f;
+        [Tooltip("Rooms you LOOK toward tint the fog from farther away, so a visited room seen back down a long hall keeps its color identity instead of washing out to corridor air. Meters; 0 = position-only (no view term). Roughly match your fog's visible distance.")]
+        public float lookDistance = 30f;
         [Tooltip("How quickly the fog color chases its target. Higher = snappier; ~1.5 gives a slow atmospheric drift.")]
         public float responseSpeed = 1.5f;
     }
@@ -84,22 +86,41 @@ namespace DungeonGen
             }
             else
             {
-                // Approaching: blend the nearest room's color in by distance
-                // to its bounds. Rooms number in the tens — a linear scan per
-                // frame is nothing.
-                float bestSq = float.MaxValue;
-                int best = -1;
+                // Each room contributes the STRONGER of two terms; the
+                // strongest room tints the fog. Rooms number in the tens — a
+                // linear scan per frame is nothing.
+                //   Proximity: fades in over transitionDistance regardless of
+                //     facing (room air spills out of doorways).
+                //   View: fades in over lookDistance, gated by how directly
+                //     the camera looks toward the room — so a distant visited
+                //     room seen back down a long hall keeps its color
+                //     identity instead of washing out to corridor grey.
+                Vector3 forward = cam.transform.forward;
+                float bestStrength = 0f;
+                Color bestColor = target;
                 for (int i = 0; i < rooms.Count; i++)
                 {
-                    float sq = rooms[i].bounds.SqrDistance(pos);
-                    if (sq < bestSq) { bestSq = sq; best = i; }
+                    Vector3 toRoom = rooms[i].bounds.ClosestPoint(pos) - pos;
+                    float d = toRoom.magnitude;
+
+                    float strength = settings.transitionDistance > 0f
+                        ? 1f - Mathf.Clamp01(d / settings.transitionDistance)
+                        : 0f;
+
+                    if (settings.lookDistance > 0f && d > 0.01f)
+                    {
+                        // Alignment ramps from 0 at dot=0.3 to full at dot=0.9
+                        // — looking straight at a room counts fully, glancing
+                        // past it counts a little, behind you counts nothing.
+                        float align = Vector3.Dot(forward, toRoom / d);
+                        float view = Mathf.Clamp01((align - 0.3f) / 0.6f)
+                                     * (1f - Mathf.Clamp01(d / settings.lookDistance));
+                        if (view > strength) strength = view;
+                    }
+
+                    if (strength > bestStrength) { bestStrength = strength; bestColor = rooms[i].color; }
                 }
-                if (best >= 0)
-                {
-                    float d = Mathf.Sqrt(bestSq);
-                    if (d < settings.transitionDistance)
-                        target = Color.Lerp(rooms[best].color, target, d / settings.transitionDistance);
-                }
+                target = Color.Lerp(target, bestColor, bestStrength);
             }
 
             // Frame-rate-independent ease toward the target.

@@ -86,13 +86,17 @@ namespace DungeonGen
 
             // Room-side threshold cells from door records (covers satellite
             // closets, whose openings are Room↔Room and invisible to the
-            // hallway-adjacency test below).
+            // hallway-adjacency test below). Ladder feet count as thresholds
+            // too: they're access points — props must never block the climb,
+            // and the flood-fill must keep them reachable.
             var doorRoomCells = new HashSet<Vector3Int>();
             foreach (var door in gen.Doors)
             {
                 doorRoomCells.Add(door.HallwayCell + door.Direction);
                 doorRoomCells.Add(door.HallwayCell); // host side of satellite doors
             }
+            foreach (var ladder in gen.Ladders)
+                doorRoomCells.Add(ladder.BaseCell);
 
             foreach (var c in rz.Floor)
             {

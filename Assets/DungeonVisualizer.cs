@@ -96,7 +96,7 @@ namespace DungeonGen
             }
 
             // Replace any previous geometry child (any mode) and torches.
-            foreach (string name in new[] { "DungeonMesh", "DungeonKit", "DungeonInstanced", "DungeonTorches", "DungeonDoors", "DungeonArchways", "DungeonColumns", "DungeonKitColliders", "DungeonProps", "DungeonFog" })
+            foreach (string name in new[] { "DungeonMesh", "DungeonKit", "DungeonInstanced", "DungeonTorches", "DungeonDoors", "DungeonArchways", "DungeonColumns", "DungeonLadders", "DungeonKitColliders", "DungeonProps", "DungeonFog" })
             {
                 Transform old = transform.Find(name);
                 if (old != null)
@@ -119,6 +119,7 @@ namespace DungeonGen
                 DungeonKitPlacer.BuildDoors(gen, kit, cellSize, transform, roomStyle);
                 DungeonKitPlacer.BuildArchways(gen, kit, cellSize, transform, null, roomStyle);
                 DungeonKitPlacer.BuildInteriorColumns(gen, kit, cellSize, transform);
+                DungeonKitPlacer.BuildLadders(gen, kit, cellSize, transform);
             }
             else if (geometryMode == GeometryMode.InstancedKit)
             {
@@ -170,6 +171,7 @@ namespace DungeonGen
                 DungeonKitPlacer.BuildDoors(gen, kit, cellSize, transform, roomStyle);
                 DungeonKitPlacer.BuildArchways(gen, kit, cellSize, transform, ir, roomStyle);
                 DungeonKitPlacer.BuildInteriorColumns(gen, kit, cellSize, transform, ir);
+                DungeonKitPlacer.BuildLadders(gen, kit, cellSize, transform, ir);
 
                 ir.Commit(); // idempotent — bakes kit + archway instances together
 

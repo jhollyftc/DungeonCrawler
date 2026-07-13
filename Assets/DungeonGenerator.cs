@@ -112,6 +112,18 @@ namespace DungeonGen
     }
 
     /// <summary>
+    /// A wall-mounted ladder serving a drop-in elevated entrance (an elevated
+    /// door that couldn't get an interior staircase). The ladder climbs the
+    /// wall directly beneath the door opening, so the entrance stays two-way.
+    /// </summary>
+    public class LadderSpec
+    {
+        public Vector3Int BaseCell;   // ground-floor room cell at the ladder's foot
+        public Vector3Int WallDir;    // from the ladder cell toward the wall it mounts on
+        public int HeightCells;       // stories climbed (door level - room floor)
+    }
+
+    /// <summary>
     /// Pipeline owner. Each stage is a separate method so the visualizer can
     /// scrub through partial results. Deterministic: same seed, same dungeon.
     /// </summary>
@@ -126,6 +138,7 @@ namespace DungeonGen
         public int FailedEdges { get; private set; }
         public List<BoundsInt> PrisonCells { get; } = new List<BoundsInt>();
         public List<DungeonDoor> Doors { get; } = new List<DungeonDoor>();
+        public List<LadderSpec> Ladders { get; } = new List<LadderSpec>();
         /// <summary>Lattice points (cell-corner coords) + floor level + height where interior columns go.</summary>
         public List<(Vector3Int latticePoint, int yFloor, int heightCells)> ColumnPoints { get; }
             = new List<(Vector3Int, int, int)>();
@@ -157,6 +170,7 @@ namespace DungeonGen
             BuildGraph();
             CarveHallways();
             AllocateInteriorStairs();
+            AllocateLadders();
             PlacePrisons();
             AssignRoomTypes();
             PlaceSatelliteRooms();
@@ -429,6 +443,54 @@ namespace DungeonGen
             foreach (var c in required)
                 if (!seen.Contains(c)) return false;
             return true;
+        }
+
+        // ---------------- Stage 4c: ladders for drop-in entrances ----------------
+
+        /// <summary>
+        /// Every elevated entrance that did NOT get an interior staircase
+        /// (IsElevated &amp;&amp; !HasInteriorStair — no space, or the stair would
+        /// have blocked another door) tries to claim a ladder instead: the
+        /// column of room cells directly beneath its threshold, mounted on
+        /// the wall below the opening (solid — the hallway behind it is
+        /// elevated). Keeps the entrance two-way. Deterministic, no RNG.
+        /// Failure leaves a pure one-way drop.
+        /// </summary>
+        void AllocateLadders()
+        {
+            foreach (var door in Doors)
+            {
+                if (!door.IsElevated || door.HasInteriorStair) continue;
+
+                Room room = Rooms[door.RoomIndex];
+                int yFloor = room.Bounds.yMin;
+                Vector3Int tc = door.HallwayCell + door.Direction; // elevated threshold, room side
+                int height = tc.y - yFloor;
+                if (height <= 0) continue;
+
+                // The climb column (floor up through the threshold) must be
+                // open room cells, and the mount wall solid at every level
+                // below the opening.
+                bool ok = true;
+                for (int y = yFloor; y <= tc.y && ok; y++)
+                {
+                    var c = new Vector3Int(tc.x, y, tc.z);
+                    ok = room.Contains(c) && Grid[c] == CellType.Room;
+                }
+                for (int y = yFloor; y < tc.y && ok; y++)
+                {
+                    var w = new Vector3Int(door.HallwayCell.x, y, door.HallwayCell.z);
+                    ok = !Grid.InBounds(w) || Grid[w] == CellType.Empty;
+                }
+                if (!ok) continue;
+
+                Ladders.Add(new LadderSpec
+                {
+                    BaseCell = new Vector3Int(tc.x, yFloor, tc.z),
+                    WallDir = -door.Direction,
+                    HeightCells = height,
+                });
+            }
         }
 
         void RecordDoor(Vector3Int hallwayCell, int roomIndex, DEdge e, bool loopEdge)

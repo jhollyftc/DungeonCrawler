@@ -213,6 +213,13 @@ MonoBehaviour:
     - {fileID: 3602345796156579540, guid: f051cc4d1ac8534429501b7f6d68bc73, type: 3}
     outerPillarPrefabs: []
     innerPillarPrefabs: []
+  - type: 11
+    archwayPrefabs:
+    - {fileID: 5863904433962368668, guid: 257c32ea742224d468b0aefc32df8d4b, type: 3}
+    doorPrefabs:
+    - {fileID: 3602345796156579540, guid: f051cc4d1ac8534429501b7f6d68bc73, type: 3}
+    outerPillarPrefabs: []
+    innerPillarPrefabs: []
   - type: 8
     archwayPrefabs:
     - {fileID: 5863904433962368668, guid: 257c32ea742224d468b0aefc32df8d4b, type: 3}
@@ -227,3 +234,5 @@ MonoBehaviour:
     props: {fileID: 11400000, guid: 4f3a1a894028cfc4083cc3e4a602ecd7, type: 2}
   - type: 3
     props: {fileID: 11400000, guid: a595edc14d0a4fa4bbb610c818d3bcb3, type: 2}
+  - type: 11
+    props: {fileID: 11400000, guid: 068433a7c4626834bafc83d9c5ff0414, type: 2}

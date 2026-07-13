@@ -98,13 +98,18 @@ Order matters; several stages depend on earlier ones. Current order:
    walled off a required route) and, after tentative placement, every
    ground-level threshold + stair foot in the room must remain mutually
    reachable (flood-fill; a stair strip can pinch a small room in two).
-   Conflicts revert and demote to the doorless drop-in fallback, flagged for
-   the future ladder pass via `IsElevated && !HasInteriorStair`.
-6. **PlacePrisons** (Stage 5 in code comments — numbering is historical, ignore
+   Conflicts revert and demote to the doorless drop-in fallback, which the
+   ladder pass picks up next.
+6. **AllocateLadders** — every drop-in (`IsElevated && !HasInteriorStair`)
+   claims the column of room cells beneath its threshold for a wall-mounted
+   ladder (`gen.Ladders`), keeping the entrance two-way. Validates the climb
+   column is open and the mount wall solid; failure leaves a one-way drop.
+   Deterministic, no RNG. Ladder feet are reserved cells in the prop system.
+7. **PlacePrisons** (Stage 5 in code comments — numbering is historical, ignore
    the labels) — 1-tall closet cells off hallways, one-opening rule.
-7. **AssignRoomTypes** — see §4.
-8. **PlaceSatelliteRooms** — type-paired closets (see §4).
-9. **PlanInteriorColumns** — lattice-point column plans for grand rooms (see §4).
+8. **AssignRoomTypes** — see §4.
+9. **PlaceSatelliteRooms** — type-paired closets (see §4).
+10. **PlanInteriorColumns** — lattice-point column plans for grand rooms (see §4).
 
 > The stage-number comments in code (`Stage 5`, `Stage 6`…) are historical and
 > out of order after several insertions. Trust the `Generate()` call order, not
@@ -163,8 +168,10 @@ rooms:
 **Collision truth = the greybox mesh (DungeonMesher)**, anchored to the grid,
 rendered invisible in InstancedKit mode. The kit is *visual only*. Exceptions —
 pieces whose real shape matters get their own prefab colliders (the greybox
-can't provide them): archways, doors, interior columns, **stairs and corner
-pillars** (the latter two route through `Enumerate`'s `placeWithCollider` sink
+can't provide them): archways, doors, interior columns, ladders (base-origin
+authored, one 3m segment per story, stacked — NO globalVisualOffset, prop
+convention), **stairs and corner pillars** (the latter two route through
+`Enumerate`'s `placeWithCollider` sink
 → `EmitCollider` → `PropTier.StaticCollider`, collider GameObjects under a
 `DungeonKitColliders` root). When the kit has stair prefabs, the greybox's
 approximate sloped ramp is skipped (`includeStairRamps=false`) so the prefab's
@@ -383,6 +390,11 @@ cell if their zone is empty; chance scatter just places nothing.
 **Chests:** author as a `Feature`, guaranteed ×1, `StaticCollider` entry in
 Treasury/ChestVault sets. Inert now; interactive later = tier change only.
 
+**Inspector UX:** PropSet entries and RoomStyle's nested lists have custom
+drawers (`Assets/Editor/`) — summary foldout labels instead of "Element N",
+and PropSet entries show only the fields their anchor uses. Editor-only; when
+adding a PropEntry field, add it to the drawer's VisibleFields too.
+
 **Not yet built:** wall-mounted props (the WallFaceRegistry is their
 foundation; the mounting itself — negotiating faces with torches — is
 pending), clusters beyond sockets, NearWallAsset anchor (woodpile beside
@@ -433,10 +445,20 @@ Formula-driven with authored override points (the user's explicit choice).
   retraction at point-blank (real bug: retraction died pressed against walls).
   This cast is the future attack hit-sweep's foundation; deflection (blade
   sliding along walls) is a deliberately deferred v2.
+- **Ladder climbing** — `LadderClimbZone` (trigger marker authored on the
+  ladder prefab; extend the trigger ~0.5m above the top opening so cresting
+  feels right). FirstPersonController POLLS an overlap sphere each frame
+  (trigger callbacks miss exits on teleports/regens): inside a zone, gravity
+  off, W/S climb up/down, horizontal damped to 35% so the player can adjust
+  or step off. The damped forward push is what carries the player over the
+  lip at the top.
 - **DungeonFogController + FogSettings** (on DungeonVisualizer) — dynamic fog:
-  `RenderSettings.fogColor` eases toward the torch color of the room the
-  camera is in (footprint-aware `RoomAt`) or approaching (nearest room bbox
-  within `transitionDistance`); corridors use the style's default torch color,
+  `RenderSettings.fogColor` eases toward a room's torch color by the STRONGER
+  of two terms per room: proximity (within `transitionDistance`, facing-
+  agnostic — room air spills from doorways) and view (within `lookDistance`,
+  gated by camera alignment — a visited room seen back down a long hall keeps
+  its color identity instead of washing out). Inside a room = that room's
+  color, footprint-aware. Corridors target the style's default torch color,
   so fog and firelight always agree. Big atmosphere win. Play-mode only; the
   controller holds a runtime generator reference, so regenerate in play mode
   to arm it. Fog itself must be enabled in Lighting > Environment — the
@@ -459,11 +481,12 @@ Cosmetic-first; combat is far off ("get the world together first").
    relative feature placement + sockets (parent→child→grandchild)
 9. ✅ Weapon–world collision v1 (retraction); deflection deferred
 10. ✅ Torch shadow perf (per-batch castShadows; shell receives only)
-11. ⏳ **Ladders for drop-in elevated entrances** (pulled forward: the interior-
-    stair conflict fix demotes to drop-ins, which are one-way until ladders
-    land; placeholder FBX exists)
-12. ⏳ Wall-mounted props (mounting pass on the WallFaceRegistry foundation),
-    NearWallAsset anchor, richer clusters
+11. ✅ Ladders for drop-in elevated entrances (generator sites → kit segments
+    → LadderClimbZone climbing)
+12. ⏳ **Wall-mounted props** (mounting pass on the WallFaceRegistry
+    foundation, negotiating faces with torches), NearWallAsset anchor,
+    richer clusters — AND **ceiling-mounted upgrade**: parity with floor
+    scatter (zones, facing, snap-to-ceiling) for CeilingHung entries
 13. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material)
 14. ⏳ Home-base meta loop + depth progression tuning
 15. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance

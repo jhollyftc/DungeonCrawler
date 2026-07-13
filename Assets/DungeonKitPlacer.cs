@@ -37,6 +37,9 @@ namespace DungeonGen
         [Tooltip("Free-standing interior column segment (one cell / 3m tall, stacked to reach the ceiling). Placed at lattice points in grand rooms. Give it a collider — the floor cells stay walkable, so collision comes from the prefab.")]
         public GameObject[] interiorColumnPrefabs; // optional — skipped if empty
         public Vector3 interiorColumnOffset;
+        [Tooltip("Wall-mounted ladder for drop-in elevated entrances (no room for a staircase). Author BASE-ORIGIN (globalVisualOffset is NOT applied), one cell (3m) tall — segments stack per story. Thin, back at the wall plane; give it a solid collider plus a trigger box with a LadderClimbZone covering the climbable front (extend the trigger ~0.5m above the opening so the player keeps climb control while cresting). Optional — skipped if empty (the entrance stays a one-way drop).")]
+        public GameObject[] ladderPrefabs; // optional — skipped if empty
+        public Vector3 ladderOffset;
         [Tooltip("Place corner posts on edges that touch a doorway/arch face (jamb corners and meeting-arch corners). Off = arches stand alone.")]
         public bool pillarsAtDoorways = false;
         public bool randomizeFloorYaw = true;
@@ -931,6 +934,57 @@ namespace DungeonGen
 
             if (segments > 0)
                 Debug.Log($"[Dungeon] {gen.ColumnPoints.Count} interior column(s) placed ({segments} segments).");
+            return root;
+        }
+
+        /// <summary>
+        /// Wall-mounted ladders for drop-in elevated entrances (allocated by
+        /// AllocateLadders). Same split as columns: mesh instanced, collider +
+        /// LadderClimbZone GameObject kept (StaticCollider tier — PropInstancer
+        /// preserves custom components). One prefab segment per story, stacked.
+        /// Ladder prefabs are authored BASE-ORIGIN — no globalVisualOffset,
+        /// same convention as props (golden rule 2).
+        /// </summary>
+        public static GameObject BuildLadders(DungeonGenerator gen, DungeonKit kit, float cellSize, Transform parent,
+                                              InstancedDungeonRenderer instancer = null)
+        {
+            var root = new GameObject("DungeonLadders");
+            root.transform.SetParent(parent, false);
+            if (kit.ladderPrefabs == null || kit.ladderPrefabs.Length == 0) return root;
+            if (gen.Ladders.Count == 0) return root;
+
+            int count = 0;
+            foreach (var lad in gen.Ladders)
+            {
+                GameObject prefab = kit.ladderPrefabs[Hash(lad.BaseCell, 131) % kit.ladderPrefabs.Length];
+                if (prefab == null) continue;
+
+                // Foot of the ladder: on the floor, against the mount wall's
+                // face; forward points away from the wall (into the room).
+                Vector3 face = new Vector3(lad.BaseCell.x + 0.5f + lad.WallDir.x * 0.5f,
+                                           lad.BaseCell.y,
+                                           lad.BaseCell.z + 0.5f + lad.WallDir.z * 0.5f) * cellSize;
+                Quaternion rot = Quaternion.LookRotation(-(Vector3)lad.WallDir);
+
+                for (int seg = 0; seg < lad.HeightCells; seg++)
+                {
+                    Vector3 pos = face + Vector3.up * (seg * cellSize) + kit.ladderOffset + parent.position;
+                    if (instancer != null)
+                    {
+                        PropInstancer.PlaceProps(instancer, prefab,
+                            new[] { new PropPlacement { position = pos, rotation = rot } },
+                            PropTier.StaticCollider, cellSize, root.transform);
+                    }
+                    else
+                    {
+                        Object.Instantiate(prefab, pos, rot * prefab.transform.rotation, root.transform);
+                    }
+                }
+                count++;
+            }
+
+            if (count > 0)
+                Debug.Log($"[Dungeon] {count} ladder(s) placed.");
             return root;
         }
     }

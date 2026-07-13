@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
+  m_Name: ChestPropTest
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
+  entries:
+  - label: 
+    prefabs:
+    - {fileID: 6030789269779412111, guid: 82f79d5c05277a84fa11157c42ca45d7, type: 3}
+    anchor: 2
+    tier: 3
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 5
+    guaranteed: 1
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZone: 0
+    facing: 0
+    yawRange: {x: 0, y: 0}
+    subCellJitter: 0
+    snapToWall: 0
+    wallGap: 0
+    allowCenter: 0
