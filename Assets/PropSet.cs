@@ -14,6 +14,8 @@ namespace DungeonGen
         WallMounted,
         /// <summary>THE feature: placed at a specific spot in the room (a named wall, or room center). Throne, altar, merchant counter. Use guaranteed + count 1.</summary>
         Feature,
+        /// <summary>Placed on a free cell BESIDE an already-placed prop whose Label matches Host Label (a bucket beside a crate). Runs after all other floor props. Chance-gated per host; cell-adjacency prevents overlap.</summary>
+        NearPropAsset,
     }
 
     /// <summary>Top-level placement mode for a Feature entry.</summary>
@@ -134,7 +136,7 @@ namespace DungeonGen
         [System.Serializable]
         public class PropEntry
         {
-            [Tooltip("Inspector label only.")]
+            [Tooltip("This prop's KIND. Names the inspector entry AND acts as a tag: a Near Prop Asset entry attaches to props with a matching Host Label, and Min Spacing keeps same-Label props apart. Give matching props (e.g. all statues) the same Label to space them from each other.")]
             public string label;
             [Tooltip("Variants — deterministic hash-pick per placement.")]
             public GameObject[] prefabs;
@@ -157,7 +159,15 @@ namespace DungeonGen
             public FeatureFacing featureFacing = FeatureFacing.Outward;
             [Tooltip("Feature only: degrees added on top of featureFacing (or the absolute yaw when featureFacing = Fixed).")]
             public float featureYaw = 0f;
-           
+
+            [Header("Near-prop / spacing")]
+            [Tooltip("NearPropAsset only: attach beside already-placed props whose Label equals this (case-sensitive).")]
+            public string hostLabel = "";
+            [Tooltip("NearPropAsset only: chance to place a prop beside each matching host.")]
+            [Range(0f, 1f)] public float chancePerHost = 0.6f;
+            [Tooltip("Keep same-Label props at least this many cells apart (0 = off). E.g. two statue entries sharing Label 'Statue' won't clump. Floor/feature props only.")]
+            public int minSpacing = 0;
+
 
             [Header("Count")]
             [Tooltip("Guaranteed: place exactly Count (cells permitting). Otherwise scatter by chance per eligible cell.")]

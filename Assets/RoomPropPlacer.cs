@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace DungeonGen
@@ -200,6 +201,7 @@ namespace DungeonGen
                 var ceilingStream = new HashStream(room.Bounds.min, 11003);
                 var socketStream  = new HashStream(room.Bounds.min, 11004);
                 var wallStream    = new HashStream(room.Bounds.min, 11005);
+                var nearStream    = new HashStream(room.Bounds.min, 11006);
 
                 // ---- Floor cells, thresholds, entrance, zones ----
                 // One shared computation (also drives the visualizer's
@@ -231,6 +233,24 @@ namespace DungeonGen
                 var usedCells = new HashSet<Vector3Int>();        // one FLOOR prop per cell
                 var usedCeilingCells = new HashSet<Vector3Int>(); // one CEILING prop per cell (separate plane)
                 var blocked = new HashSet<Vector3Int>();          // collider-tier FLOOR cells
+
+                // Floor props placed so far, with their entry Label — drives
+                // NearPropAsset (attach beside a labeled host) and minSpacing
+                // (keep same-Label props apart). Ceiling/wall live on other
+                // planes and aren't tracked here.
+                var placedProps = new List<(Vector3Int cell, string label)>();
+                bool TooCloseSameLabel(Vector3Int cell, string label, int minSpacing)
+                {
+                    if (minSpacing <= 0 || string.IsNullOrEmpty(label)) return false;
+                    int minSq = minSpacing * minSpacing;
+                    foreach (var (c, l) in placedProps)
+                    {
+                        if (l != label) continue;
+                        int dx = c.x - cell.x, dz = c.z - cell.z;
+                        if (dx * dx + dz * dz < minSq) return true;
+                    }
+                    return false;
+                }
 
                 // Pathability: all thresholds mutually reachable across
                 // unblocked floor cells. Rooms are small; BFS is trivial.
@@ -278,6 +298,7 @@ namespace DungeonGen
                         new[] { new PropPlacement { position = worldPos, rotation = rot } },
                         tier, cellSize, root.transform);
                     if (!e.sharesTile) usedCells.Add(cell); // sharesTile doesn't reserve
+                    placedProps.Add((cell, e.label));       // for NearPropAsset + minSpacing
                     totalPlaced++;
                     FillSockets(prefab, worldPos, rot, cell.y, 0);
                 }
@@ -534,20 +555,24 @@ namespace DungeonGen
                     return list;
                 }
 
-                // ---- Entry order: features, guaranteed, scatter ----
+                // ---- Entry order: features, guaranteed, scatter, near-prop ----
+                // NearPropAsset runs LAST so all its potential hosts are placed.
+                // Stable sort preserves author order within a rank.
                 var ordered = new List<PropSet.PropEntry>(set.entries);
                 int Rank(PropSet.PropEntry e) =>
+                    e.anchor == PropAnchor.NearPropAsset ? 3 :
                     e.anchor == PropAnchor.Feature ? 0 : e.guaranteed ? 1 : 2;
-                ordered.Sort((a, b) => Rank(a).CompareTo(Rank(b)));
+                ordered = ordered.OrderBy(Rank).ToList();
 
                 // Nearest free floor cell to the room's true centroid (hoisted
                 // above — shared with FaceRoomCenter scatter facing).
-                (Vector3Int cell, bool ok) PickRoomCenterCell()
+                (Vector3Int cell, bool ok) PickRoomCenterCell(string spacingLabel, int minSpacing)
                 {
                     Vector3Int best = default; float bestDist = float.MaxValue; bool ok = false;
                     foreach (var c in floor)
                     {
                         if (!Placeable(c) || reserved.Contains(c) || usedCells.Contains(c)) continue;
+                        if (TooCloseSameLabel(c, spacingLabel, minSpacing)) continue;
                         float dist = (new Vector3(c.x + 0.5f, c.y, c.z + 0.5f) - centroid).sqrMagnitude;
                         if (dist < bestDist) { bestDist = dist; best = c; ok = true; }
                     }
@@ -558,7 +583,8 @@ namespace DungeonGen
                 // is derived from enterDir, so Back/Left/Right/Front are
                 // stable regardless of how this room is oriented on the grid.
                 (Vector3Int cell, Vector3Int normal, bool ok) PickWallSideCell(FeatureWallSide side, FeatureSpot spot,
-                                                                               bool requirePropsAllowed)
+                                                                               bool requirePropsAllowed,
+                                                                               string spacingLabel, int minSpacing)
                 {
                     Vector3Int targetNormal = side switch
                     {
@@ -612,6 +638,7 @@ namespace DungeonGen
                             if (idx < 0 || idx >= run.Count) continue;
                             var cand = run[idx];
                             if (reserved.Contains(cand) || usedCells.Contains(cand)) continue;
+                            if (TooCloseSameLabel(cand, spacingLabel, minSpacing)) continue;
                             if (requirePropsAllowed && wallFaces != null &&
                                 !wallFaces.PropsAllowed(grid.Index(cand), targetNormal)) continue;
                             pick = cand;
@@ -652,12 +679,12 @@ namespace DungeonGen
                         Vector3Int chosen; Vector3Int? wallNormal; bool foundCell;
                         if (e.featurePositionMode == FeaturePositionMode.RoomCenter)
                         {
-                            var (cell, ok) = PickRoomCenterCell();
+                            var (cell, ok) = PickRoomCenterCell(e.label, e.minSpacing);
                             chosen = cell; wallNormal = null; foundCell = ok;
                         }
                         else
                         {
-                            var (cell, normal, ok) = PickWallSideCell(e.featureWallSide, e.featureSpot, e.snapToWall);
+                            var (cell, normal, ok) = PickWallSideCell(e.featureWallSide, e.featureSpot, e.snapToWall, e.label, e.minSpacing);
                             chosen = cell; wallNormal = ok ? normal : (Vector3Int?)null; foundCell = ok;
                         }
                         if (!foundCell) continue;
@@ -828,7 +855,7 @@ namespace DungeonGen
                             placedCount++;
                         }
                     }
-                    else // FloorScatter
+                    else if (e.anchor == PropAnchor.FloorScatter)
                     {
                         bool insideCorner = e.snapToInsideCorner;
                         bool wantsWall = !insideCorner && (e.snapToWall ||
@@ -840,6 +867,8 @@ namespace DungeonGen
                         foreach (var c in cells)
                         {
                             if (placedCount >= want) break;
+                            // Keep same-Label props apart (statues, etc.).
+                            if (TooCloseSameLabel(c, e.label, e.minSpacing)) continue;
                             // Inside-corner: only concave-corner cells qualify.
                             Vector3Int ca = default, cb = default;
                             if (insideCorner &&
@@ -872,6 +901,40 @@ namespace DungeonGen
                                     : FloorWorld(c, e, scatterStream);
                             }
                             if (TryPlaceAt(e, c, rot, pos, scatterStream)) placedCount++;
+                        }
+                    }
+                    else if (e.anchor == PropAnchor.NearPropAsset)
+                    {
+                        // Place beside already-placed floor props whose Label
+                        // matches Host Label. Cell-adjacency (a free neighbor
+                        // cell) prevents overlap; occupancy + spacing rules
+                        // still apply, so no doorways/stairs/overlaps.
+                        if (string.IsNullOrEmpty(e.hostLabel)) continue;
+                        var hosts = placedProps.Where(p => p.label == e.hostLabel).Select(p => p.cell).ToList();
+                        foreach (var host in hosts)
+                        {
+                            if (nearStream.Next01() >= e.chancePerHost) continue;
+                            // Free neighbor cells (8-dir), hash-ordered so the
+                            // side chosen is deterministic but varied.
+                            var neighbors = new List<Vector3Int>();
+                            for (int dx = -1; dx <= 1; dx++)
+                                for (int dz = -1; dz <= 1; dz++)
+                                {
+                                    if (dx == 0 && dz == 0) continue;
+                                    var n = new Vector3Int(host.x + dx, host.y, host.z + dz);
+                                    if (!room.Cells.Contains(n) || !Placeable(n)) continue;
+                                    if (reserved.Contains(n) || usedCells.Contains(n)) continue;
+                                    if (TooCloseSameLabel(n, e.label, e.minSpacing)) continue;
+                                    neighbors.Add(n);
+                                }
+                            if (neighbors.Count == 0) continue;
+                            int salt = nearStream.Next();
+                            neighbors.Sort((a, b) =>
+                                DungeonKitPlacer.Hash(a, salt).CompareTo(DungeonKitPlacer.Hash(b, salt)));
+                            Vector3Int cell = neighbors[0];
+                            Quaternion rot = ScatterYaw(e, nearStream);
+                            Vector3 pos = FloorWorld(cell, e, nearStream);
+                            TryPlaceAt(e, cell, rot, pos, nearStream);
                         }
                     }
                 }

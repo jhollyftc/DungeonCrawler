@@ -329,7 +329,7 @@ variants, **anchor**, tier, guaranteed-count OR chance-per-cell (+ optional
 cap), zone/facing/snap fields, yaw range, sub-cell jitter.
 
 **RNG streams:** per-room `HashStream`s — feature 11001, scatter 11002,
-ceiling 11003, sockets 11004, wall-mounted 11005 (golden rule 4).
+ceiling 11003, sockets 11004, wall-mounted 11005, near-prop 11006 (rule 4).
 
 **Zones (`RoomZone`)** — every floor cell classifies once, first match wins:
 `Entrance` (reserved thresholds + cells within 1 step), `Perimeter`
@@ -383,6 +383,14 @@ scatter just places nothing.
   negotiates faces via the WallFaceRegistry claim system (§7). Faces whose
   wall asset has `allowPropsInFront` off, or that a torch/earlier mount
   claimed, are skipped.
+- `NearPropAsset` — placed on a free cell BESIDE an already-placed floor
+  prop whose Label = `hostLabel` (a bucket beside a crate). Runs LAST (rank 3)
+  so all hosts exist; `chancePerHost` gates each attachment; cell-adjacency
+  (a free 8-neighbour cell) prevents overlap, reusing `usedCells`. Placed
+  props record `(cell, label)` in `placedProps`, which also drives spacing.
+- `label` is a prop's KIND: `minSpacing` (cells) keeps same-Label floor props
+  apart (two "Statue" entries won't clump — checked in scatter + feature
+  picks), and NearPropAsset targets a Label. Floor plane only.
 - `Feature` — THE placed prop (throne, altar, counter). Position: `WallSide`
   (Back/Left/Right/Front relative to the entrance × wall-run Center/Corner,
   free-cell fallback walks the run; sides without a wall — L-bites — skip) or
