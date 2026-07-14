@@ -192,6 +192,7 @@ GameObject:
   - component: {fileID: 4849745872403062793}
   - component: {fileID: 900916119433276436}
   - component: {fileID: 7389115687548108523}
+  - component: {fileID: 1046011905552437013}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -328,6 +329,37 @@ MonoBehaviour:
   minimumPushScale: 0.05
   maximumPushSpeed: 1
   standingOnThreshold: -0.3
+--- !u!114 &1046011905552437013
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 912157609348552918}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 15da998f1da2da74b8825c4921f4ebab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PlayerCarry
+  cam: {fileID: 0}
+  holdHeightOffset: -0.35
+  followStrength: 12
+  maxCarrySpeed: 8
+  maxCarryForce: 600
+  rotateStrength: 12
+  maxAngularSpeed: 10
+  breakDistance: 2.5
+  pickupCooldown: 0.25
+  dropKey: 101
+  throwMouseButton: 0
+  voiceSource: {fileID: 0}
+  throwClips:
+  - {fileID: 8300000, guid: 9f1127586c657054dae34c3f57f775e2, type: 3}
+  - {fileID: 8300000, guid: a5bcc42fe67771c45bde41a694489516, type: 3}
+  voiceVolume: 0.8
+  voicePitchRange: {x: 0.96, y: 1.04}
+  heavyMass: 30
+  effortPitchRange: {x: 1.08, y: 0.6}
 --- !u!1 &3512732595371402987
 GameObject:
   m_ObjectHideFlags: 0

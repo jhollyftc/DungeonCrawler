@@ -53,6 +53,19 @@ namespace DungeonGen
         /// <summary>The overlay camera, once built. Null if the layer was missing.</summary>
         public Camera OverlayCamera => overlayCamera;
 
+        /// <summary>
+        /// Stow/draw the held items. PlayerCarry hides them while carrying a prop —
+        /// hands are full, so no sword and no shield until you drop or throw.
+        /// Toggling the ROOTS (not the renderers) also parks their sway and
+        /// collision components, which have nothing to do while stowed.
+        /// </summary>
+        public void SetViewmodelVisible(bool visible)
+        {
+            if (viewmodelRoots == null) return;
+            foreach (Transform root in viewmodelRoots)
+                if (root != null) root.gameObject.SetActive(visible);
+        }
+
         void Awake()
         {
             baseCamera = GetComponent<Camera>();

@@ -17,10 +17,25 @@ namespace DungeonGen
         public KeyCode key = KeyCode.E;
 
         IInteractable current;
+        PlayerCarry carry;
+
+        void Awake()
+        {
+            carry = GetComponentInParent<PlayerCarry>();
+            if (carry == null) carry = transform.root.GetComponentInChildren<PlayerCarry>();
+        }
 
         void Update()
         {
             current = null;
+
+            // Hands full: stand down. The carried prop floats right in front of the
+            // camera and this SphereCast lands on it every frame (Physics.IgnoreCollision
+            // spares the CONTACTS, not the QUERIES), so without this you'd get a
+            // "Pick up Barrel" prompt for the barrel already in your arms and E would
+            // mean two things at once. While something is held, PlayerCarry owns E.
+            if (carry != null && carry.IsCarrying) return;
+
             if (cam != null &&
                 Physics.SphereCast(cam.position, castRadius, cam.forward, out RaycastHit hit,
                                    range, ~0, QueryTriggerInteraction.Ignore))

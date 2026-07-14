@@ -164,8 +164,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b70f8b5f954af8a47929025c76042179, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonVisualizer
-  seed: 2030970621
-  randomizeSeedOnGenerate: 0
+  seed: 1461485130
+  randomizeSeedOnGenerate: 1
   config:
     depth: 6
     depthProfile: {fileID: 11400000, guid: 3271732a93adbe14b9886183c76b635d, type: 2}
