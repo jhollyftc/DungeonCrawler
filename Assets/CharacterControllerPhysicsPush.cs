@@ -18,8 +18,20 @@ namespace DungeonGen
     public class CharacterControllerPhysicsPush : MonoBehaviour
     {
         [Header("Push")]
-        [Tooltip("Impulse applied on contact. MASS-AWARE (ForceMode.Impulse): heavy things resist, light things fly. Retune from scratch — this does not map to the old VelocityChange value.")]
+        [Tooltip("Impulse applied on contact at FULL speed. MASS-AWARE (ForceMode.Impulse): heavy things resist, light things fly.")]
         [SerializeField] private float pushForce = 15f;
+
+        [Header("Speed scaling (this is what makes sneaking work)")]
+        [Tooltip("Scale the push by how fast the player is ACTUALLY moving. A crouched player eases a door open instead of banging it, so it stays under the door's noise threshold — stealth falls out of the physics instead of being special-cased. Turn off for a constant shove.")]
+        [SerializeField] private bool scaleByPlayerSpeed = true;
+        [Tooltip("Player speed (m/s) that delivers the FULL push force. Set to your sprint speed so sprinting slams, walking opens, and crouching barely nudges.")]
+        [SerializeField] private float speedForFullPush = 8f;
+        [Tooltip("Floor on the scaling, so a near-stationary lean still budges things a little.")]
+        [Range(0f, 1f)][SerializeField] private float minimumPushScale = 0.05f;
+
+        private CharacterController controller;
+
+        private void Awake() => controller = GetComponent<CharacterController>();
 
         [Tooltip("Don't keep accelerating a loose body once it's already moving this fast (m/s). Doors clamp their own SWING speed instead — see PhysicsDoor.")]
         [SerializeField] private float maximumPushSpeed = 3f;
@@ -43,13 +55,18 @@ namespace DungeonGen
                 return;
             pushDirection.Normalize();
 
+            // How hard you shove follows how fast you're actually moving. This is
+            // the whole sneak mechanic: crouch → slow → gentle push → the door
+            // barely swings → it never passes the door's thunkArmAngle → silent.
+            float force = pushForce * CurrentPushScale();
+
             // A hinged door only rotates. Hand it the contact and let it convert
             // that into torque about its own hinge axis (it also clamps its own
             // swing speed — a door's LINEAR velocity is ~0 by design, so a linear
             // speed clamp here would never fire and the pushes would compound).
             if (body.TryGetComponent(out PhysicsDoor door))
             {
-                door.Push(hit.point, pushDirection, pushForce);
+                door.Push(hit.point, pushDirection, force);
                 return;
             }
 
@@ -58,7 +75,16 @@ namespace DungeonGen
             if (horizontalVelocity.magnitude >= maximumPushSpeed)
                 return;
 
-            body.AddForceAtPosition(pushDirection * pushForce, hit.point, ForceMode.Impulse);
+            body.AddForceAtPosition(pushDirection * force, hit.point, ForceMode.Impulse);
+        }
+
+        private float CurrentPushScale()
+        {
+            if (!scaleByPlayerSpeed || controller == null) return 1f;
+
+            Vector3 v = controller.velocity;
+            float speed = new Vector3(v.x, 0f, v.z).magnitude;
+            return Mathf.Clamp(speed / Mathf.Max(0.01f, speedForFullPush), minimumPushScale, 1f);
         }
     }
 }

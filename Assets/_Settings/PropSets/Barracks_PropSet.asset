@@ -17,7 +17,7 @@ MonoBehaviour:
     prefabs:
     - {fileID: 7279145288024505586, guid: 20e2a5cb1a1d776429cf1a12807c85e5, type: 3}
     anchor: 0
-    tier: 1
+    tier: 3
     featurePositionMode: 0
     featureWallSide: 0
     featureSpot: 0
@@ -141,7 +141,7 @@ MonoBehaviour:
     prefabs:
     - {fileID: 8418309518360107936, guid: 26210594d958cc14ebdec7eb22c3ae0f, type: 3}
     anchor: 0
-    tier: 1
+    tier: 3
     featurePositionMode: 1
     featureWallSide: 0
     featureSpot: 0

@@ -119,6 +119,63 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1001 &44279384
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 10.960065
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.00000011829229
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 2.2035806
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.49999997
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_Name
+      value: WoodenDoor_Prefab
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
 --- !u!1 &419853725
 GameObject:
   m_ObjectHideFlags: 0
@@ -214,7 +271,7 @@ MonoBehaviour:
     archwayPrefabs:
     - {fileID: 1222708879805728174, guid: d1a9ad98a5b88cd4591abb6df8a66a93, type: 3}
     doorPrefabs:
-    - {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+    - {fileID: 1029005481309709157, guid: f0c5463a716c04b408525af9c08e4184, type: 3}
     - {fileID: 31987459120215761, guid: 441a2e6065b33454c8a708e7d1cff012, type: 3}
     outerCornerPillarPrefabs:
     - {fileID: 4427756941774512757, guid: 146d7ec88adf7f049a4451c6c9c158e4, type: 3}
@@ -497,3 +554,4 @@ SceneRoots:
   - {fileID: 419853727}
   - {fileID: 473402797}
   - {fileID: 456270795}
+  - {fileID: 44279384}

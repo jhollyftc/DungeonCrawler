@@ -192,14 +192,14 @@ PrefabInstance:
     - target: {fileID: -7511558181221131132, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 293f477857b0f144fb26fc4b91cad65d, type: 2}
+      objectReference: {fileID: 2100000, guid: 8a1113b3e76b07646b84d6465ac498f7, type: 2}
     - target: {fileID: -5754084199372789682, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: m_Mesh
       value: 
-      objectReference: {fileID: -1020708126068460956, guid: b6af1323c60f5e7409fa1cd9273ae2d2, type: 3}
+      objectReference: {fileID: 5879053223375542538, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
     - target: {fileID: 919132149155446097, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: m_Name
-      value: Wooden_Door
+      value: Metal_Door
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -339,7 +339,7 @@ MonoBehaviour:
   springStrength: 16
   springDamper: 9
   useAcceleration: 1
-  doorMass: 10
+  doorMass: 20
   angularDamping: 2
   maxSwingSpeed: 3
   debugPush: 0
@@ -532,6 +532,22 @@ PrefabInstance:
       propertyPath: m_Center.z
       value: -0.00089103624
       objectReference: {fileID: 0}
+    - target: {fileID: 5029803495147856660, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_Mesh
+      value: 
+      objectReference: {fileID: 336056656840440908, guid: d13d0672e8b51c949b54bfd86678a912, type: 3}
+    - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 52094619f683e854f8abe4c4f904ccf2, type: 2}
+    - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 52094619f683e854f8abe4c4f904ccf2, type: 2}
+    - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: 'm_Materials.Array.data[2]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 52094619f683e854f8abe4c4f904ccf2, type: 2}
     - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -574,7 +590,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Name
-      value: WoodenDoor_Prefab_PhysicsBased
+      value: MetalDoor_Prefab_PhysicsBased
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects:

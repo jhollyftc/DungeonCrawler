@@ -191,6 +191,7 @@ GameObject:
   - component: {fileID: 2487431546090423009}
   - component: {fileID: 4849745872403062793}
   - component: {fileID: 900916119433276436}
+  - component: {fileID: 7389115687548108523}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -258,7 +259,14 @@ MonoBehaviour:
   gravity: -20
   lookSensitivity: 2.2
   maxSlopeAngle: 45
-  maxStepHeight: 0.5
+  maxStepHeight: 0.25
+  crouchKey: 306
+  crouchSpeed: 1
+  crouchHeight: 1.3
+  crouchTransitionSpeed: 1.5
+  ceilingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
   climbSpeed: 3
   climbHorizontalDamp: 0.35
 --- !u!114 &4849745872403062793
@@ -301,6 +309,24 @@ MonoBehaviour:
   volume: 0.8
   pitchJitter: 0.08
   landVelocityThreshold: 4
+--- !u!114 &7389115687548108523
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 912157609348552918}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02266cf9c24422743bd631784af419a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.CharacterControllerPhysicsPush
+  pushForce: 2
+  scaleByPlayerSpeed: 1
+  speedForFullPush: 6
+  minimumPushScale: 0.05
+  maximumPushSpeed: 1
+  standingOnThreshold: -0.3
 --- !u!1 &3512732595371402987
 GameObject:
   m_ObjectHideFlags: 0
@@ -345,13 +371,13 @@ Light:
   serializedVersion: 13
   m_Type: 2
   m_Color: {r: 1, g: 0.7038871, b: 0, a: 1}
-  m_Intensity: 3
-  m_Range: 10
+  m_Intensity: 1
+  m_Range: 4
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
   m_CookieSize2D: {x: 0.5, y: 0.5}
   m_Shadows:
-    m_Type: 1
+    m_Type: 2
     m_Resolution: -1
     m_CustomResolution: -1
     m_Strength: 1
