@@ -596,6 +596,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
       insertIndex: -1
       addedObject: {fileID: 6379355204564721973}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -4172347775900320617}
   m_SourcePrefab: {fileID: 100100000, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
 --- !u!1 &8418309518360107936 stripped
 GameObject:
@@ -652,6 +655,21 @@ CapsuleCollider:
   m_Height: 0.010142269
   m_Direction: 2
   m_Center: {x: 0, y: 1.5504951e-17, z: 0.005003439}
+--- !u!114 &-4172347775900320617
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8418309518360107936}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9fe5123c3be6569418668e13e27f9ae5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PushableProp
+  pushMultiplier: 1
+  maxPushSpeed: 2
+  pushAtContactPoint: 1
 --- !u!4 &9194106658946842906 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}

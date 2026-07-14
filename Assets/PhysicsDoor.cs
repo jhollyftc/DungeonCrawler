@@ -4,7 +4,7 @@ namespace DungeonGen
 {
     [RequireComponent(typeof(Rigidbody))]
     [RequireComponent(typeof(HingeJoint))]
-    public class PhysicsDoor : MonoBehaviour
+    public class PhysicsDoor : MonoBehaviour, IPushable
     {
         [Header("Opening Limits")]
         [SerializeField] private float minimumAngle = -100f;

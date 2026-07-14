@@ -350,7 +350,7 @@ MonoBehaviour:
   swingStartSpeed: 0.6
   slamTolerance: 3
   slamMinSpeed: 1.5
-  logSwingTelemetry: 1
+  logSwingTelemetry: 0
 --- !u!82 &5310196877476623849
 AudioSource:
   m_ObjectHideFlags: 0

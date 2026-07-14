@@ -60,17 +60,21 @@ namespace DungeonGen
             // barely swings → it never passes the door's thunkArmAngle → silent.
             float force = pushForce * CurrentPushScale();
 
-            // A hinged door only rotates. Hand it the contact and let it convert
-            // that into torque about its own hinge axis (it also clamps its own
-            // swing speed — a door's LINEAR velocity is ~0 by design, so a linear
-            // speed clamp here would never fire and the pushes would compound).
-            if (body.TryGetComponent(out PhysicsDoor door))
+            // If the object knows how to be pushed, let IT decide what the shove
+            // means. A PhysicsDoor turns it into torque about its hinge (a linear
+            // force would fight the joint and tear the door off); a PushableProp
+            // applies its own multiplier and speed cap. The player just supplies
+            // the force — objects own their own response, so tuning a barrel can
+            // never un-tune the doors.
+            IPushable pushable = body.GetComponent<IPushable>();
+            if (pushable != null)
             {
-                door.Push(hit.point, pushDirection, force);
+                pushable.Push(hit.point, pushDirection, force);
                 return;
             }
 
-            // Loose bodies: unconstrained, so a linear impulse is fine.
+            // Plain Rigidbody, no IPushable: a sensible default shove. Mass-aware,
+            // so heavy things resist without any configuration.
             Vector3 horizontalVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
             if (horizontalVelocity.magnitude >= maximumPushSpeed)
                 return;

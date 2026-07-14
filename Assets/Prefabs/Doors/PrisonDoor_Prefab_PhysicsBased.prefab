@@ -192,14 +192,14 @@ PrefabInstance:
     - target: {fileID: -7511558181221131132, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 293f477857b0f144fb26fc4b91cad65d, type: 2}
+      objectReference: {fileID: 2100000, guid: bf9a6f9b190070e44862b3771c24f52d, type: 2}
     - target: {fileID: -5754084199372789682, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: m_Mesh
       value: 
-      objectReference: {fileID: -1020708126068460956, guid: b6af1323c60f5e7409fa1cd9273ae2d2, type: 3}
+      objectReference: {fileID: 2012621289761067564, guid: b626f396d0838424aa60ecc1bc8d07d4, type: 3}
     - target: {fileID: 919132149155446097, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: m_Name
-      value: Wooden_Door
+      value: Prison_Door
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -339,9 +339,9 @@ MonoBehaviour:
   springStrength: 16
   springDamper: 9
   useAcceleration: 1
-  doorMass: 10
+  doorMass: 25
   angularDamping: 2
-  maxSwingSpeed: 3
+  maxSwingSpeed: 2
   debugPush: 0
   commitAngle: 3
   thunkArmAngle: 30
@@ -462,9 +462,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PhysicsDoorAudio
   creakSource: {fileID: 5310196877476623849}
   impactSource: {fileID: 7463535312832722506}
-  creakLoop: {fileID: 8300000, guid: 686e774d18e68984b95e1a0b79f2db71, type: 3}
+  creakLoop: {fileID: 8300000, guid: 9910e590ba6605f4f81512172fe26644, type: 3}
   closeClips:
-  - {fileID: 8300000, guid: 63116a3620b834d44ae34056631d201e, type: 3}
+  - {fileID: 8300000, guid: d7ad1e586a52fd340bf3a54334604289, type: 3}
   slamClips: []
   impactFullSpeed: 1.6
   impactSilentBelowSpeed: 0.4
@@ -473,7 +473,7 @@ MonoBehaviour:
   creakSilentBelowSpeed: 0.3
   creakMaxVolume: 0.7
   creakFadeSpeed: 4
-  creakPitchRange: {x: 0.85, y: 0.85}
+  creakPitchRange: {x: 0.75, y: 0.75}
   impactPitchRange: {x: 0.95, y: 1.05}
   debugAudio: 1
 --- !u!1001 &8606022166973257070
@@ -532,6 +532,22 @@ PrefabInstance:
       propertyPath: m_Center.z
       value: -0.00089103624
       objectReference: {fileID: 0}
+    - target: {fileID: 5029803495147856660, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_Mesh
+      value: 
+      objectReference: {fileID: 3570491760342682676, guid: f8da2e22762e7c54691985089adb0f02, type: 3}
+    - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 293f477857b0f144fb26fc4b91cad65d, type: 2}
+    - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 76b9597d9793ad04b8efcd0485b4ebec, type: 2}
+    - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: 'm_Materials.Array.data[2]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 52094619f683e854f8abe4c4f904ccf2, type: 2}
     - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -574,7 +590,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Name
-      value: WoodenDoor_Prefab_PhysicsBased
+      value: PrisonDoor_Prefab_PhysicsBased
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects:

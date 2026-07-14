@@ -157,7 +157,7 @@ Material:
     - _Mode: 0
     - _NormalMapKwToggle: 1
     - _OcclusionStrength: 1
-    - _OutlineWidth: 0.0203
+    - _OutlineWidth: 0.0071
     - _Parallax: 0.005
     - _QueueControl: 0
     - _QueueOffset: 0

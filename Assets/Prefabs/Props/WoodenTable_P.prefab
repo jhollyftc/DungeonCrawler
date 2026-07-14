@@ -283,6 +283,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
       insertIndex: -1
       addedObject: {fileID: 8780481902955671686}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -7378639434348107679}
   m_SourcePrefab: {fileID: 100100000, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
 --- !u!1 &7279145288024505586 stripped
 GameObject:
@@ -400,6 +403,21 @@ Rigidbody:
   m_Interpolate: 1
   m_Constraints: 0
   m_CollisionDetection: 3
+--- !u!114 &-7378639434348107679
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7279145288024505586}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9fe5123c3be6569418668e13e27f9ae5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PushableProp
+  pushMultiplier: 10
+  maxPushSpeed: 1
+  pushAtContactPoint: 1
 --- !u!4 &7948687033450948168 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
