@@ -79,16 +79,16 @@ MonoBehaviour:
   shoulderAnchor: {fileID: 0}
   tipAnchor: {fileID: 0}
   shoulderOffset: {x: 0, y: 0, z: 0}
-  tipOffset: {x: -0.5, y: 0, z: 0}
+  tipOffset: {x: -0.25, y: 0, z: 0}
   showDebugGizmo: 1
   castRadius: 0.02
   worldMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 55
   skin: 0.02
-  maxRetraction: 0.4
-  retractInSpeed: 6
-  retractOutSpeed: 2
+  maxRetraction: 0.35
+  retractInSpeed: 0.3
+  retractOutSpeed: 0.4
 --- !u!1 &909313496246699714
 GameObject:
   m_ObjectHideFlags: 0
@@ -168,16 +168,16 @@ MonoBehaviour:
   shoulderAnchor: {fileID: 0}
   tipAnchor: {fileID: 0}
   shoulderOffset: {x: 0, y: 0, z: 0.12}
-  tipOffset: {x: 0, y: 0, z: -0.91}
+  tipOffset: {x: 0, y: 0, z: -0.4}
   showDebugGizmo: 1
   castRadius: 0.02
   worldMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 55
   skin: 0.02
-  maxRetraction: 0.8
-  retractInSpeed: 6
-  retractOutSpeed: 2
+  maxRetraction: 0.35
+  retractInSpeed: 0.3
+  retractOutSpeed: 0.4
 --- !u!1 &912157609348552918
 GameObject:
   m_ObjectHideFlags: 0
@@ -234,7 +234,7 @@ CharacterController:
   m_Enabled: 1
   serializedVersion: 3
   m_Height: 1.8
-  m_Radius: 0.35
+  m_Radius: 0.4
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
@@ -266,7 +266,7 @@ MonoBehaviour:
   crouchTransitionSpeed: 1.5
   ceilingMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 55
   climbSpeed: 3
   climbHorizontalDamp: 0.35
 --- !u!114 &4849745872403062793
@@ -309,6 +309,7 @@ MonoBehaviour:
   volume: 0.8
   pitchJitter: 0.08
   landVelocityThreshold: 4
+  groundedGrace: 0.2
 --- !u!114 &7389115687548108523
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -466,6 +467,7 @@ GameObject:
   - component: {fileID: 8449227219723978112}
   - component: {fileID: 3032915221359234366}
   - component: {fileID: 7965078747187779180}
+  - component: {fileID: 6139725411295546941}
   m_Layer: 0
   m_Name: PlayerCamera
   m_TagString: MainCamera
@@ -524,7 +526,7 @@ Camera:
     height: 1
   near clip plane: 0.05
   far clip plane: 1000
-  field of view: 100
+  field of view: 80
   orthographic: 0
   orthographic size: 5
   m_Depth: 0
@@ -594,6 +596,26 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!114 &6139725411295546941
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6543594418925676300}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5c48cc208d0e2ca458a8fee98597a547, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ViewmodelCamera
+  viewmodelLayer: Viewmodel
+  viewmodelRoots:
+  - {fileID: 3216052648590494794}
+  - {fileID: 8593703141862890219}
+  viewmodelFieldOfView: 60
+  nearClip: 0.01
+  farClip: 20
+  debugSetup: 0
 --- !u!1001 &1607622403074429580
 PrefabInstance:
   m_ObjectHideFlags: 0

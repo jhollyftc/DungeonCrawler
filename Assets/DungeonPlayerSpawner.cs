@@ -214,7 +214,17 @@ namespace DungeonGen
         {
             if (!disableOtherCameras || !Application.isPlaying) return;
             foreach (var other in FindObjectsOfType<Camera>())
-                if (other != playerCam) other.gameObject.SetActive(false);
+            {
+                if (other == playerCam) continue;
+                // Never touch cameras the player rig owns. ViewmodelCamera builds a
+                // URP OVERLAY camera under the eye at Awake — i.e. during the very
+                // Instantiate that precedes this call — and disabling it makes the
+                // weapon/shield vanish while URP still happily lists it in the base
+                // camera's stack. This pass exists to kill STRAY SCENE cameras, not
+                // to police the prefab's own rig.
+                if (other.transform.IsChildOf(playerCam.transform)) continue;
+                other.gameObject.SetActive(false);
+            }
             foreach (var listener in FindObjectsOfType<AudioListener>())
                 if (listener.gameObject != playerCam.gameObject) Destroy(listener);
         }

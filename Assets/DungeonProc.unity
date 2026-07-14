@@ -119,63 +119,6 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1001 &44279384
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 0}
-    m_Modifications:
-    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 10.960065
-      objectReference: {fileID: 0}
-    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0.00000011829229
-      objectReference: {fileID: 0}
-    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 2.2035806
-      objectReference: {fileID: 0}
-    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 0.5
-      objectReference: {fileID: 0}
-    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: -0.5
-      objectReference: {fileID: 0}
-    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 0.49999997
-      objectReference: {fileID: 0}
-    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: 0.5
-      objectReference: {fileID: 0}
-    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: m_Name
-      value: WoodenDoor_Prefab
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
 --- !u!1 &419853725
 GameObject:
   m_ObjectHideFlags: 0
@@ -221,8 +164,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b70f8b5f954af8a47929025c76042179, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonVisualizer
-  seed: 101
-  randomizeSeedOnGenerate: 1
+  seed: 2030970621
+  randomizeSeedOnGenerate: 0
   config:
     depth: 6
     depthProfile: {fileID: 11400000, guid: 3271732a93adbe14b9886183c76b635d, type: 2}
@@ -265,7 +208,7 @@ MonoBehaviour:
     prisonBarsPrefabs:
     - {fileID: 7485307119221061454, guid: 00a7543ebd7055346bb497bc367dceab, type: 3}
     prisonDoorPrefabs:
-    - {fileID: 31987459120215761, guid: 441a2e6065b33454c8a708e7d1cff012, type: 3}
+    - {fileID: 1029005481309709157, guid: 52494da86f067b0408b58e8fb47dd04d, type: 3}
     - {fileID: 7485307119221061454, guid: 00a7543ebd7055346bb497bc367dceab, type: 3}
     prisonDoorLockChance: 0.1
     archwayPrefabs:
@@ -281,7 +224,7 @@ MonoBehaviour:
     interiorColumnOffset: {x: 0, y: 0, z: 0}
     ladderPrefabs:
     - {fileID: 1244754048534022546, guid: 58c037694d883ee4e8de3261b4b24b7d, type: 3}
-    ladderOffset: {x: 0, y: 0, z: -0.5}
+    ladderOffset: {x: 0, y: 0, z: 0.5}
     pillarsAtDoorways: 1
     randomizeFloorYaw: 0
     randomizeCeilingYaw: 0
@@ -346,7 +289,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonPlayerSpawner
   spawnOnPlay: 1
-  spawnRoomType: 1
+  spawnRoomType: 5
   playerPrefab: {fileID: 912157609348552918, guid: a3bed56511e085f40b5bcb091e5fc6f9, type: 3}
   disableOtherCameras: 1
   playerHeight: 1.8
@@ -399,7 +342,7 @@ AudioSource:
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 8300000, guid: 67a83247ccda9cb4d9c58d39379f4cee, type: 3}
   m_PlayOnAwake: 1
-  m_Volume: 1
+  m_Volume: 0.5
   m_Pitch: 1
   Loop: 1
   Mute: 0
@@ -554,4 +497,3 @@ SceneRoots:
   - {fileID: 419853727}
   - {fileID: 473402797}
   - {fileID: 456270795}
-  - {fileID: 44279384}
