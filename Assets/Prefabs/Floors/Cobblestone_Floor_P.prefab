@@ -51,11 +51,11 @@ PrefabInstance:
     - target: {fileID: -7511558181221131132, guid: 2939fc70aff4c1742be0bce131ae0968, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 8a79d8ccc8d8af245b965fc13533ab91, type: 2}
+      objectReference: {fileID: 2100000, guid: 0a41120931dd6864eaa47be662b6ffd6, type: 2}
     - target: {fileID: -7511558181221131132, guid: 2939fc70aff4c1742be0bce131ae0968, type: 3}
       propertyPath: 'm_Materials.Array.data[1]'
       value: 
-      objectReference: {fileID: 2100000, guid: 8a79d8ccc8d8af245b965fc13533ab91, type: 2}
+      objectReference: {fileID: 2100000, guid: fab67de1b6d51f34d8b5104d2dfd9b55, type: 2}
     - target: {fileID: 919132149155446097, guid: 2939fc70aff4c1742be0bce131ae0968, type: 3}
       propertyPath: m_Name
       value: Cobblestone_Floor_P

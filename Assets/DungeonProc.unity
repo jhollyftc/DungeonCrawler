@@ -165,20 +165,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonVisualizer
   seed: 101
-  randomizeSeedOnGenerate: 0
+  randomizeSeedOnGenerate: 1
   config:
     depth: 6
     depthProfile: {fileID: 11400000, guid: 3271732a93adbe14b9886183c76b635d, type: 2}
     gridSize: {x: 30, y: 10, z: 30}
     roomCount: 10
     roomMinSize: {x: 3, y: 1, z: 3}
-    roomMaxSize: {x: 12, y: 3, z: 12}
+    roomMaxSize: {x: 9, y: 3, z: 9}
     placementAttempts: 300
     roomPadding: 1
     maxLoopEdges: 3
     minLoopDetourRatio: 2.5
-    newHallwayCost: 5
-    reuseHallwayCost: 1
+    newHallwayCost: 10
+    reuseHallwayCost: 2
     newStairCost: 100
     reuseStairCost: 4
     allowUpperLevelDoors: 1
@@ -198,7 +198,7 @@ MonoBehaviour:
   geometryMode: 2
   kit:
     floorPrefabs:
-    - {fileID: 6985267569849668332, guid: b653382ff315dae408343843ca7a9181, type: 3}
+    - {fileID: 919132149155446097, guid: 0900ab4b931532b4287f7b7d5903b2ec, type: 3}
     ceilingPrefabs:
     - {fileID: 8495345608736901188, guid: 7cce5c37de519d54ba9a156fd3a80033, type: 3}
     wallPrefabs:
@@ -226,7 +226,7 @@ MonoBehaviour:
     - {fileID: 1244754048534022546, guid: 58c037694d883ee4e8de3261b4b24b7d, type: 3}
     ladderOffset: {x: 0, y: 0, z: -0.5}
     pillarsAtDoorways: 1
-    randomizeFloorYaw: 1
+    randomizeFloorYaw: 0
     randomizeCeilingYaw: 0
     globalVisualOffset: {x: 0, y: 1.5, z: 0}
     floorOffset: {x: 0, y: -1.5, z: 0}
@@ -243,7 +243,7 @@ MonoBehaviour:
     roomSpacing: 24
     torchesInPrisons: 1
     spacingJitter: 0.15
-    height: 2.2
+    height: 2
     wallGap: 0.14
     lateralOffset: 0.5
     lateralJitter: 0
@@ -289,7 +289,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonPlayerSpawner
   spawnOnPlay: 1
-  spawnRoomType: 5
+  spawnRoomType: 1
   playerPrefab: {fileID: 912157609348552918, guid: a3bed56511e085f40b5bcb091e5fc6f9, type: 3}
   disableOtherCameras: 1
   playerHeight: 1.8

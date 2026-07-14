@@ -121,9 +121,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a3b5ebd50849ca44ca172baf5e52936a, type: 3}
       insertIndex: -1
       addedObject: {fileID: 4354230813982145408}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a3b5ebd50849ca44ca172baf5e52936a, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 323544995525519352}
   m_SourcePrefab: {fileID: 100100000, guid: a3b5ebd50849ca44ca172baf5e52936a, type: 3}
 --- !u!4 &8242335211417857201 stripped
 Transform:
@@ -177,28 +174,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.002721594, y: 0.002624395, z: 0.011163938}
   m_Center: {x: 0.000029313218, y: -0.003744768, z: 0.000011980534}
---- !u!114 &323544995525519352
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8730641950739346955}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6912f811dd3bd5848bf3f6d1b3ae5ffe, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.HingedDoor
-  hinge: {fileID: 5716348924640538080}
-  openAngle: 70
-  swingSpeed: 160
-  invertSwing: 0
-  oneWaySwing: 0
-  locked: 0
-  startOpen: 0
-  openClip: {fileID: 8300000, guid: eba730b54ebce7445af650b46eced551, type: 3}
-  closeClip: {fileID: 8300000, guid: 01b3b68cf65d4934881e66c68a6b8d0a, type: 3}
-  lockedClip: {fileID: 0}
 --- !u!1001 &9017456328711187932
 PrefabInstance:
   m_ObjectHideFlags: 0

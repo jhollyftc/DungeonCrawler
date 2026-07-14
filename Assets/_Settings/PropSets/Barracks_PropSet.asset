@@ -168,37 +168,6 @@ MonoBehaviour:
     gridStride: 2
     snapToCeilingWall: 0
     allowCenter: 0
-  - label: Hanging Lights
-    prefabs:
-    - {fileID: 919132149155446097, guid: 8c1c11c0015f49942800b2e19adf0d50, type: 3}
-    anchor: 1
-    tier: 0
-    featurePositionMode: 1
-    featureWallSide: 0
-    featureSpot: 0
-    featureFacing: 4
-    featureYaw: 0
-    hostLabel: 
-    chancePerHost: 0.6
-    minSpacing: 0
-    guaranteed: 0
-    count: 0
-    chancePerCell: 1
-    maxPerRoom: 0
-    preferredZones: 4
-    facing: 0
-    yawRange: {x: 0, y: 5}
-    subCellJitter: 0.21
-    snapToWall: 1
-    snapToInsideCorner: 0
-    sharesTile: 0
-    wallGap: 0.5
-    mountHeight: 2.2
-    mountHeightJitter: 0
-    ceilingLayout: 1
-    gridStride: 2
-    snapToCeilingWall: 0
-    allowCenter: 0
   - label: Cobwebs
     prefabs:
     - {fileID: 919132149155446097, guid: e073a4d06a281954db3ad6019b5b0cdc, type: 3}
@@ -231,8 +200,7 @@ MonoBehaviour:
     snapToCeilingWall: 0
     allowCenter: 0
   - label: Firewood
-    prefabs:
-    - {fileID: 919132149155446097, guid: 8c1c11c0015f49942800b2e19adf0d50, type: 3}
+    prefabs: []
     anchor: 5
     tier: 0
     featurePositionMode: 1
@@ -258,6 +226,36 @@ MonoBehaviour:
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Hanging Lights
+    prefabs: []
+    anchor: 1
+    tier: 0
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: 4
+    facing: 0
+    yawRange: {x: 0, y: 5}
+    subCellJitter: 0.21
+    snapToWall: 1
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0.5
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 1
     gridStride: 2
     snapToCeilingWall: 0
     allowCenter: 0
