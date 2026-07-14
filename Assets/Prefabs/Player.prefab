@@ -259,6 +259,8 @@ MonoBehaviour:
   lookSensitivity: 2.2
   maxSlopeAngle: 45
   maxStepHeight: 0.5
+  climbSpeed: 3
+  climbHorizontalDamp: 0.35
 --- !u!114 &4849745872403062793
 MonoBehaviour:
   m_ObjectHideFlags: 0

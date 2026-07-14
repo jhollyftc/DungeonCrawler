@@ -23,6 +23,10 @@ namespace DungeonGen
         public DungeonConfig config = new DungeonConfig();
         public ViewStage stage = ViewStage.Rooms;
 
+        [Header("Runtime")]
+        [Tooltip("Generate the dungeon on Start. REQUIRED for builds — generated content is never saved into the scene (the procedural mesh, runtime materials, and the instancer's batches don't serialize), so a build has no dungeon unless it makes one at startup.")]
+        public bool generateOnStart = true;
+
         [Header("Mesh")]
         public bool buildMeshOnGenerate = true;
         public float cellSize = 3f;
@@ -57,6 +61,67 @@ namespace DungeonGen
 
         DungeonGenerator gen;
         public DungeonGenerator Generator => gen;
+
+        // Every root the generator spawns under this transform. Generated
+        // content is NEVER persisted in the scene (see ClearGenerated /
+        // MarkNotPersisted): the procedural mesh + runtime materials + the
+        // instancer's batches don't serialize, and baking ~700 objects into
+        // the scene corrupts the built level0 ("Position out of bounds!").
+        // The dungeon is a pure function of (seed, depth) — regenerate it,
+        // don't store it.
+        static readonly string[] GeneratedRoots =
+        {
+            "DungeonMesh", "DungeonKit", "DungeonInstanced", "DungeonTorches",
+            "DungeonDoors", "DungeonArchways", "DungeonColumns", "DungeonLadders",
+            "DungeonKitColliders", "DungeonProps", "DungeonHallwayProps", "DungeonFog",
+        };
+
+        void Start()
+        {
+            // REQUIRED for builds: nothing is baked into the scene, so the
+            // dungeon must be generated at runtime.
+            if (generateOnStart) Generate();
+        }
+
+        /// <summary>Destroys every generated root. Handles duplicates (an old
+        /// transform.Find-based sweep only caught the first of a name).</summary>
+        [ContextMenu("Clear Generated")]
+        public void ClearGenerated()
+        {
+            var names = new System.Collections.Generic.HashSet<string>(GeneratedRoots);
+            int removed = 0;
+            for (int i = transform.childCount - 1; i >= 0; i--)
+            {
+                Transform child = transform.GetChild(i);
+                if (!names.Contains(child.name)) continue;
+                if (Application.isPlaying) Destroy(child.gameObject);
+                else DestroyImmediate(child.gameObject);
+                removed++;
+            }
+#if UNITY_EDITOR
+            // Destroying objects from a script does NOT mark the scene dirty,
+            // so Ctrl+S would silently no-op and the stale objects would stay
+            // in the .unity file. Mark it explicitly or the clear never lands.
+            if (!Application.isPlaying && removed > 0)
+            {
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(gameObject.scene);
+                Debug.Log($"[Dungeon] Cleared {removed} generated root(s). Scene marked dirty — SAVE IT (Ctrl+S).");
+            }
+#endif
+        }
+
+        // Edit-mode preview must not be written into the scene file.
+        void MarkNotPersisted()
+        {
+            if (Application.isPlaying) return;
+            var names = new System.Collections.Generic.HashSet<string>(GeneratedRoots);
+            foreach (Transform child in transform)
+            {
+                if (!names.Contains(child.name)) continue;
+                foreach (var t in child.GetComponentsInChildren<Transform>(true))
+                    t.gameObject.hideFlags = HideFlags.DontSaveInEditor;
+            }
+        }
 
         [ContextMenu("Generate")]
         public void Generate()
@@ -95,16 +160,8 @@ namespace DungeonGen
                 if (buildMeshOnGenerate) return; // Generate already built the mesh
             }
 
-            // Replace any previous geometry child (any mode) and torches.
-            foreach (string name in new[] { "DungeonMesh", "DungeonKit", "DungeonInstanced", "DungeonTorches", "DungeonDoors", "DungeonArchways", "DungeonColumns", "DungeonLadders", "DungeonKitColliders", "DungeonProps", "DungeonHallwayProps", "DungeonFog" })
-            {
-                Transform old = transform.Find(name);
-                if (old != null)
-                {
-                    if (Application.isPlaying) Destroy(old.gameObject);
-                    else DestroyImmediate(old.gameObject);
-                }
-            }
+            // Replace any previous geometry (any mode), torches, props, fog.
+            ClearGenerated();
 
             InstancedDungeonRenderer sharedInstancer = null;
 
@@ -203,6 +260,9 @@ namespace DungeonGen
             // Torch/prop meshes may have been added to the instancer after its
             // first Commit — re-bake so they render.
             if (sharedInstancer != null) sharedInstancer.Commit();
+
+            // Keep the edit-mode preview out of the saved scene.
+            MarkNotPersisted();
         }
 
         void OnDrawGizmos()

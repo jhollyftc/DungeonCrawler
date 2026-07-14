@@ -3,7 +3,12 @@ guid: 2939fc70aff4c1742be0bce131ae0968
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: cool gray stone
+    second: {fileID: 2100000, guid: 8297c9885f9282b41937a1d537eef49b, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
