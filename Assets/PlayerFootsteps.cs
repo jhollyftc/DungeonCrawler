@@ -26,12 +26,15 @@ namespace DungeonGen
         public float pitchJitter = 0.08f;
         [Tooltip("Downward speed (m/s) required for a landing thump.")]
         public float landVelocityThreshold = 4f;
+        [Tooltip("Keep counting as grounded for this long after losing contact. Walking DOWN stairs or a ramp makes CharacterController.isGrounded flicker false — the capsule leaves the lip of every step — and without this grace the stride accumulator was reset every other frame, so no footstep ever fired going downstairs (it worked going up, where the controller is pressed into each step).")]
+        public float groundedGrace = 0.2f;
 
         CharacterController cc;
         AudioSource src;
         float traveled;
         bool wasGrounded = true;
         float lastYVelocity;
+        float airTime;
         int lastClipIndex = -1;
 
         /// <summary>Fired every stride, even with no audio clips assigned (viewmodel sway hooks this).</summary>
@@ -49,8 +52,16 @@ namespace DungeonGen
 
         void Update()
         {
-            bool grounded = cc.isGrounded;
             Vector3 v = cc.velocity;
+
+            // Coyote-time grounding. cc.isGrounded is unreliable on descents:
+            // going DOWN stairs the capsule pops off each step's lip, so raw
+            // isGrounded strobes false and the stride below never accumulates.
+            // A short grace keeps the stride alive across those gaps while a
+            // real jump/fall (longer than the grace) still reads as airborne.
+            if (cc.isGrounded) airTime = 0f;
+            else airTime += Time.deltaTime;
+            bool grounded = cc.isGrounded || airTime < groundedGrace;
 
             // Landing thump on hard touchdowns.
             if (grounded && !wasGrounded && lastYVelocity < -landVelocityThreshold)
