@@ -274,7 +274,14 @@ One RoomStyle asset defines a room type's whole look. What it holds:
 - **Torch palette** per type: color (HDR), intensity scale, spacing scale.
   Corridors/untyped use the defaults. This is type-driven lighting — a shrine
   glows cold-blue, a treasury gold, *before any prop exists*. Cheapest, highest-
-  impact atmosphere. The palette also drives **dynamic fog** (§10).
+  impact atmosphere. The palette also drives **dynamic fog** (§10) AND the
+  **torch flame VFX**: TorchPlacer resolves each torch's color ONCE and feeds it
+  to both the Light and (if present) the prefab's `VisualEffect` — the flame
+  graph exposes an HDR Color property its color-over-life gradient multiplies, so
+  the gradient owns the SHAPE (bright core → smoke) and the palette owns the hue
+  (a blue-lit shrine burns blue). Light and flame can't drift; a missing/mis-named
+  property warns once and the flame keeps its authored color.
+  (`TorchSettings.tintFlameToLight` / `flameColorProperty`.)
 - **Banded walls** (`WallSet` per type; `WallAsset` with Bottom/Middle/Top band
   checkboxes + `maxPerRoom` cap). Bands are semantic (Bottom = floor course,
   Top = ceiling course, Middle = between; single-story & hallways = Bottom), NOT
@@ -465,6 +472,14 @@ rooms' per-room 110xx). Wired after RoomPropPlacer so torch face-claims exist.
 **Chests:** author as a `Feature`, guaranteed ×1, `StaticCollider` entry in
 Treasury/ChestVault sets. Inert now; interactive later = tier change only.
 
+**Carryable props** (see §10 for the carry rig): a prop the player can pick up
+and throw MUST be authored `PropTier.FullGameObject`, not an instanced tier. The
+instanced tiers bake the MESH into a static matrix and give the prop only a
+collider GameObject, so lifting a `StaticCollider` barrel would carry the collider
+away while the visible mesh stayed welded to the floor. Carryables are low-count
+by nature, so the batching loss is irrelevant. Barrel/crate/skull-style props get
+`Rigidbody` + `Carryable` (+ optional `PushableProp`, `ImpactAudio`).
+
 **Inspector UX:** PropSet entries and RoomStyle's nested lists have custom
 drawers (`Assets/Editor/`) — summary foldout labels instead of "Element N",
 and PropSet entries show only the fields their anchor uses. Editor-only; when
@@ -501,10 +516,44 @@ Formula-driven with authored override points (the user's explicit choice).
   dropdown** picks the spawn room by type (Start for play; any type to debug that
   room's props/lighting), falls back Start → any room. Uses `InteriorFloorCell`
   (an L-room's bbox center can be in a bite).
-- **FirstPersonController**, FlyCamera, PlayerInteractor (SphereCast, E key,
-  IInteractable), HingedDoor (world-up swing axis; facing from DungeonDoorMarker
-  else geometry), PlayerFootsteps (distance-based; fires `OnStep`/`OnLand`
-  events — used by viewmodel sway).
+- **FirstPersonController** — walk/sprint/jump + **hold-to-crouch** (shrinks the
+  capsule from the TOP so feet stay planted, drops the camera with it, and blocks
+  standing up under a ceiling). `IsCrouching` and `HorizontalSpeed`/`IsGrounded`
+  are public — crouch is the seed of future NPC alerting (quiet = unseen). Also
+  hosts the **dev overlay** (`OnGUI`, `showControls`) showing live **seed +
+  depth** (read from the visualizer each frame, never cached — seed re-randomizes
+  on F1) and the **debug keys**: F1 = new dungeon at the same depth, **PgUp/PgDn =
+  depth ±1 with the seed PINNED** (watch one seed grow/shrink with depth). Depth
+  keys survive the scene reload via `DungeonVisualizer.PendingSeed`/`PendingDepth`
+  statics, consumed in `Generate()` before the generator is built (depth drives
+  room count + grid size); runtime-only, serialized inspector values untouched.
+  NB: `OnGUI` must be a CLASS method — nested inside `Update()` as a local
+  function it compiles clean and silently never runs (real bug).
+- **FlyCamera**, **PlayerInteractor** (SphereCast, E key, `IInteractable`; stands
+  down while PlayerCarry holds something so E is unambiguous).
+- **HingedDoor** — the ORIGINAL scripted door (E to open, world-up swing axis;
+  facing from DungeonDoorMarker else geometry). Being superseded by **PhysicsDoor**
+  (below); swapping is a kit prefab swap.
+- **PlayerFootsteps** — distance-based (a step every `stepDistance` of grounded
+  travel, so cadence scales with speed for free). Fires `OnStep`/`OnLand` and
+  exposes `StrideProgress`/`StepCount` (head bob locks to these). **Coyote-time
+  grounding** (`groundedGrace`): `CharacterController.isGrounded` strobes false
+  descending stairs (the capsule pops off each step lip), which reset the stride
+  accumulator every frame → no footsteps going DOWN stairs (worked going up). The
+  grace keeps the stride alive across the gaps; a real jump/fall still reads as
+  airborne.
+- **HeadBob** (on the camera) — subtle vertical dip + sway + roll, **LOCKED to
+  the footstep system**: it reads `PlayerFootsteps.StrideProgress`/`StepCount`
+  (the same accumulator that fires the step SOUND) instead of running its own
+  clock, so the head dips exactly when the foot lands and they can't drift across
+  stops/jumps/stair-descents (all of which reset that accumulator). Vertical dips
+  once per footfall; sway/roll run at HALF that (alternating feet) — that half-rate
+  is what reads as a walk. Cadence therefore comes entirely from `stepDistance`.
+  Heavy carry deepens the lurch (amplitude, via `CarryLoad01`), not the cadence
+  (that would desync). Composes ADDITIVELY with crouch (strips last frame's offset
+  before reapplying, since crouch only writes the camera Y during transitions);
+  roll needs no undo (the controller rewrites localRotation to pure pitch every
+  frame). The camera parents the viewmodel + overlay, so both bob for free.
 - **ViewmodelSway** — spring-based weapon/shield bob/sway, one component per hand,
   runs in LateUpdate on the captured rest pose. Rotation offset is PRE-multiplied
   (`Euler(offset)*rest`) so sway axes are camera-relative regardless of the hand's
@@ -523,6 +572,81 @@ Formula-driven with authored override points (the user's explicit choice).
   retraction at point-blank (real bug: retraction died pressed against walls).
   This cast is the future attack hit-sweep's foundation; deflection (blade
   sliding along walls) is a deliberately deferred v2.
+- **ViewmodelCamera** (on the player camera) — renders the weapon/shield through
+  a separate URP **Overlay camera that CLEARS DEPTH**, so the viewmodel is drawn
+  after the world onto cleared depth and physically CANNOT clip through geometry,
+  at any rotation, with no per-weapon tuning (the standard FPS fix). At Awake it
+  moves the `viewmodelRoots` hierarchies onto a **Viewmodel layer** (you must
+  create the layer), strips that layer from the base camera, and builds the
+  overlay in the base camera's stack — so the player prefab stays self-contained.
+  ViewmodelCollision still runs but its job CHANGES to a pure FEEL mechanic
+  (weapon pulls back when you press into a wall), no longer a correctness
+  guarantee. `SetViewmodelVisible(false)` stows both while carrying (§ carry).
+  **Exclude the Viewmodel layer from world queries** (ViewmodelCollision's mask
+  etc.) or the weapon casts against itself. GOTCHA that cost us: the overlay fails
+  SILENTLY if disabled — URP still lists it in the stack while the weapon is just
+  gone; DungeonPlayerSpawner's `HandleOtherCameras` was disabling EVERY non-player
+  camera including this overlay (built during the same Instantiate), so it now
+  skips cameras the player rig owns.
+- **Physics interaction layer (`IPushable`)** — the split that makes it compose:
+  the PLAYER decides how HARD it pushes (a speed-scaled impulse — sprint shoves,
+  crouch barely nudges), the OBJECT decides what that force MEANS.
+  `CharacterControllerPhysicsPush` (on the player, `OnControllerColliderHit`)
+  supplies the force; a `PhysicsDoor` turns it into hinge torque, a `PushableProp`
+  applies its own multiplier/speed-cap, a plain Rigidbody gets a mass-aware default
+  shove. So tuning a barrel can never un-tune the doors. **FRAMERATE LESSON (real
+  field bug):** `OnControllerColliderHit` fires once per FRAME and an Impulse
+  ignores time, so raw delivery is (force × framerate) per second — fast PCs opened
+  doors, slow PCs couldn't. Fixed by scaling the push by
+  `Time.deltaTime × referenceFrameRate`, so per-second delivery is identical on
+  every machine. (Carrying a prop into a door always worked because that contact
+  resolves in the fixed-rate physics step.)
+- **PhysicsDoor + PhysicsDoorAudio** — a door you push open by walking into it.
+  Contact → **pure torque about the hinge axis** (never `AddForceAtPosition`,
+  which injects linear velocity the joint fights and tears the door off its
+  hinge); `ForceMode.Impulse` so mass/leverage feel real; **angular** speed
+  clamped (`maxSwingSpeed`) — a hinged door's LINEAR velocity is ~0, so a linear
+  clamp never fires and impulses compound. Angle comes from the transform
+  (`CurrentAngle`), NOT `HingeJoint.angle` (returns 0 and NaN, which poisoned the
+  logic). NO `RigidbodyConstraints` (world-space, vs the LOCAL hinge axis — freezing
+  world X/Z welded the FBX doors shut). **One-way-per-swing:** opens either way,
+  but once past `commitAngle` the opposite limit snaps to 0 so it can't pass through
+  closed — hits a hard stop and thunks like a real frame; full range restored once
+  settled. `thunkArmAngle` gates the closing thunk (a shoving match jittering around
+  0 stays silent). Audio is state/event-driven: a LOOPING creak whose volume/pitch
+  track live swing speed + one-shot thunk/slam (`OnClosed`/`OnSlamOpen`, carrying
+  impact speed → volume). Impacts and creak use SEPARATE reference speeds (the door
+  hits the closed stop far slower than it peaks). Kinematic toggle = a locked door
+  (future).
+- **Carrying / throwing (`PlayerCarry` + `Carryable`)** — pick up (via
+  `IInteractable`/E), carry, drop (E), throw (LMB). The carry is **VELOCITY-DRIVEN,
+  not a kinematic parent**: the prop stays a fully dynamic Rigidbody pulled toward
+  a hold point each FixedUpdate, so it never stops colliding — bonks off frames,
+  knocks props over, swings a physics door open on contact, and CANNOT be walked
+  through a wall (a kinematic carry would let you stroll it through geometry — wrong
+  instinct for this game). Mass expresses itself through ONE clamp (`maxCarryForce`):
+  a heavy prop lags the hold point and swings wide. Carryables must be
+  `PropTier.FullGameObject` (§8). Two safeguards that matter: `Physics.IgnoreCollision`
+  between the capsule and the held prop (else the push force and carry force fight
+  every frame), and a **break distance** that drops a prop wedged behind geometry
+  rather than dragging it forever. Two-handed: the viewmodel stows while carrying
+  (hands full). Throw speed is authored per-prop (`Carryable.throwSpeed`), NOT derived
+  from mass (mass already governs flight/impact); the throw grunt is pitched by mass.
+- **Encumbrance** — one mass signal, `PlayerCarry.CarryLoad01` (0 below
+  `freeCarryMass`, 1 at `heavyCarryMass`), drives EVERYTHING that means "heavy":
+  carry lag, move-speed penalty (`CarrySpeedMultiplier`), turn-rate penalty
+  (`CarryTurnMultiplier`), and head-bob depth. Set a prop's `Rigidbody.mass` and
+  its whole heaviness moves together — deliberately one dial, never several that
+  can drift apart.
+- **ImpactAudio** — speed-driven collision sound for ANY Rigidbody (thrown barrel,
+  shoved crate). Force is audible for free (impact speed → volume + pitch). The
+  trap: `OnCollisionEnter` is NOT one-per-throw (a landing barrel bounces and
+  re-contacts a dozen times), so a speed floor + retrigger interval stop it
+  machine-gunning until the prop settles. Fires **`OnImpact(position, loudness)`**
+  — the hook for NPC alerting; a thrown prop makes noise SOMEWHERE ELSE, turning
+  carrying into a distraction mechanic. Nothing listens yet. Together with
+  `IsCrouching` and the door's quiet-swing threshold, the SENSING side of NPC
+  alerting is largely built ahead of any consumer.
 - **Ladder climbing** — `LadderClimbZone` (trigger marker authored on the
   ladder prefab; extend the trigger ~0.5m above the top opening so cresting
   feels right). FirstPersonController POLLS an overlap sphere each frame
@@ -565,11 +689,19 @@ Cosmetic-first; combat is far off ("get the world together first").
     inside-corner), hallway props, near-prop + near-wall (labeled),
     label spacing, tile sharing. Remaining prop idea: procedural
     clump-scatter (see §8 "Not yet built").
-13. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material)
+13. ✅ Viewmodel overlay camera (depth-clear; kills weapon/shield clipping).
+14. ✅ Physics interaction layer: push-open physics doors (+ audio), the
+    `IPushable` push system (framerate-independent), crouch/sneak, and
+    carrying/throwing with mass-driven encumbrance + ImpactAudio.
+15. ✅ Head bob (footstep-locked; deepens with carry load).
+16. ✅ Torch flame VFX tinted to the per-room torch palette.
+17. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material)
     — mostly Blender/texture work; toon shader packed-mask already ready.
-14. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit →
+18. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit →
     home base → depth increment → sell/replenish). Design chat first.
-15. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
+19. ⏳ NPC alerting — the SENSING half is built (crouch/`IsCrouching`, door
+    quiet-swing threshold, `ImpactAudio.OnImpact`); needs actors + a consumer.
+20. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
     doored rooms = lockable set), difficulty gradient by graph depth, equipment
     + SwayProfiles, then combat.
 
