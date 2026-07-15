@@ -23,9 +23,12 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 0
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 0
-    chancePerCell: 0.322
+    chancePerCell: 1
     maxPerRoom: 0
     preferredZones: -1
     facing: 3
@@ -51,6 +54,9 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 0
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 0
     chancePerCell: 1
@@ -79,6 +85,9 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 0
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 0
     chancePerCell: 1
@@ -107,6 +116,9 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 0
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 0
     chancePerCell: 0.318
@@ -135,6 +147,9 @@ MonoBehaviour:
     featureSpot: 0
     featureFacing: 0
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 0
     chancePerCell: 1

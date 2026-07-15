@@ -196,7 +196,7 @@ PrefabInstance:
     - target: {fileID: -5754084199372789682, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: m_Mesh
       value: 
-      objectReference: {fileID: 2012621289761067564, guid: b626f396d0838424aa60ecc1bc8d07d4, type: 3}
+      objectReference: {fileID: 1936217742883674089, guid: 5fbfbf94311576b4bafce1a987923670, type: 3}
     - target: {fileID: 919132149155446097, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: m_Name
       value: Prison_Door
@@ -253,8 +253,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0, y: 0.0036727374, z: 0.0065897293}
-  m_Center: {x: 0.00030000036, y: 0.00012973229, z: -0.00045207553}
+  m_Size: {x: 0, y: 0.0040633, z: 0.0065897293}
+  m_Center: {x: 0.00030000036, y: 0.000064638654, z: -0.00045207562}
 --- !u!54 &6164347188937228515
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -475,7 +475,7 @@ MonoBehaviour:
   creakFadeSpeed: 4
   creakPitchRange: {x: 0.75, y: 0.75}
   impactPitchRange: {x: 0.95, y: 1.05}
-  debugAudio: 1
+  debugAudio: 0
 --- !u!1001 &8606022166973257070
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -490,7 +490,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Size.y
-      value: 0.002752471
+      value: 0.0024776317
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Size.z
@@ -506,7 +506,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.y
-      value: -0.0036807396
+      value: -0.00381816
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.z
@@ -514,7 +514,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4837963884654409230, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Size.y
-      value: 0.0027283996
+      value: 0.0024535602
       objectReference: {fileID: 0}
     - target: {fileID: 4837963884654409230, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Size.z
@@ -526,7 +526,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4837963884654409230, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.y
-      value: 0.0037204763
+      value: 0.003857897
       objectReference: {fileID: 0}
     - target: {fileID: 4837963884654409230, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.z

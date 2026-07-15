@@ -1,24 +1,9 @@
 fileFormatVersion: 2
-guid: e3547d540381dce4ba4e9257ef9a6656
+guid: 5fbfbf94311576b4bafce1a987923670
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects:
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: Material.001
-    second: {fileID: 2100000, guid: 9951a3d205895494ba16ba50fa6b9791, type: 2}
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: Wall_sheleton_material
-    second: {fileID: 2100000, guid: d068be73aab060648b32f483f996aa0a, type: 2}
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: tripo_mat_3371d0c4-d0b7-4633-863b-afebfade0f3e
-    second: {fileID: 2100000, guid: 07bf6bd558e03f24085df41a3f61c03a, type: 2}
+  externalObjects: {}
   materials:
     materialImportMode: 2
     materialName: 0

@@ -19,10 +19,13 @@ MonoBehaviour:
     anchor: 3
     tier: 1
     featurePositionMode: 1
-    featureWallSide: 0
+    featureWallSide: 2
     featureSpot: 0
     featureFacing: 4
     featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 0
     count: 0
     chancePerCell: 0
@@ -32,6 +35,8 @@ MonoBehaviour:
     yawRange: {x: 0, y: 0}
     subCellJitter: 1
     snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
     wallGap: 0.1
     mountHeight: 2.2
     mountHeightJitter: 0

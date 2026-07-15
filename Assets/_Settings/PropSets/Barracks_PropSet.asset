@@ -56,7 +56,7 @@ MonoBehaviour:
     featureYaw: 0
     hostLabel: 
     chancePerHost: 0.6
-    minSpacing: 0
+    minSpacing: 4
     guaranteed: 0
     count: 0
     chancePerCell: 0.444
@@ -111,11 +111,11 @@ MonoBehaviour:
     - {fileID: 8092874129027547640, guid: a37885a67eabb2840b7e1af0587aa663, type: 3}
     anchor: 3
     tier: 1
-    featurePositionMode: 1
-    featureWallSide: 0
+    featurePositionMode: 0
+    featureWallSide: 2
     featureSpot: 0
-    featureFacing: 4
-    featureYaw: 180
+    featureFacing: 0
+    featureYaw: 90
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
@@ -140,6 +140,7 @@ MonoBehaviour:
   - label: Barrel
     prefabs:
     - {fileID: 8418309518360107936, guid: 26210594d958cc14ebdec7eb22c3ae0f, type: 3}
+    - {fileID: 6154846084994668213, guid: f3a632176cfd83b44b667cbbb8936833, type: 3}
     anchor: 0
     tier: 3
     featurePositionMode: 1

@@ -475,7 +475,7 @@ MonoBehaviour:
   creakFadeSpeed: 4
   creakPitchRange: {x: 0.85, y: 0.85}
   impactPitchRange: {x: 0.95, y: 1.05}
-  debugAudio: 1
+  debugAudio: 0
 --- !u!1001 &8606022166973257070
 PrefabInstance:
   m_ObjectHideFlags: 0

@@ -44,10 +44,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 919132149155446097, guid: 7677874210a629d4aa184891b8ee7c3d, type: 3}
+  childPrefabs: []
   childTier: 0
-  fillChance: 0.75
+  fillChance: 0.632
   yawJitter: 30
   positionJitter: 0.5
 --- !u!1 &1072738773677429554
@@ -94,10 +93,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 919132149155446097, guid: 7677874210a629d4aa184891b8ee7c3d, type: 3}
+  childPrefabs: []
   childTier: 0
-  fillChance: 0.75
+  fillChance: 0.632
   yawJitter: 30
   positionJitter: 0.5
 --- !u!1 &1967809647090317432
@@ -144,10 +142,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 919132149155446097, guid: 7677874210a629d4aa184891b8ee7c3d, type: 3}
+  childPrefabs: []
   childTier: 0
-  fillChance: 0.75
+  fillChance: 0.632
   yawJitter: 30
   positionJitter: 0.5
 --- !u!1 &2638428141681148539
@@ -194,10 +191,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 919132149155446097, guid: 7677874210a629d4aa184891b8ee7c3d, type: 3}
+  childPrefabs: []
   childTier: 0
-  fillChance: 0.75
+  fillChance: 0.632
   yawJitter: 30
   positionJitter: 0.5
 --- !u!1 &2792596635993020000
@@ -244,10 +240,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 919132149155446097, guid: 7677874210a629d4aa184891b8ee7c3d, type: 3}
+  childPrefabs: []
   childTier: 0
-  fillChance: 0.75
+  fillChance: 0.632
   yawJitter: 30
   positionJitter: 0.5
 --- !u!1 &4098965587439556402
@@ -294,10 +289,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 919132149155446097, guid: 7677874210a629d4aa184891b8ee7c3d, type: 3}
+  childPrefabs: []
   childTier: 0
-  fillChance: 0.75
+  fillChance: 0.632
   yawJitter: 30
   positionJitter: 0.5
 --- !u!1 &5644954033374596664
@@ -344,10 +338,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 919132149155446097, guid: 7677874210a629d4aa184891b8ee7c3d, type: 3}
+  childPrefabs: []
   childTier: 0
-  fillChance: 0.75
+  fillChance: 0.632
   yawJitter: 30
   positionJitter: 0.5
 --- !u!1 &6251892125771694131
@@ -394,10 +387,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 919132149155446097, guid: 7677874210a629d4aa184891b8ee7c3d, type: 3}
+  childPrefabs: []
   childTier: 0
-  fillChance: 0.75
+  fillChance: 0.632
   yawJitter: 30
   positionJitter: 0.5
 --- !u!1 &7842862210689557969
@@ -444,10 +436,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 919132149155446097, guid: 7677874210a629d4aa184891b8ee7c3d, type: 3}
+  childPrefabs: []
   childTier: 0
-  fillChance: 0.75
+  fillChance: 0.632
   yawJitter: 30
   positionJitter: 0.5
 --- !u!1 &8047614932540048212
@@ -494,10 +485,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
-  childPrefabs:
-  - {fileID: 919132149155446097, guid: 7677874210a629d4aa184891b8ee7c3d, type: 3}
+  childPrefabs: []
   childTier: 0
-  fillChance: 0.75
+  fillChance: 0.632
   yawJitter: 30
   positionJitter: 0.5
 --- !u!1001 &8652186974463583985
@@ -619,7 +609,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8418309518360107936}
   serializedVersion: 5
-  m_Mass: 10
+  m_Mass: 15
   m_LinearDamping: 1
   m_AngularDamping: 1
   m_CenterOfMass: {x: 0, y: 0, z: 0}

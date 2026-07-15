@@ -201,7 +201,7 @@ MonoBehaviour:
   silentBelowSpeed: 0.25
   minimumVolume: 0.05
   maximumVolume: 1
-  minimumInterval: 0.08
+  minimumInterval: 0.12
   pitchRange: {x: 2, y: 3.5}
   forcePitchRange: {x: 1.05, y: 0.9}
   debugAudio: 1

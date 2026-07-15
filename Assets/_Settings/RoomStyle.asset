@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: RoomStyle
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.RoomStyle
   defaultTorchColor: {r: 1, g: 0.72, b: 0.42, a: 1}
-  defaultIntensityScale: 3
-  defaultSpacingScale: 1
+  defaultIntensityScale: 5
+  defaultSpacingScale: 1.5
   entries:
   - type: 1
     torchColor: {r: 0, g: 1, b: 0.7079071, a: 1}
@@ -22,52 +22,52 @@ MonoBehaviour:
     spacingScale: 0.8
   - type: 2
     torchColor: {r: 1, g: 0, b: 0.73324835, a: 1}
-    intensityScale: 3
-    spacingScale: 0.8
+    intensityScale: 5
+    spacingScale: 1.5
   - type: 3
     torchColor: {r: 0.8867924, g: 0.06393668, b: 0.037646834, a: 1}
-    intensityScale: 3
-    spacingScale: 0.7
+    intensityScale: 5
+    spacingScale: 1.5
   - type: 10
     torchColor: {r: 1, g: 0.85, b: 0.2, a: 1}
     intensityScale: 3
-    spacingScale: 1
+    spacingScale: 1.5
   - type: 4
     torchColor: {r: 0.060173314, g: 0.5566038, b: 0, a: 1}
-    intensityScale: 3
-    spacingScale: 0.7
+    intensityScale: 5
+    spacingScale: 1.5
   - type: 5
     torchColor: {r: 1, g: 0.6, b: 0.35, a: 1}
     intensityScale: 3
-    spacingScale: 0.9
+    spacingScale: 1.5
   - type: 11
     torchColor: {r: 0.9490196, g: 0.59030735, b: 0.40000004, a: 1}
     intensityScale: 3
-    spacingScale: 1
+    spacingScale: 1.5
   - type: 6
     torchColor: {r: 1, g: 0.5, b: 0.25, a: 1}
     intensityScale: 3
-    spacingScale: 0.8
+    spacingScale: 1.5
   - type: 12
     torchColor: {r: 1, g: 0.65, b: 0.4, a: 1}
-    intensityScale: 1.5
-    spacingScale: 1
+    intensityScale: 3
+    spacingScale: 1.5
   - type: 7
     torchColor: {r: 0.6, g: 0.63936204, b: 0.9490196, a: 1}
-    intensityScale: 3
-    spacingScale: 1
+    intensityScale: 5
+    spacingScale: 1.5
   - type: 13
     torchColor: {r: 0.6264139, g: 0.6, b: 0.9019608, a: 1}
-    intensityScale: 3
-    spacingScale: 1.1
-  - type: 8
-    torchColor: {r: 0.39793366, g: 0.042452812, b: 1, a: 1}
     intensityScale: 5
-    spacingScale: 1.2
+    spacingScale: 1.5
+  - type: 8
+    torchColor: {r: 1, g: 0.042452812, b: 1, a: 1}
+    intensityScale: 5
+    spacingScale: 1.5
   - type: 14
     torchColor: {r: 0.6, g: 0.85, b: 1, a: 1}
-    intensityScale: 3
-    spacingScale: 1
+    intensityScale: 5
+    spacingScale: 1.5
   roomWalls:
   - type: 5
     walls:
@@ -204,7 +204,7 @@ MonoBehaviour:
     archwayPrefabs:
     - {fileID: 1222708879805728174, guid: d1a9ad98a5b88cd4591abb6df8a66a93, type: 3}
     doorPrefabs:
-    - {fileID: 1222708879805728174, guid: d1a9ad98a5b88cd4591abb6df8a66a93, type: 3}
+    - {fileID: 1029005481309709157, guid: f0c5463a716c04b408525af9c08e4184, type: 3}
     outerPillarPrefabs: []
     innerPillarPrefabs: []
   - type: 1

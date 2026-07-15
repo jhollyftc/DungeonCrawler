@@ -415,8 +415,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9fe5123c3be6569418668e13e27f9ae5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PushableProp
-  pushMultiplier: 10
-  maxPushSpeed: 1
+  pushMultiplier: 1
+  maxPushSpeed: 2
   pushAtContactPoint: 1
 --- !u!4 &7948687033450948168 stripped
 Transform:

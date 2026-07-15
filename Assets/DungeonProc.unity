@@ -164,8 +164,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b70f8b5f954af8a47929025c76042179, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonVisualizer
-  seed: 1461485130
-  randomizeSeedOnGenerate: 1
+  seed: 522462086
+  randomizeSeedOnGenerate: 0
   config:
     depth: 6
     depthProfile: {fileID: 11400000, guid: 3271732a93adbe14b9886183c76b635d, type: 2}
@@ -215,7 +215,7 @@ MonoBehaviour:
     - {fileID: 1222708879805728174, guid: d1a9ad98a5b88cd4591abb6df8a66a93, type: 3}
     doorPrefabs:
     - {fileID: 1029005481309709157, guid: f0c5463a716c04b408525af9c08e4184, type: 3}
-    - {fileID: 31987459120215761, guid: 441a2e6065b33454c8a708e7d1cff012, type: 3}
+    - {fileID: 1029005481309709157, guid: 52494da86f067b0408b58e8fb47dd04d, type: 3}
     outerCornerPillarPrefabs:
     - {fileID: 4427756941774512757, guid: 146d7ec88adf7f049a4451c6c9c158e4, type: 3}
     innerCornerPillarPrefabs: []
@@ -257,6 +257,8 @@ MonoBehaviour:
     maxShadowCasters: 3
     torchPrefabs:
     - {fileID: 264709319484758466, guid: ca4ba1aa00476954d8dd04ccefe8dba8, type: 3}
+    tintFlameToLight: 1
+    flameColorProperty: Color
     cullTorchLights: 1
     cullDistance: 40
     cullChecksPerFrame: 750
