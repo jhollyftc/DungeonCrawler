@@ -21,6 +21,9 @@ namespace DungeonGen
         [Tooltip("Impulse applied on contact at FULL speed. MASS-AWARE (ForceMode.Impulse): heavy things resist, light things fly.")]
         [SerializeField] private float pushForce = 15f;
 
+        [Tooltip("Framerate the push force is calibrated against. OnControllerColliderHit fires ONCE PER FRAME, and an Impulse ignores time, so without this the momentum delivered per second is (force x framerate): a 144Hz PC shoves a door ~3x harder than a 45Hz PC, and on a slow machine the door never beats its self-closing spring. This normalizes delivery so every framerate matches what 'force' does at THIS reference rate. Leave at 60 unless you know your tuning machine's fps.")]
+        [SerializeField] private float referenceFrameRate = 60f;
+
         [Header("Speed scaling (this is what makes sneaking work)")]
         [Tooltip("Scale the push by how fast the player is ACTUALLY moving. A crouched player eases a door open instead of banging it, so it stays under the door's noise threshold — stealth falls out of the physics instead of being special-cased. Turn off for a constant shove.")]
         [SerializeField] private bool scaleByPlayerSpeed = true;
@@ -58,7 +61,14 @@ namespace DungeonGen
             // How hard you shove follows how fast you're actually moving. This is
             // the whole sneak mechanic: crouch → slow → gentle push → the door
             // barely swings → it never passes the door's thunkArmAngle → silent.
-            float force = pushForce * CurrentPushScale();
+            //
+            // The Time.deltaTime term is the FRAMERATE FIX. This runs once per
+            // frame and delivers an Impulse (instantaneous, time-agnostic), so raw
+            // it would hand the door (force x framerate) of momentum per second —
+            // fast PCs open doors, slow PCs can't. Multiplying by (deltaTime x
+            // referenceFrameRate) makes the per-second delivery identical on every
+            // machine and equal to what `force` means at the reference rate.
+            float force = pushForce * CurrentPushScale() * (Time.deltaTime * referenceFrameRate);
 
             // If the object knows how to be pushed, let IT decide what the shove
             // means. A PhysicsDoor turns it into torque about its hinge (a linear
