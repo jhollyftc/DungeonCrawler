@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.VFX;
 
 namespace DungeonGen
 {
@@ -47,6 +48,12 @@ namespace DungeonGen
         [Header("Visual (optional)")]
         [Tooltip("Sconce/torch model, forward axis pointing away from the wall. If the prefab contains its own Light, no extra light is added.")]
         public GameObject[] torchPrefabs;
+
+        [Header("Flame VFX (optional)")]
+        [Tooltip("Tint the torch prefab's flame VFX (a VisualEffect anywhere in the prefab) to the SAME per-room-type color the light uses. A shrine's cold-blue light then gets a cold-blue flame. Requires the VFX Graph to expose a Color property (named below) that its color-over-life gradient is multiplied by — script can't reach inside a baked gradient node.")]
+        public bool tintFlameToLight = true;
+        [Tooltip("Name of the exposed HDR Color property in the flame VFX Graph. Must match exactly. The graph should multiply its color-over-life gradient by this so the flame keeps its bright-core-to-smoke SHAPE while taking the room's hue.")]
+        public string flameColorProperty = "Color";
 
         [Header("Culling")]
         [Tooltip("Only torch lights within this distance of the camera are enabled. Sconce meshes are never hidden — only the lights and flicker toggle.")]
@@ -123,6 +130,12 @@ namespace DungeonGen
             slots.Sort((a, b) =>
                 SlotHash(a.cell, a.dir).CompareTo(SlotHash(b.cell, b.dir)));
 
+            // VFX exposed-property lookups go through the shader-property id space.
+            // Resolve once and remember if the name never matched, so a typo warns
+            // exactly once instead of per-torch.
+            int flameColorId = Shader.PropertyToID(s.flameColorProperty);
+            bool flameTintWarned = false;
+
             var accepted = new List<(Vector3Int cell, Vector3Int dir, CellType type)>();
             // Bucket accepted torches by wall plane for cheap distance checks.
             var byPlane = new Dictionary<(Vector3Int dir, int planeCoord, int y), List<Vector3Int>>();
@@ -198,6 +211,7 @@ namespace DungeonGen
 
                 Light light = null;
                 TorchFlicker flicker = null;
+                VisualEffect flame = null;
 
                 if (prefab != null && instancer != null)
                 {
@@ -220,6 +234,7 @@ namespace DungeonGen
                                     flicker = light.gameObject.AddComponent<TorchFlicker>();
                                     flicker.noiseSeed = seed;
                                 }
+                                flame = go.GetComponentInChildren<VisualEffect>(true);
                             } } },
                         PropTier.InstancedMeshWithLight, cellSize, root.transform);
                 }
@@ -235,6 +250,7 @@ namespace DungeonGen
                     {
                         var visual = Object.Instantiate(prefab, pos, rot * prefab.transform.rotation, torch.transform);
                         light = visual.GetComponentInChildren<Light>();
+                        flame = visual.GetComponentInChildren<VisualEffect>(true);
                     }
                     if (light == null)
                     {
@@ -248,22 +264,41 @@ namespace DungeonGen
                     }
                 }
 
+                // Per-room-type color/intensity from the style; corridors and
+                // untyped areas use the torch settings' defaults. Resolved ONCE
+                // here so the light and the flame VFX can't drift apart.
+                Color col = s.color;
+                float intensityScale = 1f;
+                if (style != null)
+                {
+                    var room = gen.RoomAt(c);
+                    if (room != null)
+                    {
+                        var e = style.For(room.Type);
+                        col = e.torchColor;
+                        intensityScale = e.intensityScale;
+                    }
+                }
+
+                // Tint the flame to match. The color-over-life gradient in the
+                // graph supplies the SHAPE (bright core -> smoke); this exposed
+                // property supplies the hue, so a blue-lit room burns blue.
+                if (flame != null && s.tintFlameToLight)
+                {
+                    if (flame.HasVector4(flameColorId))
+                        flame.SetVector4(flameColorId, col);
+                    else if (!flameTintWarned)
+                    {
+                        flameTintWarned = true;
+                        Debug.LogWarning($"[Dungeon] Torch flame VFX has no exposed Color property named " +
+                            $"'{s.flameColorProperty}' — flames won't tint to the room color. Add an exposed " +
+                            $"HDR Color property with that exact name to the flame VFX Graph and multiply its " +
+                            $"color-over-life gradient by it. (Warning shown once.)", flame);
+                    }
+                }
+
                 if (light != null)
                 {
-                    // Per-room-type color/intensity from the style; corridors and
-                    // untyped areas use the torch settings' defaults.
-                    Color col = s.color;
-                    float intensityScale = 1f;
-                    if (style != null)
-                    {
-                        var room = gen.RoomAt(c);
-                        if (room != null)
-                        {
-                            var e = style.For(room.Type);
-                            col = e.torchColor;
-                            intensityScale = e.intensityScale;
-                        }
-                    }
                     light.color = col;
                     light.intensity = s.intensity * intensityScale;
                     light.range = s.range;
