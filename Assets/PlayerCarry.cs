@@ -49,6 +49,8 @@ namespace DungeonGen
         public float heavyCarryMass = 30f;
         [Tooltip("Slowest the player can be dragged to while carrying, as a fraction of normal speed. Never 0 — hauling something heavy should be a slog, not a full stop.")]
         [Range(0.1f, 1f)] public float minMoveSpeedMultiplier = 0.45f;
+        [Tooltip("Slowest mouse turn rate while at full load, as a fraction of normal. A heavy load makes you swing the view around like you're leaning into it. Never 0 — you must still be able to look around.")]
+        [Range(0.1f, 1f)] public float minTurnRateMultiplier = 0.6f;
 
         [Header("Release")]
         [Tooltip("Drop the object if it ends up this far from the hold point — i.e. it's wedged behind geometry or you backed into a corner. Without this, a prop can jam behind a wall and drag along with you forever.")]
@@ -89,21 +91,36 @@ namespace DungeonGen
         public bool IsCarrying => held != null;
 
         /// <summary>
+        /// How loaded the player is, 0 (empty-handed or a trivial load) to 1 (at or
+        /// past heavyCarryMass). The single weight signal every "carrying is heavy"
+        /// system reads from the held MASS — speed penalty, head bob, anything
+        /// later — so they can never disagree about how heavy the load is.
+        /// </summary>
+        public float CarryLoad01
+        {
+            get
+            {
+                if (!IsCarrying || heldBody == null) return 0f;
+                return Mathf.Clamp01(Mathf.InverseLerp(freeCarryMass, heavyCarryMass, heldBody.mass));
+            }
+        }
+
+        /// <summary>
         /// Move-speed scale from what you're carrying (1 = unencumbered). The held
         /// object's MASS drives it, so the same number that makes a crate lag in
         /// your hands and thud when thrown also drags your feet — weight has one
         /// meaning across the whole system. FirstPersonController multiplies its
         /// speed by this.
         /// </summary>
-        public float CarrySpeedMultiplier
-        {
-            get
-            {
-                if (!IsCarrying || heldBody == null) return 1f;
-                float t = Mathf.InverseLerp(freeCarryMass, heavyCarryMass, heldBody.mass);
-                return Mathf.Lerp(1f, minMoveSpeedMultiplier, t);
-            }
-        }
+        public float CarrySpeedMultiplier => Mathf.Lerp(1f, minMoveSpeedMultiplier, CarryLoad01);
+
+        /// <summary>
+        /// Mouse turn-rate scale from what you're carrying (1 = free). Same mass
+        /// signal as the move-speed penalty, so a heavy load slows your look and
+        /// your walk together — the whole body reads as loaded, not just the legs.
+        /// FirstPersonController multiplies its look sensitivity by this.
+        /// </summary>
+        public float CarryTurnMultiplier => Mathf.Lerp(1f, minTurnRateMultiplier, CarryLoad01);
 
         void Awake()
         {

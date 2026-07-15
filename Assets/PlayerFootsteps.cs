@@ -42,6 +42,11 @@ namespace DungeonGen
         /// <summary>Fired on hard touchdown, with the downward impact speed in m/s.</summary>
         public System.Action<float> OnLand;
 
+        /// <summary>Completed steps this session. Its parity (even/odd) is which foot is landing — head bob sways left/right off it.</summary>
+        public int StepCount { get; private set; }
+        /// <summary>How far into the current stride, 0→1, where 1 fires the next step. Head bob reads this so a foot-plant (the sound) lands exactly on the bob's dip.</summary>
+        public float StrideProgress => Mathf.Clamp01(traveled / Mathf.Max(0.0001f, stepDistance));
+
         void Awake()
         {
             cc = GetComponent<CharacterController>();
@@ -82,6 +87,7 @@ namespace DungeonGen
                     if (traveled >= stepDistance)
                     {
                         traveled = 0f;
+                        StepCount++;
                         OnStep?.Invoke();
                         PlayStep();
                     }

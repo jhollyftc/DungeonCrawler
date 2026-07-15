@@ -43,11 +43,15 @@ namespace DungeonGen
         [Header("Developer UI")]
         [Tooltip("Draws the control list in the top-right corner. Dev aid — turn it off for a real build.")]
         public bool showControls = true;
+        [Tooltip("Highest depth PgUp will climb to. A cap because grid size scales with depth — very high depths generate huge, slow dungeons.")]
+        public int maxDebugDepth = 20;
 
         /// <summary>True while crouched. Read by anything that cares how quiet the player is (future NPC alerting).</summary>
         public bool IsCrouching { get; private set; }
         /// <summary>Current horizontal speed (m/s). Physics pushes scale off this, so how hard you shove things follows how fast you're actually moving.</summary>
         public float HorizontalSpeed => new Vector3(cc.velocity.x, 0f, cc.velocity.z).magnitude;
+        /// <summary>Grounded this frame. Head bob reads it so the camera doesn't bob mid-air. Flickers on step descents (see PlayerFootsteps' coyote time), so smooth anything that keys off it.</summary>
+        public bool IsGrounded => cc != null && cc.isGrounded;
 
         CharacterController cc;
         float pitch;
@@ -91,11 +95,18 @@ namespace DungeonGen
 
         void Update()
         {
-           
+            // F1: new dungeon at the SAME depth (carry the current runtime depth
+            // across the reload; seed re-randomizes per the visualizer's setting).
             if (Input.GetKeyDown(KeyCode.F1))
             {
-                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+                if (dungeon != null) DungeonVisualizer.PendingDepth = dungeon.config.depth;
+                ReloadScene();
             }
+            // PgUp / PgDn: change depth but keep the SAME seed, so you can watch
+            // one seed grow/shrink with depth. Pinning the seed is what makes the
+            // comparison meaningful rather than just a different random dungeon.
+            if (Input.GetKeyDown(KeyCode.PageUp)) ChangeDepth(+1);
+            if (Input.GetKeyDown(KeyCode.PageDown)) ChangeDepth(-1);
 
             // Cursor capture.
             if (Input.GetKeyDown(KeyCode.Escape))
@@ -109,11 +120,14 @@ namespace DungeonGen
                 Cursor.visible = false;
             }
 
-            // Look.
+            // Look. A heavy carry drags the turn rate down too, so the whole body
+            // reads as loaded — same mass signal as the move-speed penalty.
             if (Cursor.lockState == CursorLockMode.Locked)
             {
-                transform.Rotate(0f, Input.GetAxis("Mouse X") * lookSensitivity, 0f);
-                pitch -= Input.GetAxis("Mouse Y") * lookSensitivity;
+                float look = lookSensitivity;
+                if (carry != null) look *= carry.CarryTurnMultiplier;
+                transform.Rotate(0f, Input.GetAxis("Mouse X") * look, 0f);
+                pitch -= Input.GetAxis("Mouse Y") * look;
                 pitch = Mathf.Clamp(pitch, -89f, 89f);
                 if (cam != null)
                     cam.localRotation = Quaternion.Euler(pitch, 0f, 0f);
@@ -159,6 +173,21 @@ namespace DungeonGen
                 Quit();
         }
 
+        /// <summary>Reload the active scene — the dungeon rebuilds from the (possibly overridden) seed/depth.</summary>
+        void ReloadScene() => SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+
+        /// <summary>Bump run depth by delta, pin the current seed, and rebuild.</summary>
+        void ChangeDepth(int delta)
+        {
+            if (dungeon == null) return;
+            int next = Mathf.Clamp(dungeon.config.depth + delta, 1, Mathf.Max(1, maxDebugDepth));
+            if (next == dungeon.config.depth) return; // already at the clamp — nothing to rebuild
+
+            DungeonVisualizer.PendingDepth = next;
+            DungeonVisualizer.PendingSeed = dungeon.seed; // same seed, new depth
+            ReloadScene();
+        }
+
         /// <summary>
         /// Developer control list. Unity finds OnGUI by reflecting over the CLASS,
         /// so this has to live at class scope — nested inside Update() it's just an
@@ -185,7 +214,8 @@ namespace DungeonGen
                 "Ctrl / Mouse4 - Crouch\n" +
                 "E - Interact / Pick up / Drop\n" +
                 "LMB - Throw\n" +
-                "F1 - New Dungeon\n" +
+                "F1 - New Dungeon (same depth)\n" +
+                "PgUp/PgDn - Depth +/- (same seed)\n" +
                 "Esc - Quit";
 
             GUI.Label(new Rect(Screen.width - 260f, 10f, 250f, 300f), text, style);

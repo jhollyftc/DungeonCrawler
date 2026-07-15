@@ -123,11 +123,27 @@ namespace DungeonGen
             }
         }
 
+        // Testing overrides that survive an F1/scene reload (statics outlive the
+        // scene). PendingSeed pins the seed instead of randomizing; PendingDepth
+        // forces a depth. Set by the dev keys in FirstPersonController, cleared
+        // after they're consumed so a normal reload behaves as configured.
+        public static int? PendingSeed;
+        public static int? PendingDepth;
+
         [ContextMenu("Generate")]
         public void Generate()
         {
-            if (randomizeSeedOnGenerate)
-                seed = Random.Range(int.MinValue, int.MaxValue);
+            // A pinned seed (PgUp/PgDn changing depth only) wins over randomize;
+            // otherwise honor the inspector's randomize-on-generate.
+            if (PendingSeed.HasValue) seed = PendingSeed.Value;
+            else if (randomizeSeedOnGenerate) seed = Random.Range(int.MinValue, int.MaxValue);
+            PendingSeed = null;
+
+            if (PendingDepth.HasValue)
+            {
+                config.depth = PendingDepth.Value;
+                PendingDepth = null;
+            }
 
             if (roomStyle != null) roomStyle.InvalidateWallCache();
 
