@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace DungeonGen
 {
@@ -23,6 +24,7 @@ namespace DungeonGen
         [Header("Crouch / sneak")]
         [Tooltip("Hold to crouch. Moving slowly means you shove physics objects gently — a crouched player eases a door open instead of banging it, so it stays under the door's noise threshold. Stealth falls out of the physics rather than being special-cased.")]
         public KeyCode crouchKey = KeyCode.LeftControl;
+        public KeyCode crouchMouseButton = KeyCode.Mouse4;
         [Tooltip("Move speed while crouched. Keep it well under walkSpeed — this is what makes doors silent.")]
         public float crouchSpeed = 1.6f;
         [Tooltip("Capsule height while crouched (standing height is taken from the CharacterController at Awake).")]
@@ -38,6 +40,10 @@ namespace DungeonGen
         [Tooltip("Horizontal speed multiplier while climbing — enough to adjust sideways or step off, not enough to sprint mid-air.")]
         [Range(0f, 1f)] public float climbHorizontalDamp = 0.35f;
 
+        [Header("Developer UI")]
+        [Tooltip("Draws the control list in the top-right corner. Dev aid — turn it off for a real build.")]
+        public bool showControls = true;
+
         /// <summary>True while crouched. Read by anything that cares how quiet the player is (future NPC alerting).</summary>
         public bool IsCrouching { get; private set; }
         /// <summary>Current horizontal speed (m/s). Physics pushes scale off this, so how hard you shove things follows how fast you're actually moving.</summary>
@@ -50,12 +56,16 @@ namespace DungeonGen
         Vector3 standCenter;
         float standCamY;
         static readonly Collider[] ladderHits = new Collider[8];
+        private GUIStyle style;
+        private DungeonVisualizer dungeon;
+        private PlayerCarry carry;
 
         void Awake()
         {
             cc = GetComponent<CharacterController>();
             cc.slopeLimit = maxSlopeAngle;
             cc.stepOffset = maxStepHeight;
+            carry = GetComponent<PlayerCarry>();
 
             standHeight = cc.height;
             standCenter = cc.center;
@@ -66,11 +76,27 @@ namespace DungeonGen
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
-            
+
+            style = new GUIStyle();
+            style.fontSize = 18;
+            style.normal.textColor = Color.white;
+            style.alignment = TextAnchor.UpperRight;
+
+            // For the dev overlay's seed readout. The seed is randomized at
+            // generate time (randomizeSeedOnGenerate), so the overlay reads it
+            // live from the visualizer rather than caching a number that goes
+            // stale the moment someone presses F1 for a new dungeon.
+            dungeon = FindObjectOfType<DungeonVisualizer>();
         }
 
         void Update()
         {
+           
+            if (Input.GetKeyDown(KeyCode.F1))
+            {
+                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            }
+
             // Cursor capture.
             if (Input.GetKeyDown(KeyCode.Escape))
             {
@@ -101,6 +127,9 @@ namespace DungeonGen
             float speed = IsCrouching ? crouchSpeed
                         : Input.GetKey(KeyCode.LeftShift) ? sprintSpeed
                         : walkSpeed;
+            // Carrying something heavy drags you down — mass is the one dial for
+            // weight across carry lag, throw force, and now movement.
+            if (carry != null) speed *= carry.CarrySpeedMultiplier;
             Vector3 horizontal = transform.TransformDirection(input) * speed;
 
             if (OnLadder())
@@ -125,6 +154,41 @@ namespace DungeonGen
             }
 
             cc.Move((horizontal + Vector3.up * verticalVelocity) * Time.deltaTime);
+
+            if (Input.GetKeyDown(KeyCode.Escape))
+                Quit();
+        }
+
+        /// <summary>
+        /// Developer control list. Unity finds OnGUI by reflecting over the CLASS,
+        /// so this has to live at class scope — nested inside Update() it's just an
+        /// unused local function, which compiles clean and never runs.
+        /// </summary>
+        void OnGUI()
+        {
+            if (!showControls || style == null) return;
+
+            // Seed + depth first, so a tester who hits an edge case can read the
+            // exact (seed, depth) that produced it straight off the screen — the
+            // dungeon is a pure function of those two, so that pair reproduces it.
+            string header = dungeon != null
+                ? $"Seed: {dungeon.seed}\nDepth: {dungeon.config.depth}\n\n"
+                : "";
+
+            string text = header +
+                "Controls\n" +
+                "---------\n" +
+                "WASD - Move\n" +
+                "Mouse - Look\n" +
+                "Space - Jump\n" +
+                "Shift - Sprint\n" +
+                "Ctrl / Mouse4 - Crouch\n" +
+                "E - Interact / Pick up / Drop\n" +
+                "LMB - Throw\n" +
+                "F1 - New Dungeon\n" +
+                "Esc - Quit";
+
+            GUI.Label(new Rect(Screen.width - 260f, 10f, 250f, 300f), text, style);
         }
 
         /// <summary>
@@ -134,7 +198,7 @@ namespace DungeonGen
         /// </summary>
         void UpdateCrouch()
         {
-            bool wantCrouch = Input.GetKey(crouchKey);
+            bool wantCrouch = Input.GetKey(crouchKey) || Input.GetKey(crouchMouseButton);
 
             // Can't stand up under a ceiling — stay crouched until it's clear.
             if (!wantCrouch && IsCrouching && CeilingBlocked())
@@ -192,5 +256,14 @@ namespace DungeonGen
             }
             return false;
         }
+        void Quit()
+            {
+        #if UNITY_EDITOR
+                UnityEditor.EditorApplication.isPlaying = false;
+        #else
+                Application.Quit();
+        #endif
+            }
+        
     }
 }

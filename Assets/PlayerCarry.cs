@@ -42,6 +42,14 @@ namespace DungeonGen
         [Tooltip("Cap on carry spin (rad/s).")]
         public float maxAngularSpeed = 10f;
 
+        [Header("Encumbrance")]
+        [Tooltip("Carried mass at or below which you move at full speed. A torch or a bucket shouldn't slow you; only real loads should.")]
+        public float freeCarryMass = 5f;
+        [Tooltip("Carried mass at which you're at your SLOWEST (minMoveSpeedMultiplier). Between this and freeCarryMass the slowdown scales linearly. Kept separate from the throw grunt's heavyMass so movement and voice can be tuned independently.")]
+        public float heavyCarryMass = 30f;
+        [Tooltip("Slowest the player can be dragged to while carrying, as a fraction of normal speed. Never 0 — hauling something heavy should be a slog, not a full stop.")]
+        [Range(0.1f, 1f)] public float minMoveSpeedMultiplier = 0.45f;
+
         [Header("Release")]
         [Tooltip("Drop the object if it ends up this far from the hold point — i.e. it's wedged behind geometry or you backed into a corner. Without this, a prop can jam behind a wall and drag along with you forever.")]
         public float breakDistance = 2.5f;
@@ -79,6 +87,23 @@ namespace DungeonGen
         ViewmodelCamera viewmodel;
 
         public bool IsCarrying => held != null;
+
+        /// <summary>
+        /// Move-speed scale from what you're carrying (1 = unencumbered). The held
+        /// object's MASS drives it, so the same number that makes a crate lag in
+        /// your hands and thud when thrown also drags your feet — weight has one
+        /// meaning across the whole system. FirstPersonController multiplies its
+        /// speed by this.
+        /// </summary>
+        public float CarrySpeedMultiplier
+        {
+            get
+            {
+                if (!IsCarrying || heldBody == null) return 1f;
+                float t = Mathf.InverseLerp(freeCarryMass, heavyCarryMass, heldBody.mass);
+                return Mathf.Lerp(1f, minMoveSpeedMultiplier, t);
+            }
+        }
 
         void Awake()
         {
