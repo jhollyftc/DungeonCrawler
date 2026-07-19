@@ -654,6 +654,53 @@ Formula-driven with authored override points (the user's explicit choice).
   off, W/S climb up/down, horizontal damped to 35% so the player can adjust
   or step off. The damped forward push is what carries the player over the
   lip at the top.
+- **NPC navigation (`DungeonNavBaker`)** — the dungeon is generated at RUNTIME and
+  regenerated on F1/PgUp, so there is no static scene to bake in the editor:
+  requires the **AI Navigation package** (`com.unity.ai.navigation`) and rebuilds a
+  `NavMeshSurface` at the end of `BuildMesh()`. Collects **physics colliders** from
+  the visualizer's children = exactly the project's collision truth (§5), so player
+  and NPCs walk the same surface by construction. `excludeRoots` keeps DYNAMIC
+  colliders out of the bake: **doors** (baked solid they'd wall off their doorway
+  forever, even swung open) and **`DungeonNpcs`** — in play mode `ClearGenerated`
+  uses deferred `Destroy()`, so during a regen the PREVIOUS generation's NPCs are
+  still alive when `BuildNavMesh()` runs, and their capsules would bake holes into
+  the fresh navmesh wherever they stood. Spawn placement is deterministic
+  (`vis.seed ^ 0x5EED`).
+- **NPC body (`NpcLocomotion`)** — a `NavMeshAgent` that PLANS driving a
+  `CharacterController` that MOVES (`agent.updatePosition = false`). **Why the
+  hybrid:** a bare agent moves the transform directly and never fires
+  `OnControllerColliderHit` — the callback `CharacterControllerPhysicsPush` uses to
+  dispatch `IPushable.Push` — so NPCs ghosted through physics doors. Driving a
+  CharacterController runs that component on NPCs **verbatim**: same pushForce,
+  speed scaling, and framerate normalization as the player, one code path that
+  can't drift. **The crux is `agent.nextPosition = transform.position`** — the agent
+  follows the BODY, so when the capsule is stopped by a door the agent stops with
+  it and keeps steering forward: the NPC *leans* on the door. Speed-scaled push
+  then comes free (slow = eases it open under `thunkArmAngle`, silent; charging =
+  slams). **Authoring: agent radius ≥ controller radius**, so the agent plans around
+  baked geometry with margin and the capsule only touches what the navmesh
+  deliberately excludes. Two `Awake`/runtime guards exist because both failures are
+  silent and baffling: `center.y` must equal `height/2` for a base-origin model (a
+  centered capsule spawns half-buried, never reads grounded, and **falls through the
+  world while still pathing**), and `CheckFall()` watches real vertical drop —
+  checking `agent.isOnNavMesh` alone does NOT catch it, because `nextPosition` is
+  force-synced to the falling body so the agent believes it's on the mesh all the
+  way down.
+- **NPC brain (`NpcBrain`)** — decisions only; idle/wander today. Every state
+  delegates to capability components and never touches the agent or controller
+  directly. That shape is deliberate: a Unity Behavior tree swapped in later calls
+  the identical capability API, so this FSM doubles as the integration test proving
+  that API is complete. **Determinism boundary (deliberate, do not "fix"):**
+  generation is deterministic, runtime AI is NOT — where an NPC spawns reproduces
+  from (seed, depth), but what it decides once alive uses `UnityEngine.Random`,
+  because reproducing a fight would need deterministic physics and input replay.
+- **NPC model conventions** — base-origin, real-world scale, **scale 1 on the
+  prefab root**. A tripo/Blender FBX that imports tiny and gets a 160× root scale
+  breaks everything downstream: `CharacterController` radius/height scale with the
+  transform (a 0.35 radius becomes 56m), and NavMeshAgent `baseOffset` scales too
+  (0.008 × 160 ≈ 1.3m of hover). Fix the importer's Scale Factor, not the component
+  values. Empirically, a Blender FBX **containing an armature** exports at correct
+  units where the same static mesh did not.
 - **DungeonFogController + FogSettings** (on DungeonVisualizer) — dynamic fog:
   `RenderSettings.fogColor` eases toward a room's torch color by the STRONGER
   of two terms per room: proximity (within `transitionDistance`, facing-
@@ -699,11 +746,32 @@ Cosmetic-first; combat is far off ("get the world together first").
     — mostly Blender/texture work; toon shader packed-mask already ready.
 18. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit →
     home base → depth increment → sell/replenish). Design chat first.
-19. ⏳ NPC alerting — the SENSING half is built (crouch/`IsCrouching`, door
-    quiet-swing threshold, `ImpactAudio.OnImpact`); needs actors + a consumer.
-20. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
+19. ✅ **NPC AI phase 1** — runtime NavMesh (`DungeonNavBaker`) + the locomotion
+    body (`NpcLocomotion`) that pushes doors via the player's own push component,
+    + a wander brain (`NpcBrain`). Full 10-phase architecture planned; phases
+    2-10 below.
+20. ⏳ NPC AI phases 2-10 (planned, in order): **perception** (a static `NoiseBus`
+    fed by the already-built sensing hooks — `ImpactAudio.OnImpact`,
+    `PhysicsDoor.OnSwingStart`, footsteps + `IsCrouching` — plus sight cone/LOS and
+    an `Awareness01` meter); **FSM brain** grown to patrol/investigate/chase/attack/
+    flee/rearm, then optionally swapped for a **Unity Behavior** tree (`com.unity.behavior`,
+    install via Package Manager UI — never hand-pin a version); **combat core**
+    (`IDamageable`/`Health`, a melee sweep reusing ViewmodelCollision's
+    CheckSphere-before-SphereCast lesson, thrown-object damage); **call for help**
+    (a shout is just a loud `NoiseEvent` — propagation and the player hearing it
+    fall out free; rate-limit or it alert-loops); **equipment/disarm/rearm**
+    (`WeaponDefinition` SO + a `PropSocket`-style hand socket; a dropped weapon is
+    NOT a `Carryable`, whose `Interact()` hard-codes `PlayerCarry`); **NPC carry/throw**
+    (extract `PlayerCarry`'s FixedUpdate drive into a shared `CarryDriver` — beware
+    moving serialized fields, it silently resets the player prefab's tuning);
+    **spawning** (depth-scaled `EnemyBudget` in DepthProfile, per-room-type
+    `EnemySet` in RoomStyle, its own placer on free hash stream 11007 — NOT through
+    RoomPropPlacer, whose cell-occupancy semantics don't fit a thing that walks);
+    **animation** (`NpcAnimatorDriver` behind the capability event surface, never
+    root motion).
+21. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
     doored rooms = lockable set), difficulty gradient by graph depth, equipment
-    + SwayProfiles, then combat.
+    + SwayProfiles, then player combat.
 
 ---
 
