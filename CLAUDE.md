@@ -686,14 +686,102 @@ Formula-driven with authored override points (the user's explicit choice).
   checking `agent.isOnNavMesh` alone does NOT catch it, because `nextPosition` is
   force-synced to the falling body so the agent believes it's on the mesh all the
   way down.
-- **NPC brain (`NpcBrain`)** — decisions only; idle/wander today. Every state
-  delegates to capability components and never touches the agent or controller
-  directly. That shape is deliberate: a Unity Behavior tree swapped in later calls
-  the identical capability API, so this FSM doubles as the integration test proving
-  that API is complete. **Determinism boundary (deliberate, do not "fix"):**
-  generation is deterministic, runtime AI is NOT — where an NPC spawns reproduces
-  from (seed, depth), but what it decides once alive uses `UnityEngine.Random`,
+- **NPC brain (`NpcBrain`)** — decisions only. Wander → Investigate → Alerted FSM
+  as a **priority interrupt** (sight beats sound beats wandering, re-evaluated each
+  frame). Every state delegates to capability components and never touches the agent
+  or controller directly. That shape is deliberate: a Unity Behavior tree swapped in
+  later calls the identical capability API, so this FSM doubles as the integration
+  test proving that API is complete. **Determinism boundary (deliberate, do not
+  "fix"):** generation is deterministic, runtime AI is NOT — where an NPC spawns
+  reproduces from (seed, depth), but what it decides once alive uses `UnityEngine.Random`,
   because reproducing a fight would need deterministic physics and input replay.
+- **NPC perception (`NoiseBus` + `NpcPerception`)** — the SENSING half, finally
+  consumed. A static `NoiseBus` carries `NoiseEvent`s (position, 0..1 loudness,
+  `Faction`); emitters and listeners are mutually ignorant, which matters because
+  props/NPCs respawn every regen (direct wiring would need rediscovery). It **resets
+  its static event on play-mode entry** (`RuntimeInitializeOnLoadMethod`) — the
+  fast-enter-playmode stale-delegate trap. Three THIN adapters bridge the pre-built
+  hooks without those systems learning about AI: `ImpactNoiseEmitter` (a thrown
+  barrel makes noise where it LANDS), `DoorNoiseEmitter` (the door's `thunkArmAngle`
+  gate keeps an eased-open door quiet), `PlayerNoiseEmitter` (footsteps scaled by
+  speed, multiplied down when crouched — crouch-sneak genuinely shrinks the hearing
+  radius). `NpcPerception`: hearing (audible if `distance < maxHearRadius × loudness`,
+  one formula), sight (view cone + LOS ray aimed at the player CAMERA so crouching
+  behind cover breaks line of sight), and **`Awareness01` as a METER not a boolean**
+  (suspicious→investigate→hunt from one number). Sight ticks on a random per-NPC
+  stagger, never per frame. (`GetInstanceID` is deprecated in Unity 6.5 — use
+  `Random`/`GetEntityId`.)
+- **NPC combat (`IDamageable`/`DamageInfo`/`Health`, `MeleeAttack`, `ThrownDamage`,
+  `FactionMember`)** — attackers only ever talk to `IDamageable`; `Health` sits on
+  BOTH player and NPCs, so a goblin's swing and a thrown barrel hurt either with no
+  special-casing (same philosophy as `IPushable`: attacker supplies force, victim
+  decides meaning). `MeleeAttack` = windup → sweep → recovery; the sweep carries
+  ViewmodelCollision's `CheckSphere`-before-`SphereCast` lesson (a cast STARTING
+  inside a collider reports nothing, and melee range means you're usually already
+  touching) plus `SphereCastAll`/dedupe-by-root/facing-check. `FactionMember` gates
+  friendly fire — **if it's MISSING on either side, every swing silently whiffs**
+  (Neutral == Neutral reads as same-faction). `ThrownDamage` only hurts while ARMED
+  (`PlayerCarry.Throw()` arms it, one hit per flight — a bouncing barrel can't
+  double-hit, casual shoving never hurts). Damage shares the `ImpactForce` curve with
+  audio so they can't drift; knockback is MOMENTUM-derived (mass × speed), no per-prop
+  tuning.
+- **NPC reactions (`NpcHitReactions`, `NpcBoneReaction`, `NpcCombatAudio`,
+  `NpcAnimatorDriver`, `NpcHeadTrack`)** — how an NPC suffers, all as LateUpdate bone
+  layers stacked on the Animator's pose so they blend with whatever's playing:
+  - `NpcHitReactions`: knockback via the locomotion capability (thrown hits redirect
+    part upward onto a real ballistic arc), stagger scaling with the shove, `ForceAlert`
+    at the attacker, and death — animation if the controller has a `Die` trigger, code
+    topple as fallback, then an **eased sink through the floor** (the despawn a player
+    never catches happening).
+  - `NpcBoneReaction`: per-bone hit flinch — angular impulses into bones near impact
+    (distance falloff), spring-return to pose. Chosen over TRUE ragdoll-blending
+    deliberately (Unity's ragdoll wizard is humanoid-only; this is a generic tripo
+    rig). Rig-agnostic (bones from the skinned mesh), zero cost while settled, same
+    momentum input as knockback so skeleton and body agree how hard the hit was.
+  - `NpcAnimatorDriver`: one-way bridge from `NpcLocomotion.CurrentSpeed` to Animator
+    `Speed`/`MotionSpeed`, and `TriggerDeath()`. AI never knows the Animator exists —
+    a rigged model is a drop-in. **NEVER root motion** (the CharacterController drives).
+  - `NpcHeadTrack`: head bone watches the player up close, WORLD-space delta rotation
+    (no Blender bone-axis assumptions), gated by awareness so it's an honest detection
+    tell. `NpcCombatAudio`: hurt grunts scaled by impulse, death cry + delayed body-fall
+    thud (house audio pattern, § PhysicsDoorAudio).
+- **NPC crowd spacing** — three separate mechanisms, learned the hard way:
+  (1) an **NPC layer with NPC×NPC collision OFF** in the matrix — capsule
+  step-climbing (`stepOffset`, which stairs need) treated a neighbour's shoulder as a
+  step, so goblins summited each other. (2) **Feed `Controller.velocity` back to the
+  agent** — RVO predicts neighbours from their VELOCITY, and an externally-driven
+  agent reports ~zero, so every NPC told every other "I'm stationary" and they walked
+  through each other; randomized `avoidancePriority` breaks equal-priority deadlocks.
+  (3) **Boids separation steering** in `NpcLocomotion` — RVO only separates agents IN
+  TRANSIT, and a crowd CONVERGED on one target (all chasing the player) has everyone
+  stopped, so nothing spreads them; separation is additive with pathing → attackers
+  settle into a ring, not a stack. Its living-NPC registry is the `NpcRegistry` a
+  shout system wants — it exists for free, and death disabling `NpcLocomotion` drops
+  corpses from the crowd automatically.
+- **NPC foot IK (`NpcFootIK`, Animation Rigging package)** — per-leg `TwoBoneIK`
+  grounding for the generic rig: while the animation has a foot in stance, its IK
+  target snaps to the raycast ground height (feet land ON stair treads); mid-swing the
+  weight fades and the clip owns the foot. Converges instead of feeding back because
+  the target comes from the ground raycast, an EXTERNAL stable reference — not the
+  previous pose. `groundMask` must exclude the NPC layer (don't plant a foot on a
+  neighbour). v1 has no pelvis drop, so a steep descent is limited by leg length.
+- **NavMesh from stairs — BUILD-ONLY TRAP (real, cost hours):** runtime navmesh baking
+  reads triangles off MeshColliders, which **in a player build requires the mesh's
+  Read/Write Enabled import setting**. Non-readable meshes are skipped from the bake
+  SILENTLY — the stairs (the only MeshCollider kit pieces) vanished from the build's
+  navmesh so NPCs never crossed floors, while the editor (all meshes readable) worked
+  perfectly and the collider still carried the player's feet. `DungeonNavBaker` now
+  warns (pre-bake) for any non-readable collider mesh — `Mesh.isReadable` reports the
+  import setting even in-editor. It also overrides **voxel size** (~0.07): the default
+  (agentRadius/3) is too coarse for stepped mesh colliders, baking stairs as narrow
+  ragged strips with a lip where the stair prefab overlaps the greybox landing.
+- **Animator-controller clobber — process rule:** Unity re-serialized
+  `Goblin_Animator.controller` during an asset move and **DROPPED** the added
+  parameter/state/transition while keeping the orphaned objects in the file (graph
+  showed only the base state). Never edit controller YAML while the Animator window
+  has it open; controllers are otherwise hand-authorable (states/blend trees/transitions
+  were written directly as YAML when editor drag-and-drop repeatedly failed to land a
+  clip — reference the clip by `internalID` from the FBX `.meta` + the FBX guid).
 - **NPC model conventions** — base-origin, real-world scale, **scale 1 on the
   prefab root**. A tripo/Blender FBX that imports tiny and gets a 160× root scale
   breaks everything downstream: `CharacterController` radius/height scale with the
@@ -746,32 +834,42 @@ Cosmetic-first; combat is far off ("get the world together first").
     — mostly Blender/texture work; toon shader packed-mask already ready.
 18. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit →
     home base → depth increment → sell/replenish). Design chat first.
-19. ✅ **NPC AI phase 1** — runtime NavMesh (`DungeonNavBaker`) + the locomotion
-    body (`NpcLocomotion`) that pushes doors via the player's own push component,
-    + a wander brain (`NpcBrain`). Full 10-phase architecture planned; phases
-    2-10 below.
-20. ⏳ NPC AI phases 2-10 (planned, in order): **perception** (a static `NoiseBus`
-    fed by the already-built sensing hooks — `ImpactAudio.OnImpact`,
-    `PhysicsDoor.OnSwingStart`, footsteps + `IsCrouching` — plus sight cone/LOS and
-    an `Awareness01` meter); **FSM brain** grown to patrol/investigate/chase/attack/
-    flee/rearm, then optionally swapped for a **Unity Behavior** tree (`com.unity.behavior`,
-    install via Package Manager UI — never hand-pin a version); **combat core**
-    (`IDamageable`/`Health`, a melee sweep reusing ViewmodelCollision's
-    CheckSphere-before-SphereCast lesson, thrown-object damage); **call for help**
-    (a shout is just a loud `NoiseEvent` — propagation and the player hearing it
-    fall out free; rate-limit or it alert-loops); **equipment/disarm/rearm**
-    (`WeaponDefinition` SO + a `PropSocket`-style hand socket; a dropped weapon is
-    NOT a `Carryable`, whose `Interact()` hard-codes `PlayerCarry`); **NPC carry/throw**
-    (extract `PlayerCarry`'s FixedUpdate drive into a shared `CarryDriver` — beware
-    moving serialized fields, it silently resets the player prefab's tuning);
-    **spawning** (depth-scaled `EnemyBudget` in DepthProfile, per-room-type
-    `EnemySet` in RoomStyle, its own placer on free hash stream 11007 — NOT through
-    RoomPropPlacer, whose cell-occupancy semantics don't fit a thing that walks);
-    **animation** (`NpcAnimatorDriver` behind the capability event surface, never
-    root motion).
-21. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
+19. ✅ **NPC AI phase 1** — runtime NavMesh (`DungeonNavBaker`) + locomotion body
+    (`NpcLocomotion`) that pushes doors via the player's own push component + a
+    wander brain (`NpcBrain`).
+20. ✅ **NPC AI phase 2** — perception: `NoiseBus` + thin emitter adapters +
+    `NpcPerception` (hearing/sight/`Awareness01`); brain grown to Investigate/Alerted.
+21. ✅ **NPC AI phase 4 (combat) + reactions + crowd + foot IK** — `Health`/
+    `IDamageable`, `MeleeAttack`, `ThrownDamage`, `FactionMember`; hit reactions
+    (knockback/stagger/death-sink), per-bone flinch, head track, combat audio,
+    animator driver (walk/idle blend + death); crowd spacing (NPC-layer matrix +
+    RVO velocity feedback + boids separation); `NpcFootIK` (Animation Rigging).
+    The goblin now senses, hunts, fights, suffers, and dies. (§10 has the detail
+    and the field lessons: the build-only stairs Read/Write trap, RVO velocity
+    feedback, the controller-clobber rule, FactionMember silent-whiff.)
+22. ⏳ **Player melee (`melee-v1-plan.md`)** — swinging sword + shield bash that
+    HIT the combat core built above (goblins already take damage/knockback/stagger
+    from `DamageInfo`), with player-facing GAME FEEL as the point: hitstop, the
+    weapon "catching" on a body mid-swing, screen shake, hit sparks/audio,
+    directional camera kick. The `MeleeAttack` sweep + `ViewmodelCollision`
+    anchors + `ViewmodelSway.proceduralWeight` are the pieces it composes.
+23. ⏳ NPC AI remaining phases: **call for help** (shout = a loud `NoiseEvent`; the
+    `NpcRegistry` and death cry already exist — rate-limit or it alert-loops);
+    **equipment/disarm/rearm** (`WeaponDefinition` SO + `PropSocket`-style hand
+    socket; a dropped weapon is NOT a `Carryable`, whose `Interact()` hard-codes
+    `PlayerCarry`); **NPC carry/throw** (extract `PlayerCarry`'s FixedUpdate drive
+    into a shared `CarryDriver` — beware moving serialized fields, it silently
+    resets the player prefab's tuning); **spawning** (depth-scaled `EnemyBudget` in
+    DepthProfile, per-room-type `EnemySet` in RoomStyle, own placer on free hash
+    stream 11007); optional **Unity Behavior** tree swap (install via Package
+    Manager UI — never hand-pin a version).
+24. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material) —
+    mostly Blender/texture work; toon shader packed-mask already ready.
+25. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit → home
+    base → depth increment → sell/replenish). Design chat first.
+26. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
     doored rooms = lockable set), difficulty gradient by graph depth, equipment
-    + SwayProfiles, then player combat.
+    + SwayProfiles.
 
 ---
 
