@@ -37,6 +37,8 @@ namespace DungeonGen
         [Header("Bake")]
         [Tooltip("Rebuild the NavMesh automatically after every dungeon generation.")]
         public bool bakeOnBuild = true;
+        [Tooltip("Voxel size (m) for the bake. The default (agent radius / 3 ≈ 0.17) is too coarse for STEPPED MESH COLLIDERS: stairs bake as narrow ragged strips and lips between overlapping colliders bake as bumps. 0.06-0.08 resolves the treads cleanly. Cost is bake time only (a few hundred ms on this dungeon) — runtime cost is unchanged.")]
+        public float voxelSize = 0.07f;
         [Tooltip("Generated roots whose colliders must NOT bake into the surface. Doors are dynamic — baked solid they'd wall off their doorways forever. NPCs are dynamic AND still alive from the previous generation when this runs (see Rebuild).")]
         public string[] excludeRoots = { "DungeonDoors", "DungeonNpcs" };
 
@@ -69,6 +71,17 @@ namespace DungeonGen
                 surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
             }
 
+            // Finer voxels than the default (agentRadius/3): the stairs' stepped
+            // mesh colliders otherwise bake as narrow ragged strips, and small
+            // height disagreements where the stair prefab overlaps the greybox
+            // landing bake as bumps. Set every rebuild so inspector tuning in play
+            // mode takes effect on the next F1.
+            if (voxelSize > 0f)
+            {
+                surface.overrideVoxelSize = true;
+                surface.voxelSize = voxelSize;
+            }
+
             // Doors and NPCs out of the bake: remember which colliders WE disabled
             // so we never re-enable one something else wanted off.
             //
@@ -89,6 +102,23 @@ namespace DungeonGen
                     foreach (var c in child.GetComponentsInChildren<Collider>(true))
                         if (c.enabled) { c.enabled = false; disabled.Add(c); }
                 }
+            }
+
+            // BUILD-ONLY FAILURE, checked here so it's caught in the EDITOR:
+            // runtime navmesh baking reads triangles off MeshColliders, which in a
+            // player build requires the mesh's Read/Write Enabled import setting.
+            // Non-readable meshes are skipped from the bake SILENTLY — in our case
+            // the stairs vanished from the build's navmesh and NPCs just never
+            // crossed floors, while the editor (where meshes are always readable)
+            // worked perfectly. Mesh.isReadable reports the import setting even in
+            // the editor, so this warns before anyone ships the broken bake.
+            foreach (var mc in GetComponentsInChildren<MeshCollider>())
+            {
+                if (mc != null && mc.enabled && mc.sharedMesh != null && !mc.sharedMesh.isReadable)
+                    Debug.LogWarning(
+                        $"[Nav] MeshCollider '{mc.name}' uses non-readable mesh '{mc.sharedMesh.name}' — " +
+                        "it will be MISSING from the NavMesh in a build (editor bakes it fine, which is the trap). " +
+                        "Enable Read/Write in the mesh's import settings.", mc);
             }
 
             try { surface.BuildNavMesh(); }

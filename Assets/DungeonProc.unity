@@ -167,7 +167,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonVisualizer
   seed: 841597667
-  randomizeSeedOnGenerate: 0
+  randomizeSeedOnGenerate: 1
   config:
     depth: 6
     depthProfile: {fileID: 11400000, guid: 3271732a93adbe14b9886183c76b635d, type: 2}
@@ -330,10 +330,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonNavBaker
   bakeOnBuild: 1
+  voxelSize: 0.05
   excludeRoots:
   - DungeonDoors
   npcPrefab: {fileID: 8760909400174574388, guid: 680371e1c789b414885fa22e308ecaea, type: 3}
-  npcCount: 10
+  npcCount: 15
   avoidSpawnRoom: 1
 --- !u!114 &419853731
 MonoBehaviour:
@@ -362,8 +363,8 @@ MonoBehaviour:
   m_IgnoreNavMeshObstacle: 1
   m_OverrideTileSize: 0
   m_TileSize: 256
-  m_OverrideVoxelSize: 0
-  m_VoxelSize: 0.16666667
+  m_OverrideVoxelSize: 1
+  m_VoxelSize: 0.05
   m_MinRegionArea: 2
   m_NavMeshData: {fileID: 0}
   m_BuildHeightMesh: 0

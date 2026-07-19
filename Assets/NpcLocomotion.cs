@@ -58,6 +58,12 @@ namespace DungeonGen
         [Tooltip("Seconds an impulse (a hit, a blast) takes to decay to nothing.")]
         public float impulseDecay = 0.2f;
 
+        [Header("Separation (NPC vs NPC spacing)")]
+        [Tooltip("NPCs closer than this (m, center to center) push each other apart. Agent avoidance only separates agents IN TRANSIT — it does nothing for a crowd converging on the same target (everyone chasing the player) — and NPC-NPC collision is off to stop capsule-climbing, so THIS is what owns spacing. ~2x capsule radius + elbow room.")]
+        public float separationRadius = 1.2f;
+        [Tooltip("Push-apart speed (m/s) at full overlap, fading to zero at the radius edge. Keep below walk speed or the crowd vibrates.")]
+        public float separationStrength = 2f;
+
         public NavMeshAgent Agent { get; private set; }
         public CharacterController Controller { get; private set; }
 
@@ -99,6 +105,14 @@ namespace DungeonGen
         float lastGroundedY;
         bool haveGroundedY;
 
+        // All living NPC bodies, for separation (and, later, shouts — this is the
+        // registry phase 5 wants). OnEnable/OnDisable keep it exact: death disables
+        // NpcLocomotion, which removes the corpse from the crowd automatically.
+        static readonly System.Collections.Generic.List<NpcLocomotion> All = new System.Collections.Generic.List<NpcLocomotion>();
+
+        void OnEnable() => All.Add(this);
+        void OnDisable() => All.Remove(this);
+
         void Awake()
         {
             Agent = GetComponent<NavMeshAgent>();
@@ -109,6 +123,12 @@ namespace DungeonGen
             // between two things both trying to move it.
             Agent.updatePosition = false;
             Agent.updateRotation = false;
+
+            // Randomized avoidance priority: equal-priority agents split their
+            // avoidance 50/50 and can deadlock or shove through each other in a
+            // crowd; unequal priorities make one yield cleanly. Runtime AI —
+            // deliberately not seeded.
+            Agent.avoidancePriority = Random.Range(30, 70);
 
             if (Agent.radius < Controller.radius)
             {
@@ -159,7 +179,7 @@ namespace DungeonGen
             else verticalVelocity += gravity * dt;
             verticalVelocity = Mathf.Max(verticalVelocity, -maxFallSpeed);
 
-            Vector3 motion = (want + impulse) * dt + Vector3.up * verticalVelocity * dt;
+            Vector3 motion = (want + impulse + Separation()) * dt + Vector3.up * verticalVelocity * dt;
             Controller.Move(motion);
 
             IsBlocked = want.magnitude > blockedDesiredSpeed && CurrentSpeed < blockedSpeed;
@@ -168,6 +188,37 @@ namespace DungeonGen
 
             SyncAgentToBody();
             FaceMovement(want, dt);
+        }
+
+        /// <summary>
+        /// Boids-style push-apart from every other living NPC within range —
+        /// linear falloff, horizontal only, capped at separationStrength. Additive
+        /// with pathing, so a crowd converging on the player spreads into a loose
+        /// ring instead of a single occupied point. O(n) over live NPCs per NPC,
+        /// which at this game's population (tens) is nothing.
+        /// </summary>
+        Vector3 Separation()
+        {
+            if (separationStrength <= 0f) return Vector3.zero;
+
+            Vector3 push = Vector3.zero;
+            for (int i = 0; i < All.Count; i++)
+            {
+                NpcLocomotion other = All[i];
+                if (other == this) continue;
+
+                Vector3 away = transform.position - other.transform.position;
+                away.y = 0f;
+                float dist = away.magnitude;
+                if (dist >= separationRadius) continue;
+
+                // Dead-center overlap (spawned inside each other): pick a stable
+                // arbitrary direction rather than dividing by ~zero.
+                Vector3 dir = dist > 0.01f ? away / dist : transform.right;
+                push += dir * (1f - dist / separationRadius);
+            }
+
+            return Vector3.ClampMagnitude(push * separationStrength, separationStrength);
         }
 
         /// <summary>
@@ -225,6 +276,12 @@ namespace DungeonGen
             if (Agent.isOnNavMesh)
             {
                 Agent.nextPosition = transform.position;
+                // The other half of driving an agent externally, and easy to miss:
+                // avoidance (RVO) predicts neighbors from their VELOCITY, and an
+                // externally-moved agent reports ~zero — every NPC tells every
+                // other "I'm stationary", prediction collapses, and they walk
+                // straight through each other. Feed the real velocity back.
+                Agent.velocity = Controller.velocity;
                 return;
             }
 

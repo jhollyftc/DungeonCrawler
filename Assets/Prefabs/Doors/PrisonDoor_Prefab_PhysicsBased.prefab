@@ -256,8 +256,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0, y: 0.0040633, z: 0.0065897293}
-  m_Center: {x: 0.00030000036, y: 0.000064638654, z: -0.00045207562}
+  m_Size: {x: 0.00035383602, y: 0.0042025424, z: 0.0059751133}
+  m_Center: {x: 0.00022378938, y: 0.0000049686437, z: -0.0011603921}
 --- !u!54 &6164347188937228515
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -554,6 +554,10 @@ PrefabInstance:
       propertyPath: m_Mesh
       value: 
       objectReference: {fileID: 3570491760342682676, guid: f8da2e22762e7c54691985089adb0f02, type: 3}
+    - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_Enabled
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
