@@ -74,6 +74,7 @@ namespace DungeonGen
             "DungeonMesh", "DungeonKit", "DungeonInstanced", "DungeonTorches",
             "DungeonDoors", "DungeonArchways", "DungeonColumns", "DungeonLadders",
             "DungeonKitColliders", "DungeonProps", "DungeonHallwayProps", "DungeonFog",
+            "DungeonNpcs",
         };
 
         void Start()
@@ -276,6 +277,11 @@ namespace DungeonGen
             // Torch/prop meshes may have been added to the instancer after its
             // first Commit — re-bake so they render.
             if (sharedInstancer != null) sharedInstancer.Commit();
+
+            // NavMesh LAST: it bakes off the physics colliders placed above
+            // (greybox shell, stairs, pillars, columns), so everything walkable
+            // must already exist. Optional component — no baker, no NPCs.
+            GetComponent<DungeonNavBaker>()?.Rebuild(gen);
 
             // Keep the edit-mode preview out of the saved scene.
             MarkNotPersisted();
