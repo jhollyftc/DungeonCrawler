@@ -17,7 +17,7 @@ MonoBehaviour:
   maxRoomCount: 40
   gridCellsPerRoom: 3
   minGridEdge: 30
-  gridHeight: 10
+  gridHeight: 20
   throneMinDepth: 6
   merchantMinDepth: 3
   categories:

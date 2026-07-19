@@ -25,6 +25,7 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
+  - _SPECULARHIGHLIGHTS_OFF
   - _SURFACE_TYPE_TRANSPARENT
   m_InvalidKeywords: []
   m_LightmapFlags: 4
@@ -134,11 +135,11 @@ Material:
     - _RimAmount: 0
     - _RimThreshold: 0.72
     - _SampleGI: 0
-    - _Smoothness: 0.437
+    - _Smoothness: 0.678
     - _SmoothnessTextureChannel: 0
     - _SpecPower: 24
     - _SpecSoftness: 0.25
-    - _SpecularHighlights: 1
+    - _SpecularHighlights: 0
     - _SrcBlend: 5
     - _SrcBlendAlpha: 1
     - _Surface: 1

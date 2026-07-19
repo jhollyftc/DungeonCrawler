@@ -197,6 +197,30 @@ MonoBehaviour:
     top: 1
     maxPerRoom: 0
     allowPropsInFront: 1
+    allowTorch: 0
+    featureLabel: 
+  - prefab: {fileID: 919132149155446097, guid: 7e25aaefb11a36a42893b7b0fbec44e6, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 0
+    allowTorch: 1
+    featureLabel: 
+  - prefab: {fileID: 919132149155446097, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 0
+    allowTorch: 0
+    featureLabel: 
+  - prefab: {fileID: 6816111268289552834, guid: a507041bcc2604848b97158ebe1c3bea, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 0
     allowTorch: 1
     featureLabel: 
   roomOpenings:

@@ -3,7 +3,12 @@ guid: e9a17474b19a1d74d86c798a8621787a
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: BlackBars
+    second: {fileID: 2100000, guid: ee29bd244a2733549ba9bea899f541c2, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
