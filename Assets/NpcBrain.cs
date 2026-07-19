@@ -4,142 +4,217 @@ using UnityEngine.AI;
 namespace DungeonGen
 {
     /// <summary>
-    /// The NPC's DECISION layer. Phase 1 is deliberately just Idle/Wander —
-    /// Patrol/Investigate/Chase/Attack/Flee/Rearm land once perception and combat
-    /// exist. What matters now is the SHAPE: every state is a handful of lines
-    /// that delegate to capability components (NpcLocomotion today; NpcPerception,
-    /// NpcCombat, NpcCarry, NpcEquipment later). The brain never touches the
-    /// NavMeshAgent or the CharacterController directly.
+    /// The NPC's DECISION layer. Every state is a handful of lines delegating to
+    /// capability components (NpcLocomotion, NpcPerception; NpcCombat/Carry/Equipment
+    /// later) — the brain never touches the NavMeshAgent or CharacterController
+    /// directly. That shape is what lets a Unity Behavior tree drop in later against
+    /// the identical capability API, so this FSM doubles as the integration test.
     ///
-    /// That split is what makes this FSM non-throwaway. A behavior tree swapped in
-    /// later calls the IDENTICAL capability API, so this doubles as the integration
-    /// test proving that API is complete before committing to a graph format.
+    /// Phase 2 states: Wander (idle→walk), Investigate (go check a noise/last-known
+    /// spot), Alerted (target in view — approach and watch; combat is Phase 4).
+    /// Perception INTERRUPTS wandering: seeing the target beats hearing it beats
+    /// wandering, re-evaluated every frame.
     ///
-    /// DETERMINISM (golden rule 4 boundary — deliberate, do not "fix"):
-    /// generation is deterministic, runtime AI is NOT. Where an NPC spawns comes
-    /// from the seeded pipeline and reproduces from (seed, depth). What it decides
-    /// once alive uses UnityEngine.Random on purpose — reproducing a fight would
-    /// need deterministic physics and input replay, which is not a goal.
-    ///
-    /// Destinations are whole ROOMS from the generator rather than points near the
-    /// NPC: that forces long cross-dungeon paths through corridors, stairs, and
-    /// doors, which is exactly what needs stress-testing. Unreachable rooms are
-    /// logged and rerolled so nav gaps surface in the Console instead of as an NPC
-    /// frozen in a corner.
+    /// DETERMINISM (golden rule 4 boundary — deliberate, do NOT "fix"): generation
+    /// is deterministic, runtime AI is not. Where an NPC spawns reproduces from
+    /// (seed, depth); what it decides once alive uses UnityEngine.Random, because
+    /// reproducing a fight would need deterministic physics and input replay.
     /// </summary>
     [RequireComponent(typeof(NpcLocomotion))]
     [DisallowMultipleComponent]
     public class NpcBrain : MonoBehaviour
     {
         [Header("Wander")]
-        [Tooltip("Seconds idling between walks (random in range) — a 'pausing to look around' rhythm instead of relentless pacing.")]
+        [Tooltip("Seconds idling between walks (random in range).")]
         public Vector2 idleTime = new Vector2(1.5f, 4f);
-        [Tooltip("Give up on a walk after this many seconds. A door shoved shut or a physics pile can stall a path; rerolling beats standing there forever.")]
+        [Tooltip("Give up on a walk after this many seconds — a stall shouldn't strand the NPC.")]
         public float walkTimeout = 45f;
 
-        [Tooltip("Log destination picks, unreachable rooms, and stalls. Leave ON while proving out navigation — an unreachable room is a nav bug worth knowing about.")]
+        [Header("Investigate")]
+        [Tooltip("Seconds spent looking around at a last-known spot before giving up (if awareness has faded).")]
+        public float lookAroundTime = 3f;
+
+        [Header("Alerted (no combat yet)")]
+        [Tooltip("Approach a seen target only until this distance, then hold and watch. Combat closes the gap in Phase 4.")]
+        public float engageDistance = 3f;
+
+        [Tooltip("Log state transitions and destination picks. Great while proving out perception.")]
         public bool debugBrain = true;
 
-        enum State { Idle, Walking }
-        State state = State.Idle;
+        enum State { WanderIdle, WanderWalk, Investigate, Alerted }
+        State state = State.WanderIdle;
         float timer;
+        Vector3 investigatePoint;
 
         NpcLocomotion body;
+        NpcPerception senses;
         DungeonVisualizer vis;
 
         void Awake()
         {
             body = GetComponent<NpcLocomotion>();
+            senses = GetComponent<NpcPerception>();
             vis = FindObjectOfType<DungeonVisualizer>();
             timer = Random.Range(idleTime.x, idleTime.y);
         }
 
         void Update()
         {
+            // Perception interrupts. Sight > sound > wander, checked every frame so
+            // a goblin snaps to a target the instant it appears and drops back to
+            // investigating the moment it loses sight.
+            if (senses != null)
+            {
+                if (senses.CurrentTarget != null)
+                {
+                    if (state != State.Alerted) Enter(State.Alerted);
+                }
+                else if (senses.Awareness01 >= senses.investigateThreshold && senses.HasLastKnown)
+                {
+                    if (state != State.Investigate) Enter(State.Investigate);
+                }
+                else if (state == State.Investigate || state == State.Alerted)
+                {
+                    // Lost the thread and awareness has faded — back to wandering.
+                    Enter(State.WanderIdle);
+                }
+            }
+
             switch (state)
             {
-                case State.Idle: TickIdle(); break;
-                case State.Walking: TickWalking(); break;
+                case State.WanderIdle: TickWanderIdle(); break;
+                case State.WanderWalk: TickWanderWalk(); break;
+                case State.Investigate: TickInvestigate(); break;
+                case State.Alerted: TickAlerted(); break;
             }
         }
 
-        void TickIdle()
+        // ---------------- Wander ----------------
+
+        void TickWanderIdle()
         {
             timer -= Time.deltaTime;
-            if (timer <= 0f) PickDestination();
+            if (timer <= 0f) PickWanderDestination();
         }
 
-        void TickWalking()
+        void TickWanderWalk()
         {
             timer += Time.deltaTime;
 
             if (body.Agent.pathStatus == NavMeshPathStatus.PathInvalid)
             {
-                if (debugBrain) Debug.LogWarning($"[NPC] {name}: path went INVALID — rerolling.", this);
-                EnterIdle();
+                if (debugBrain) Debug.LogWarning($"[NPC] {name}: path invalid — rerolling.", this);
+                Enter(State.WanderIdle);
                 return;
             }
-
-            // Blocked is NOT a failure — it usually means the NPC is leaning on a
-            // door, which is exactly what we want it to keep doing. Only the
-            // timeout gives up, so a genuinely stuck NPC recovers while a
-            // door-shoving one is left alone to finish the job.
+            // Blocked is not failure — it usually means leaning on a door, which we
+            // want to continue. Only the timeout gives up.
             if (timer > walkTimeout)
             {
-                if (debugBrain)
-                    Debug.LogWarning($"[NPC] {name}: walk timed out after {walkTimeout}s at {transform.position} " +
-                                     $"(blocked={body.IsBlocked}) — rerolling.", this);
-                EnterIdle();
+                if (debugBrain) Debug.LogWarning($"[NPC] {name}: walk timed out (blocked={body.IsBlocked}) — rerolling.", this);
+                Enter(State.WanderIdle);
                 return;
             }
-
-            if (body.HasArrived) EnterIdle();
+            if (body.HasArrived) Enter(State.WanderIdle);
         }
 
-        void EnterIdle()
-        {
-            state = State.Idle;
-            timer = Random.Range(idleTime.x, idleTime.y);
-            body.Stop();
-        }
-
-        void PickDestination()
+        void PickWanderDestination()
         {
             var gen = vis != null ? vis.Generator : null;
-            if (gen == null || gen.Rooms.Count == 0)
-            {
-                timer = 1f; // dungeon not built yet — check back shortly
-                return;
-            }
+            if (gen == null || gen.Rooms.Count == 0) { timer = 1f; return; }
 
             for (int i = 0; i < 6; i++)
             {
                 Room room = gen.Rooms[Random.Range(0, gen.Rooms.Count)];
                 Vector3Int fc = room.InteriorFloorCell;
-                Vector3 target = vis.transform.position +
-                                 new Vector3(fc.x + 0.5f, fc.y, fc.z + 0.5f) * vis.cellSize;
+                Vector3 target = vis.transform.position + new Vector3(fc.x + 0.5f, fc.y, fc.z + 0.5f) * vis.cellSize;
 
                 if (!NavMesh.SamplePosition(target, out NavMeshHit hit, vis.cellSize, NavMesh.AllAreas))
                 {
-                    if (debugBrain)
-                        Debug.LogWarning($"[NPC] {name}: no navmesh under {room.Type} at {fc} — is that room connected?", this);
+                    if (debugBrain) Debug.LogWarning($"[NPC] {name}: no navmesh under {room.Type} at {fc}.", this);
                     continue;
                 }
                 if (!body.SetDestination(hit.position)) continue;
 
                 if (debugBrain) Debug.Log($"[NPC] {name}: wandering to {room.Type} at {fc}.", this);
-                state = State.Walking;
+                state = State.WanderWalk;
                 timer = 0f;
                 return;
             }
+            timer = 2f;
+        }
 
-            timer = 2f; // nothing reachable this round — idle and retry
+        // ---------------- Investigate ----------------
+
+        void TickInvestigate()
+        {
+            // The last-known spot can move (a fresh noise updates it) — retarget if
+            // it drifted meaningfully.
+            if ((senses.LastKnownPosition - investigatePoint).sqrMagnitude > 1f)
+                GoToInvestigatePoint();
+
+            if (!body.HasArrived && !body.IsBlocked)
+            {
+                timer = lookAroundTime; // reset the look-around clock until we arrive
+                return;
+            }
+
+            // Arrived (or wedged close enough) — look around while awareness bleeds
+            // off. The perception interrupt at the top of Update pulls us out early
+            // if we see or hear something new.
+            timer -= Time.deltaTime;
+            if (timer <= 0f) Enter(State.WanderIdle);
+        }
+
+        void GoToInvestigatePoint()
+        {
+            investigatePoint = senses.LastKnownPosition;
+            if (NavMesh.SamplePosition(investigatePoint, out NavMeshHit hit, vis != null ? vis.cellSize : 3f, NavMesh.AllAreas))
+                body.SetDestination(hit.position);
+        }
+
+        // ---------------- Alerted ----------------
+
+        void TickAlerted()
+        {
+            Transform t = senses.CurrentTarget;
+            if (t == null) return; // interrupt handler will switch us out next frame
+
+            body.FaceTowards(t.position);
+
+            float dist = Vector3.Distance(transform.position, t.position);
+            if (dist > engageDistance)
+                body.SetDestination(t.position);   // close in
+            else
+                body.Stop();                        // hold and watch (Phase 4 attacks here)
+        }
+
+        // ---------------- Transitions ----------------
+
+        void Enter(State next)
+        {
+            if (debugBrain && next != state) Debug.Log($"[NPC] {name}: {state} → {next}.", this);
+            state = next;
+
+            switch (next)
+            {
+                case State.WanderIdle:
+                    timer = Random.Range(idleTime.x, idleTime.y);
+                    body.Stop();
+                    break;
+                case State.Investigate:
+                    timer = lookAroundTime;
+                    GoToInvestigatePoint();
+                    break;
+                case State.Alerted:
+                    break;
+            }
         }
 
         void OnDrawGizmosSelected()
         {
             if (body == null || body.Agent == null || !body.Agent.hasPath) return;
-            Gizmos.color = Color.cyan;
+            Gizmos.color = state == State.Alerted ? Color.red : state == State.Investigate ? Color.magenta : Color.cyan;
             Vector3 prev = transform.position;
             foreach (var corner in body.Agent.path.corners)
             {

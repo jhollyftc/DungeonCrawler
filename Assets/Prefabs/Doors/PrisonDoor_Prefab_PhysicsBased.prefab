@@ -223,6 +223,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       insertIndex: -1
       addedObject: {fileID: 9024524661972790314}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7155697092079969021}
   m_SourcePrefab: {fileID: 100100000, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
 --- !u!4 &402730998560107897 stripped
 Transform:
@@ -476,6 +479,21 @@ MonoBehaviour:
   creakPitchRange: {x: 0.75, y: 0.75}
   impactPitchRange: {x: 0.95, y: 1.05}
   debugAudio: 0
+--- !u!114 &7155697092079969021
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1071039881675208643}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe97e4d20157de04fb9e8f5416087079, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DoorNoiseEmitter
+  faction: 2
+  referenceSwingSpeed: 4
+  swingStartScale: 0.4
 --- !u!1001 &8606022166973257070
 PrefabInstance:
   m_ObjectHideFlags: 0

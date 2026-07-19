@@ -3,7 +3,12 @@ guid: 46e706e3c86374041b71f1d10340bd15
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: tripo_mat_3ac32495-1611-4b58-89b4-5e2b8ac10965
+    second: {fileID: 2100000, guid: 2540955e72ad4e94495fc84671c11198, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -34,7 +39,7 @@ ModelImporter:
     isReadable: 0
   meshes:
     lODScreenPercentages: []
-    globalScale: 1
+    globalScale: 160
     meshCompression: 0
     addColliders: 0
     useSRGBMaterialColor: 1
@@ -95,7 +100,7 @@ ModelImporter:
     armStretch: 0.05
     legStretch: 0.05
     feetSpacing: 0
-    globalScale: 1
+    globalScale: 1.5999999
     rootMotionBoneName: 
     hasTranslationDoF: 0
     hasExtraRoot: 0

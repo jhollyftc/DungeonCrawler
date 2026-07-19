@@ -130,6 +130,8 @@ GameObject:
   - component: {fileID: 419853727}
   - component: {fileID: 419853728}
   - component: {fileID: 419853729}
+  - component: {fileID: 419853730}
+  - component: {fileID: 419853731}
   m_Layer: 0
   m_Name: DungeonSpawner
   m_TagString: Untagged
@@ -164,12 +166,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b70f8b5f954af8a47929025c76042179, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonVisualizer
-  seed: 522462086
+  seed: 841597667
   randomizeSeedOnGenerate: 0
   config:
     depth: 6
     depthProfile: {fileID: 11400000, guid: 3271732a93adbe14b9886183c76b635d, type: 2}
-    gridSize: {x: 30, y: 10, z: 30}
+    gridSize: {x: 30, y: 20, z: 30}
     roomCount: 10
     roomMinSize: {x: 3, y: 1, z: 3}
     roomMaxSize: {x: 9, y: 3, z: 9}
@@ -210,6 +212,7 @@ MonoBehaviour:
     prisonDoorPrefabs:
     - {fileID: 1029005481309709157, guid: 52494da86f067b0408b58e8fb47dd04d, type: 3}
     - {fileID: 7485307119221061454, guid: 00a7543ebd7055346bb497bc367dceab, type: 3}
+    - {fileID: 919132149155446097, guid: 714ab6a3faf8b9d4d88755ea8d4f4065, type: 3}
     prisonDoorLockChance: 0.1
     archwayPrefabs:
     - {fileID: 1222708879805728174, guid: d1a9ad98a5b88cd4591abb6df8a66a93, type: 3}
@@ -314,6 +317,56 @@ MonoBehaviour:
   landClip: {fileID: 0}
   stepDistance: 2.4
   footstepVolume: 0.8
+--- !u!114 &419853730
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 419853725}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5bd7a40b67f0ab469ea2e11e8600c47, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.DungeonNavBaker
+  bakeOnBuild: 1
+  excludeRoots:
+  - DungeonDoors
+  npcPrefab: {fileID: 8760909400174574388, guid: 680371e1c789b414885fa22e308ecaea, type: 3}
+  npcCount: 10
+  avoidSpawnRoom: 1
+--- !u!114 &419853731
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 419853725}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a5ac11cc976e418e8d13136b07e1f52, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshSurface
+  m_SerializedVersion: 0
+  m_AgentTypeID: 0
+  m_CollectObjects: 2
+  m_Size: {x: 10, y: 10, z: 10}
+  m_Center: {x: 0, y: 2, z: 0}
+  m_LayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_UseGeometry: 1
+  m_DefaultArea: 0
+  m_GenerateLinks: 0
+  m_IgnoreNavMeshAgent: 1
+  m_IgnoreNavMeshObstacle: 1
+  m_OverrideTileSize: 0
+  m_TileSize: 256
+  m_OverrideVoxelSize: 0
+  m_VoxelSize: 0.16666667
+  m_MinRegionArea: 2
+  m_NavMeshData: {fileID: 0}
+  m_BuildHeightMesh: 0
 --- !u!1 &456270793
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,0 +1,241 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &8454498395850278501
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_Name
+      value: Goblin_Walk_Prefab
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: 4f4886cd40521ca4aa9965f5e93328f5, type: 2}
+    - target: {fileID: 8991663845242928450, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 2540955e72ad4e94495fc84671c11198, type: 2}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1507276816574660811}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3441956170630864151}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -8562546300561800723}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6034191483615021781}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -7295533091994985761}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -7223245212662630839}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4569796033754320705}
+  m_SourcePrefab: {fileID: 100100000, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+--- !u!95 &2611802833145871348 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+  m_PrefabInstance: {fileID: 8454498395850278501}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &8760909400174574388 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+  m_PrefabInstance: {fileID: 8454498395850278501}
+  m_PrefabAsset: {fileID: 0}
+--- !u!195 &1507276816574660811
+NavMeshAgent:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_AgentTypeID: 0
+  m_Radius: 0.6
+  m_Speed: 2.5
+  m_Acceleration: 8
+  avoidancePriority: 50
+  m_AngularSpeed: 120
+  m_StoppingDistance: 0
+  m_AutoTraverseOffMeshLink: 1
+  m_AutoBraking: 1
+  m_AutoRepath: 1
+  m_Height: 1.8
+  m_BaseOffset: 0
+  m_WalkableMask: 4294967295
+  m_ObstacleAvoidanceType: 4
+--- !u!143 &3441956170630864151
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 1.6
+  m_Radius: 0.55
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0.8, z: 0}
+--- !u!114 &-8562546300561800723
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 234a68d9c03c3784a8060367801c013e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcLocomotion
+  turnSpeed: 540
+  gravity: -20
+  blockedSpeed: 0.35
+  blockedDesiredSpeed: 0.5
+  navRecoverRadius: 3
+  maxFallDistance: 6
+  maxFallSpeed: 25
+  impulseDecay: 0.2
+--- !u!114 &6034191483615021781
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 106d2579bcc27b04cb5aea82eb5de256, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcBrain
+  idleTime: {x: 1.5, y: 4}
+  walkTimeout: 45
+  lookAroundTime: 3
+  engageDistance: 3
+  debugBrain: 1
+--- !u!114 &-7295533091994985761
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02266cf9c24422743bd631784af419a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.CharacterControllerPhysicsPush
+  pushForce: 7
+  referenceFrameRate: 60
+  scaleByPlayerSpeed: 1
+  speedForFullPush: 8
+  minimumPushScale: 0.05
+  maximumPushSpeed: 3
+  standingOnThreshold: -0.3
+--- !u!114 &-7223245212662630839
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 315190acda2871347acc00a5b4ae4125, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcPerception
+  faction: 1
+  maxHearRadius: 10
+  viewRadius: 20
+  viewAngle: 80
+  eyeHeight: 1.5
+  sightBlockMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  sightGainPerSecond: 2.5
+  hearGain: 0.6
+  decayPerSecond: 0.35
+  investigateThreshold: 0.3
+  tickInterval: 0.15
+--- !u!114 &4569796033754320705
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c87a046177aa73a4791ec5547a99b39f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcAnimatorDriver
+  animator: {fileID: 2611802833145871348}
+  walkAnimationSpeed: 1
+  speedDampTime: 0.12

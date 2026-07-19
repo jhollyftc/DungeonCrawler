@@ -74,6 +74,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c3f807c3ead7076409b36ebe02f3eb5b, type: 3}
       insertIndex: -1
       addedObject: {fileID: 7482198659920078383}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c3f807c3ead7076409b36ebe02f3eb5b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2590047996127424848}
   m_SourcePrefab: {fileID: 100100000, guid: c3f807c3ead7076409b36ebe02f3eb5b, type: 3}
 --- !u!1 &2466494913561431473 stripped
 GameObject:
@@ -205,3 +208,17 @@ MonoBehaviour:
   pitchRange: {x: 2, y: 3.5}
   forcePitchRange: {x: 1.05, y: 0.9}
   debugAudio: 1
+--- !u!114 &2590047996127424848
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2466494913561431473}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 64b3ae213a4120f45940c2bb7e842d61, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ImpactNoiseEmitter
+  faction: 2
+  loudnessScale: 1
