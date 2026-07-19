@@ -36,9 +36,10 @@ namespace DungeonGen
 
         static readonly int SpeedParam = Animator.StringToHash("Speed");
         static readonly int MotionSpeedParam = Animator.StringToHash("MotionSpeed");
+        static readonly int DieParam = Animator.StringToHash("Die");
 
         NpcLocomotion body;
-        bool hasSpeed, hasMotionSpeed;
+        bool hasSpeed, hasMotionSpeed, hasDie;
 
         void Awake()
         {
@@ -72,9 +73,27 @@ namespace DungeonGen
             {
                 if (p.nameHash == SpeedParam) hasSpeed = true;
                 if (p.nameHash == MotionSpeedParam) hasMotionSpeed = true;
+                if (p.nameHash == DieParam) hasDie = true;
             }
             if (!hasSpeed)
                 Debug.Log($"[NPC] {name}: controller has no 'Speed' float parameter — add one to blend idle/walk by movement.", this);
+        }
+
+        /// <summary>
+        /// Play the death animation. Returns false if the controller has no 'Die'
+        /// trigger (or no Animator) — the caller falls back to the code topple, so
+        /// a controller authored before the death clip existed still degrades
+        /// gracefully. Freezes locomotion params first so the death state isn't
+        /// fighting a lingering walk blend, then stops driving entirely.
+        /// </summary>
+        public bool TriggerDeath()
+        {
+            if (animator == null || !hasDie) return false;
+            if (hasSpeed) animator.SetFloat(SpeedParam, 0f);
+            if (hasMotionSpeed) animator.SetFloat(MotionSpeedParam, 1f);
+            animator.SetTrigger(DieParam);
+            enabled = false;   // corpse: nothing left to drive
+            return true;
         }
 
         void Update()

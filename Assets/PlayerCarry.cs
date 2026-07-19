@@ -208,6 +208,10 @@ namespace DungeonGen
             body.linearVelocity = eye.forward * thrown.throwSpeed;
             body.angularVelocity = eye.right * thrown.throwSpin;
 
+            // A prop is only a weapon when somebody MADE it one: arming is what
+            // lets ThrownDamage hurt on this flight and never from casual shoves.
+            body.GetComponent<ThrownDamage>()?.Arm(gameObject);
+
             PlayExertion(mass);
         }
 

@@ -271,9 +271,19 @@ namespace DungeonGen
                 turnSpeed * Time.deltaTime);
         }
 
-        /// <summary>Knockback etc. Decays over impulseDecay. Additive with pathing, so a hit shoves an NPC mid-stride.</summary>
+        /// <summary>
+        /// Knockback etc. Decays over impulseDecay. Additive with pathing, so a hit
+        /// shoves an NPC mid-stride. The VERTICAL component routes into gravity's
+        /// velocity instead of the decaying impulse — an upward pop then follows a
+        /// real ballistic arc (up, hang, fall) rather than being damped flat.
+        /// </summary>
         public void AddImpulse(Vector3 velocity)
         {
+            if (velocity.y > 0f)
+            {
+                verticalVelocity = Mathf.Max(verticalVelocity, 0f) + velocity.y;
+                velocity.y = 0f;
+            }
             impulse += velocity;
             impulseTimer = impulseDecay;
         }

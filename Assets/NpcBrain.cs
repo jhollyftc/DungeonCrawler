@@ -34,9 +34,9 @@ namespace DungeonGen
         [Tooltip("Seconds spent looking around at a last-known spot before giving up (if awareness has faded).")]
         public float lookAroundTime = 3f;
 
-        [Header("Alerted (no combat yet)")]
-        [Tooltip("Approach a seen target only until this distance, then hold and watch. Combat closes the gap in Phase 4.")]
-        public float engageDistance = 3f;
+        [Header("Alerted")]
+        [Tooltip("Close to within this distance of a seen target before attacking. Should be a touch under MeleeAttack.range so swings connect.")]
+        public float engageDistance = 1.4f;
 
         [Tooltip("Log state transitions and destination picks. Great while proving out perception.")]
         public bool debugBrain = true;
@@ -48,12 +48,14 @@ namespace DungeonGen
 
         NpcLocomotion body;
         NpcPerception senses;
+        MeleeAttack melee;      // optional — an unarmed observer NPC just watches
         DungeonVisualizer vis;
 
         void Awake()
         {
             body = GetComponent<NpcLocomotion>();
             senses = GetComponent<NpcPerception>();
+            melee = GetComponent<MeleeAttack>();
             vis = FindObjectOfType<DungeonVisualizer>();
             timer = Random.Range(idleTime.x, idleTime.y);
         }
@@ -184,9 +186,17 @@ namespace DungeonGen
 
             float dist = Vector3.Distance(transform.position, t.position);
             if (dist > engageDistance)
-                body.SetDestination(t.position);   // close in
+            {
+                // Don't repath mid-swing — a goblin that walks while its hit is
+                // landing looks (and plays) like it's skating.
+                if (melee == null || !melee.IsSwinging)
+                    body.SetDestination(t.position);
+            }
             else
-                body.Stop();                        // hold and watch (Phase 4 attacks here)
+            {
+                body.Stop();
+                melee?.TryAttack();   // no-op while recovering/suppressed/absent
+            }
         }
 
         // ---------------- Transitions ----------------

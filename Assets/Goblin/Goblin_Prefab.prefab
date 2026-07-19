@@ -1,5 +1,134 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &7288173231203379090
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4756737697157511325}
+  - component: {fileID: 8896955888616075572}
+  m_Layer: 0
+  m_Name: Audio Source
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4756737697157511325
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7288173231203379090}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -0.19368, y: 0.6691, z: 0.39508}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 8277281873109541262}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!82 &8896955888616075572
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7288173231203379090}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 0}
+  m_Resource: {fileID: 0}
+  m_PlayOnAwake: 1
+  m_Volume: 1
+  m_Pitch: 1
+  Loop: 0
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!1001 &8454498395850278501
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -50,7 +179,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
       propertyPath: m_Name
-      value: Goblin_Walk_Prefab
+      value: Goblin_Prefab
       objectReference: {fileID: 0}
     - target: {fileID: 5866666021909216657, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
       propertyPath: m_Controller
@@ -62,7 +191,10 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 2540955e72ad4e94495fc84671c11198, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4756737697157511325}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
       insertIndex: -1
@@ -85,10 +217,30 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
       insertIndex: -1
       addedObject: {fileID: 4569796033754320705}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -1158893534380692750}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -3220218793471512203}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -7339802204385534834}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -3568429183627724867}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -5788400137791500450}
   m_SourcePrefab: {fileID: 100100000, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
 --- !u!95 &2611802833145871348 stripped
 Animator:
   m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
+  m_PrefabInstance: {fileID: 8454498395850278501}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &8277281873109541262 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 3de51b7248ffd4649859efffd0d9a06b, type: 3}
   m_PrefabInstance: {fileID: 8454498395850278501}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &8760909400174574388 stripped
@@ -239,3 +391,104 @@ MonoBehaviour:
   animator: {fileID: 2611802833145871348}
   walkAnimationSpeed: 1
   speedDampTime: 0.12
+--- !u!114 &-1158893534380692750
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ee39f98d4389f440958c30e7676ab0e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.Health
+  max: 30
+  debugDamage: 1
+--- !u!114 &-3220218793471512203
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6752e39f81a138e419361e3853e8d8b7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcHitReactions
+  staggerDuration: 4
+  staggerSpeedMultiplier: 0.76
+  staggerPerImpulse: 0.08
+  thrownVerticalPop: 0.35
+  awarenessOnHit: 1
+  toppleTime: 0.5
+  corpseLinger: 8
+  sinkTime: 2.5
+  sinkDepth: 1.8
+--- !u!114 &-7339802204385534834
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f00d0f7abbcda8b47a8b3d2fd3ebdc73, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcBoneReaction
+  stiffness: 40
+  damping: 8
+  degreesPerImpulse: -6
+  hitRadius: 0.7
+  maxDeflection: 40
+--- !u!114 &-3568429183627724867
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 233fe64865ab90a41ab2fb5434e8a677, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcHeadTrack
+  headBone: {fileID: 0}
+  trackRadius: 6
+  onlyWhenAware: 1
+  maxYaw: 70
+  maxPitch: 60
+  blendSpeed: 6
+  falloffStart: 0.6
+--- !u!114 &-5788400137791500450
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8760909400174574388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fa9afb5136f708b4bbca4dd64fd0ba1c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcCombatAudio
+  source: {fileID: 8896955888616075572}
+  hurtClips:
+  - {fileID: 8300000, guid: 050b752e6693e71449305eeaf4b7ce11, type: 3}
+  - {fileID: 8300000, guid: 16d7e5d6e7730044f9030c782be4446d, type: 3}
+  - {fileID: 8300000, guid: 1a4ebd93f82f36e43ac1203cd5a50875, type: 3}
+  - {fileID: 8300000, guid: 9b84a282cee0e8f4a9855a5bb1a51d82, type: 3}
+  hurtFullImpulse: 6
+  hurtMinimumVolume: 0.35
+  hurtInterval: 0.25
+  deathClips:
+  - {fileID: 8300000, guid: 243d0c175d1731341969a115165658cf, type: 3}
+  - {fileID: 8300000, guid: 42df7e21f7f6977428cb36cd2f1675a4, type: 3}
+  - {fileID: 8300000, guid: 64281eb376f174a4cbbef594e4af8f20, type: 3}
+  - {fileID: 8300000, guid: 88f8bbe989fb26146b4a02f6ae4bfb98, type: 3}
+  bodyFallClips: []
+  bodyFallDelay: 1.1
+  deathVolume: 1
+  pitchRange: {x: 0.92, y: 1.08}

@@ -598,6 +598,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
       insertIndex: -1
       addedObject: {fileID: -9041524765185514843}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4587786975983526201}
   m_SourcePrefab: {fileID: 100100000, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
 --- !u!1 &8418309518360107936 stripped
 GameObject:
@@ -724,6 +727,25 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ImpactNoiseEmitter
   faction: 2
   loudnessScale: 1
+--- !u!114 &4587786975983526201
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8418309518360107936}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35f821debfd5d6c4596d76e932ec8511, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ThrownDamage
+  minDamageSpeed: 4
+  fullDamageSpeed: 10
+  maxDamage: 15
+  fullDamageMass: 20
+  knockback: 4
+  armedDuration: 3
+  debugDamage: 0
 --- !u!4 &9194106658946842906 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}

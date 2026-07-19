@@ -195,6 +195,7 @@ GameObject:
   - component: {fileID: 1046011905552437013}
   - component: {fileID: 7701327028696480798}
   - component: {fileID: 8254297746429988832}
+  - component: {fileID: 7502153845330713350}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -407,6 +408,20 @@ MonoBehaviour:
   stepLoudness: {x: 0.25, y: 1}
   crouchMultiplier: 0
   landLoudness: 0.9
+--- !u!114 &7502153845330713350
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 912157609348552918}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ee39f98d4389f440958c30e7676ab0e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.Health
+  max: 100
+  debugDamage: 1
 --- !u!1 &3512732595371402987
 GameObject:
   m_ObjectHideFlags: 0

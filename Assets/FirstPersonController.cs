@@ -63,6 +63,7 @@ namespace DungeonGen
         private GUIStyle style;
         private DungeonVisualizer dungeon;
         private PlayerCarry carry;
+        private Health health;
 
         void Awake()
         {
@@ -70,6 +71,7 @@ namespace DungeonGen
             cc.slopeLimit = maxSlopeAngle;
             cc.stepOffset = maxStepHeight;
             carry = GetComponent<PlayerCarry>();
+            health = GetComponent<Health>();
 
             standHeight = cc.height;
             standCenter = cc.center;
@@ -201,8 +203,11 @@ namespace DungeonGen
             // exact (seed, depth) that produced it straight off the screen — the
             // dungeon is a pure function of those two, so that pair reproduces it.
             string header = dungeon != null
-                ? $"Seed: {dungeon.seed}\nDepth: {dungeon.config.depth}\n\n"
+                ? $"Seed: {dungeon.seed}\nDepth: {dungeon.config.depth}\n"
                 : "";
+            if (health != null)
+                header += $"HP: {health.Current:0}/{health.max:0}\n";
+            if (header.Length > 0) header += "\n";
 
             string text = header +
                 "Controls\n" +
