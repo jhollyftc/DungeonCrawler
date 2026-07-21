@@ -38,6 +38,10 @@ namespace DungeonGen
         [Tooltip("Being hit slams awareness to this value, pointed at the attacker — you can't barrel a goblin and stay unsuspected.")]
         [Range(0f, 1f)] public float awarenessOnHit = 1f;
 
+        [Header("Reaction routing")]
+        [Tooltip("ON: living hits use the blended RAGDOLL (NpcRagdollReaction) — the tuning-heavy one. OFF (default): living hits use the directional spring FLINCH (NpcFlinch), and the ragdoll is used only for DEATH. Lets you shelve ragdoll REACTIONS while keeping ragdoll DEATH.")]
+        public bool useRagdollForReactions = false;
+
         [Header("Death")]
         [Tooltip("Seconds the corpse topples before despawn (fallback path — only when the controller has no Die state).")]
         public float toppleTime = 0.5f;
@@ -55,6 +59,8 @@ namespace DungeonGen
         NpcBrain brain;
         NpcAnimatorDriver animDriver;
         NpcBoneReaction boneReaction;
+        NpcFlinch flinch;
+        NpcRagdollReaction ragdoll;
         Coroutine stagger;
 
         void Awake()
@@ -66,6 +72,15 @@ namespace DungeonGen
             brain = GetComponent<NpcBrain>();
             animDriver = GetComponent<NpcAnimatorDriver>();
             boneReaction = GetComponent<NpcBoneReaction>();
+            flinch = GetComponent<NpcFlinch>();
+            ragdoll = GetComponent<NpcRagdollReaction>();
+        }
+
+        // Directional flinch preferred; plain spring is the fallback if no NpcFlinch.
+        void Flinch(Vector3 point, Vector3 impulse)
+        {
+            if (flinch != null) flinch.ApplyHit(point, impulse);
+            else boneReaction?.ApplyHit(point, impulse);
         }
 
         void OnEnable()
@@ -84,26 +99,31 @@ namespace DungeonGen
         {
             if (health.IsDead) return;
 
-            // Knockback: shove along the hit direction, through the locomotion
-            // capability so it composes with pathing instead of teleporting the
-            // capsule. Thrown hits redirect part of the shove UPWARD — the victim
-            // gets knocked slightly off its feet and comes down on a ballistic
-            // arc, which is what makes a barrel to the chest read as a body blow.
-            Vector3 flat = new Vector3(info.direction.x, 0f, info.direction.z).normalized;
-            float pop = info.type == DamageType.Thrown ? thrownVerticalPop : 0f;
-            body.AddImpulse(flat * info.impulse * (1f - pop) + Vector3.up * info.impulse * pop);
+            // Living hits: the directional spring FLINCH by default; the blended
+            // ragdoll only if opted in (useRagdollForReactions) and enabled. A
+            // ragdoll reaction that returns false (too light) falls through to the
+            // flinch path below.
+            bool ragdolled = useRagdollForReactions && ragdoll != null && ragdoll.isActiveAndEnabled
+                             && ragdoll.ReactToHit(info.point, info.direction * info.impulse);
 
-            // Per-bone flinch at the point of impact, riding the same
-            // momentum-derived impulse as the capsule shove — the skeleton and the
-            // body always agree about how hard the hit was.
-            boneReaction?.ApplyHit(info.point, info.direction * info.impulse);
+            if (!ragdolled)
+            {
+                // Capsule knockback through the locomotion capability so it composes
+                // with pathing. Thrown hits redirect part of the shove UPWARD onto a
+                // ballistic arc — a body blow, not an ice-slide.
+                Vector3 flat = new Vector3(info.direction.x, 0f, info.direction.z).normalized;
+                float pop = info.type == DamageType.Thrown ? thrownVerticalPop : 0f;
+                body.AddImpulse(flat * info.impulse * (1f - pop) + Vector3.up * info.impulse * pop);
+
+                Flinch(info.point, info.direction * info.impulse);
+
+                if (stagger != null) StopCoroutine(stagger);
+                stagger = StartCoroutine(Stagger(staggerDuration + info.impulse * staggerPerImpulse));
+            }
 
             // Being hit is impossible to miss: full alert toward whoever did it.
             if (senses != null && info.instigator != null)
                 senses.ForceAlert(info.instigator.transform.position, awarenessOnHit);
-
-            if (stagger != null) StopCoroutine(stagger);
-            stagger = StartCoroutine(Stagger(staggerDuration + info.impulse * staggerPerImpulse));
         }
 
         IEnumerator Stagger(float duration)
@@ -129,15 +149,21 @@ namespace DungeonGen
             body.enabled = false;
             if (body.Controller != null) body.Controller.enabled = false;
 
-            // Death animation if the controller has one; the code topple is the
-            // fallback so a rig without a death clip still dies convincingly.
+            // Full ragdoll death (physical + directional) if the goblin has one —
+            // the killing blow throws it, and NpcRagdollReaction owns linger + sink
+            // + destroy. Otherwise the death animation, then the code topple as a
+            // last resort.
+            // Full ragdoll death if the goblin has one AND the component is enabled
+            // (a dormant/disabled ragdoll can't run its despawn coroutine — using it
+            // anyway left the body half-ragdolled and stuck).
+            if (ragdoll != null && ragdoll.isActiveAndEnabled && ragdoll.HasRagdoll)
+            {
+                ragdoll.Die(info.point, info.direction * (info.impulse + 3f));  // a little extra so a killing tap still topples
+                return;
+            }
+
             bool animated = animDriver != null && animDriver.TriggerDeath();
-
-            // Kick the skeleton with the killing blow — the bone springs run on
-            // top of the death clip too, so the same clip falls slightly
-            // differently depending on what killed it and from where.
-            boneReaction?.ApplyHit(info.point, info.direction * (info.impulse * 1.5f));
-
+            Flinch(info.point, info.direction * (info.impulse * 1.5f));
             StartCoroutine(animated ? Despawn() : ToppleAndDespawn(info));
         }
 

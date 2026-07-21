@@ -44,6 +44,13 @@ namespace DungeonGen
         public float originHeight = 1.1f;
         [Tooltip("What the sweep can HIT (victims' colliders). Exclude this NPC's own layer or it can clip itself.")]
         public LayerMask hitMask = ~0;
+        [Tooltip("Optional: aim the sweep from this transform (position + forward) instead of the body. The PLAYER sets this to the camera so you slash where you LOOK — pitch included. NPCs leave it empty and sweep from the body.")]
+        public Transform aimSource;
+        [Tooltip("With an aimSource, start the sweep this far forward of it — pushes the origin out of the attacker's own capsule so the point-blank CheckSphere tests the TARGET, not your own chest.")]
+        public float aimForwardOffset = 0.45f;
+
+        [Tooltip("World-space direction of the BLOW — what the victim recoils along. Set per-swing by the driver (PlayerMelee derives it from the actual slash motion, so a diagonal cut pushes diagonally and a future left-slash pushes right). Zero = fall back to the aim/forward direction. This is the seam for directional attacks → directional reactions.")]
+        [HideInInspector] public Vector3 blowDirectionOverride;
 
         [Tooltip("Log swings, hits, and whiffs.")]
         public bool debugAttack = false;
@@ -61,6 +68,7 @@ namespace DungeonGen
         public bool Suppressed { get; set; }
 
         float readyAt;
+        int landedThisSwing;   // victims actually damaged (hitThisSwing also counts walls)
         Faction ownFaction;
         readonly HashSet<Transform> hitThisSwing = new HashSet<Transform>();
         static readonly Collider[] overlapScratch = new Collider[16];
@@ -79,62 +87,136 @@ namespace DungeonGen
             return true;
         }
 
+        // NPC path: the timed landing of a TryAttack() swing.
         void LandSweep()
         {
             IsSwinging = false;
             readyAt = Time.time + recovery;
+            DoSweep();
+            OnSwingEnd?.Invoke();
+        }
+
+        /// <summary>
+        /// The actual cast + damage, decoupled from TryAttack's windup timing so
+        /// the PLAYER can drive its own swing animation and fire the sweep at the
+        /// exact impact frame. Returns true if at least one victim took damage —
+        /// the feel layer (hitstop, camera kick) keys off that.
+        /// </summary>
+        public bool DoSweep()
+        {
             hitThisSwing.Clear();
+            landedThisSwing = 0;
 
-            Vector3 origin = transform.position + Vector3.up * originHeight;
-            Vector3 dir = transform.forward;
+            Vector3 origin;
+            Vector3 dir;
+            if (aimSource != null)
+            {
+                dir = aimSource.forward;
+                origin = aimSource.position + dir * aimForwardOffset;
+            }
+            else
+            {
+                dir = transform.forward;
+                origin = transform.position + Vector3.up * originHeight;
+            }
+            // Point-blank case: a cast that STARTS inside the victim's collider
+            // reports nothing, so if a DAMAGEABLE target overlaps the origin we
+            // must overlap-query instead. The test is deliberately narrow — a
+            // damageable, non-self root only. Two earlier versions were wrong:
+            // CheckSphere always saw the attacker's OWN capsule, and 'any non-self
+            // collider' let a nearby WALL force the short-range branch (in a
+            // cramped dungeon that's constant, and proximity to a wall must not
+            // shorten your sword — walls don't need the fallback, they're not
+            // damageable).
+            bool touchingTarget = false;
+            int probe = Physics.OverlapSphereNonAlloc(origin, sweepRadius, overlapScratch, hitMask, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < probe; i++)
+            {
+                // Same identity rule as TryHit: the damageable, never transform.root
+                // (parented NPCs all share the dungeon root).
+                var d = overlapScratch[i].GetComponentInParent<IDamageable>();
+                if (d == null) continue;
+                if (d.Transform == transform || d.Transform.IsChildOf(transform)) continue;
+                touchingTarget = true;
+                break;
+            }
+
+            // The BLOW direction (what victims recoil along) is separate from the
+            // sweep AIM (hit detection + facing). A diagonal slash aims forward but
+            // pushes diagonally; the driver sets blowDirectionOverride from the real
+            // swing motion. Cleared after the sweep so it never leaks to the next.
+            Vector3 blowDir = blowDirectionOverride.sqrMagnitude > 0.0001f ? blowDirectionOverride.normalized : dir;
+
             int hits;
-
-            // Already touching the target? A cast starting inside a collider
-            // reports NOTHING — melee range means this is the common case, not the
-            // edge case. Overlap instead.
-            if (Physics.CheckSphere(origin, sweepRadius, hitMask, QueryTriggerInteraction.Ignore))
+            if (touchingTarget)
             {
                 hits = Physics.OverlapSphereNonAlloc(origin, Mathf.Max(sweepRadius, range * 0.6f), overlapScratch, hitMask, QueryTriggerInteraction.Ignore);
-                for (int i = 0; i < hits; i++) TryHit(overlapScratch[i], origin, dir);
+                for (int i = 0; i < hits; i++) TryHit(overlapScratch[i], origin, dir, blowDir);
             }
             else
             {
                 hits = Physics.SphereCastNonAlloc(origin, sweepRadius, dir, castScratch, range, hitMask, QueryTriggerInteraction.Ignore);
-                for (int i = 0; i < hits; i++) TryHit(castScratch[i].collider, origin, dir);
+                for (int i = 0; i < hits; i++) TryHit(castScratch[i].collider, origin, dir, blowDir);
             }
 
-            if (debugAttack && hitThisSwing.Count == 0) Debug.Log($"[Melee] {name}: whiff.", this);
-            OnSwingEnd?.Invoke();
+            blowDirectionOverride = Vector3.zero;
+
+            if (debugAttack)
+                Debug.Log($"[Melee] {name}: sweep [{(touchingTarget ? "overlap" : "cast")}] saw {hits} collider(s) → {(landedThisSwing > 0 ? $"{landedThisSwing} HIT" : "whiff")}.", this);
+            return landedThisSwing > 0;
         }
 
-        void TryHit(Collider c, Vector3 origin, Vector3 dir)
+        void TryHit(Collider c, Vector3 origin, Vector3 dir, Vector3 blowDir)
         {
             if (c == null) return;
-            Transform root = c.attachedRigidbody != null ? c.attachedRigidbody.transform.root : c.transform.root;
 
-            if (root == transform.root) return;                 // never hit yourself
-            if (!hitThisSwing.Add(root)) return;                // one hit per victim per swing
-            if (FactionMember.Of(root) == ownFaction) return;   // no friendly fire
+            // Identity = the DAMAGEABLE, never transform.root. Spawned NPCs are
+            // parented under generated roots (DungeonNpcs → the visualizer), so
+            // transform.root resolves every goblin to 'DungeonSpawner' — one
+            // shared wrong identity that broke dedupe, faction, and damage lookup
+            // in one stroke (real bug: player swings whiffed with the goblin dead
+            // center). Health sits on the NPC's own object; walking UP from the
+            // collider to the nearest IDamageable finds the true identity boundary.
+            var damageable = c.GetComponentInParent<IDamageable>();
+            if (damageable == null)
+            {
+                if (debugAttack) Debug.Log($"[Melee] {name}: '{c.transform.root.name}/{c.name}' rejected — no IDamageable (scenery).", this);
+                return;
+            }
 
-            var damageable = root.GetComponentInChildren<IDamageable>();
-            if (damageable == null || damageable.IsDead) return;
+            Transform root = damageable.Transform;
+            if (root == transform || root.IsChildOf(transform)) return;  // never hit yourself
+            if (!hitThisSwing.Add(root)) return;                         // one hit per victim per swing
+            if (FactionMember.Of(root) == ownFaction)
+            {
+                if (debugAttack) Debug.Log($"[Melee] {name}: '{root.name}' rejected — same faction ({ownFaction}). If this is a valid target, someone's FactionMember is missing or wrong.", this);
+                return;
+            }
+            if (damageable.IsDead) return;
 
             // Only in front — the overlap fallback is a sphere and shouldn't let a
-            // swing hit someone standing behind the attacker.
-            Vector3 to = root.position - transform.position;
-            to.y = 0f;
-            if (to.sqrMagnitude > 0.01f && Vector3.Dot(to.normalized, dir) < 0.1f) return;
+            // swing hit someone standing behind the attacker. Compared in FULL 3D
+            // against the aim direction: the old flat-vs-pitched-dir comparison
+            // collapsed when the player looked steeply DOWN at a short goblin and
+            // rejected legitimate point-blank hits.
+            Vector3 to = c.ClosestPoint(origin) - origin;
+            if (to.sqrMagnitude > 0.0004f && Vector3.Dot(to.normalized, dir) < 0.1f)
+            {
+                if (debugAttack) Debug.Log($"[Melee] {name}: '{root.name}' rejected — behind the swing (dot {Vector3.Dot(to.normalized, dir):0.00}).", this);
+                return;
+            }
 
             var info = new DamageInfo
             {
                 amount = damage,
                 point = c.ClosestPoint(origin),
-                direction = to.sqrMagnitude > 0.01f ? to.normalized : dir,
+                direction = blowDir,   // the SWING's direction, not just "toward the target" — drives the recoil
                 instigator = gameObject,
                 type = DamageType.Melee,
                 impulse = knockback,
             };
             damageable.TakeDamage(info);
+            landedThisSwing++;
             OnHitLanded?.Invoke(damageable, info);
 
             if (debugAttack) Debug.Log($"[Melee] {name}: hit '{root.name}' for {damage:0.#}.", this);

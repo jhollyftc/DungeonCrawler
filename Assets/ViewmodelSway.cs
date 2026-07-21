@@ -59,6 +59,30 @@ namespace DungeonGen
         Vector3 rotOffset, rotVelocity;             // euler degrees
         float bobPhase;
 
+        // Attack pose, injected per-frame by PlayerMelee/PlayerBlock. Composed
+        // after sway and BEFORE the collision clamp, so a swing still can't push
+        // the blade through a wall. Zero when no attack is active — idle behavior
+        // is byte-identical to pre-melee.
+        Vector3 attackPos;
+        Quaternion attackRot = Quaternion.identity;
+        float attackSuppress;                       // 0..1 — how much sway the attack mutes
+
+        /// <summary>
+        /// Drive the hand with an attack pose this frame (camera-local offset +
+        /// rotation) and suppress procedural sway by `swaySuppress`. THE one
+        /// sanctioned way for combat to move the viewmodel: this component stays
+        /// the single writer of the transform (rest → sway → attack → collision
+        /// clamp), because two systems pushing the pose independently oscillate —
+        /// the lesson ViewmodelCollision already taught. Call every frame during
+        /// a swing; decays to nothing when you stop calling it with zeros.
+        /// </summary>
+        public void SetAttackPose(Vector3 positionOffset, Quaternion rotationOffset, float swaySuppress)
+        {
+            attackPos = positionOffset;
+            attackRot = rotationOffset;
+            attackSuppress = Mathf.Clamp01(swaySuppress);
+        }
+
         CharacterController cc;
         PlayerFootsteps footsteps;
         ViewmodelCollision collision;
@@ -150,9 +174,12 @@ namespace DungeonGen
             // camera's frame, then the authored hand rotation is applied.
             // Post-multiplying would pivot the sway around the hand's rotated
             // axes — pitch lag turning into roll on an angled weapon pose.
-            float w = weight * proceduralWeight;
-            Vector3 swayedPos = restPos + posOffset * w;
-            Quaternion swayedRot = Quaternion.Euler(rotOffset * w) * restRot;
+            float w = weight * proceduralWeight * (1f - attackSuppress);
+            Vector3 swayedPos = restPos + posOffset * w + attackPos;
+            // Attack rotation pre-multiplies like sway does (camera-frame first,
+            // authored hand rotation last) — post-multiplying would pivot the
+            // swing around the hand's angled axes.
+            Quaternion swayedRot = Quaternion.Euler(rotOffset * w) * attackRot * restRot;
 
             // Collision retraction runs as a CLAMP on this result, never an
             // independent force — see ViewmodelCollision. Optional: sway
