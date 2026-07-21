@@ -27,6 +27,9 @@ namespace DungeonGen
         [Tooltip("One-shot source. Left empty, a 3D source (linear rolloff, 25m) is added at Awake.")]
         [SerializeField] private AudioSource source;
 
+        /// <summary>The voice source (grunts/death cry) — NpcFace follows its amplitude to open the jaw.</summary>
+        public AudioSource Source => source;
+
         [Header("Hurt")]
         [Tooltip("Grunts/snarls when damaged. Several = free variation.")]
         [SerializeField] private AudioClip[] hurtClips;
