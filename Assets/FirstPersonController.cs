@@ -46,6 +46,9 @@ namespace DungeonGen
         [Tooltip("Highest depth PgUp will climb to. A cap because grid size scales with depth — very high depths generate huge, slow dungeons.")]
         public int maxDebugDepth = 20;
 
+        /// <summary>External move-speed multiplier (1 = normal). Set by e.g. PlayerMelee to slow the player while charging a heavy swing. Reset to 1 when done.</summary>
+        public float moveScaleOverride { get; set; } = 1f;
+
         /// <summary>True while crouched. Read by anything that cares how quiet the player is (future NPC alerting).</summary>
         public bool IsCrouching { get; private set; }
         /// <summary>Current horizontal speed (m/s). Physics pushes scale off this, so how hard you shove things follows how fast you're actually moving.</summary>
@@ -146,6 +149,7 @@ namespace DungeonGen
             // Carrying something heavy drags you down — mass is the one dial for
             // weight across carry lag, throw force, and now movement.
             if (carry != null) speed *= carry.CarrySpeedMultiplier;
+            speed *= moveScaleOverride;   // e.g. charging a heavy swing
             Vector3 horizontal = transform.TransformDirection(input) * speed;
 
             if (OnLadder())

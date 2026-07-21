@@ -63,6 +63,18 @@ namespace DungeonGen
         [Tooltip("How fast the face eases between expressions (per second). A furrow shouldn't snap on.")]
         public float blendRate = 4f;
 
+        [Header("Hit reaction (brief shock)")]
+        [Tooltip("The face when struck — a flash of shock: raise/widen the brow and drop the jaw open. Overrides the mood for a moment on every hit.")]
+        public Expression hurtExpression = new Expression
+        {
+            name = "Hurt", eyebrowRange = new Vector2(70f, 95f), jawRange = new Vector2(120f, 150f),
+            eyebrowSpeed = 0.2f, jawSpeed = 0.2f,
+        };
+        [Tooltip("Seconds the shocked face holds after a hit before easing back to the mood.")]
+        public float hitReactionTime = 0.3f;
+        [Tooltip("Blend rate INTO the shock (per second) — much faster than the mood blend, so a hit snaps the face rather than easing.")]
+        public float hitBlendRate = 22f;
+
         [Header("Voice sync")]
         [Tooltip("The NPC's voice AudioSource (grunts/death cry). The jaw opens to its live amplitude, so it looks like it's making the sound. Left empty, NpcCombatAudio's source is used automatically.")]
         public AudioSource voiceSource;
@@ -76,6 +88,8 @@ namespace DungeonGen
         bool initialized;
 
         NpcPerception perception;
+        Health health;
+        float hurtUntil;
         readonly float[] sampleBuf = new float[256];
 
         const float WaveAmplitudeSum = 0.15f + 0.05f + 0.02f;
@@ -83,6 +97,8 @@ namespace DungeonGen
         void OnEnable()
         {
             perception = GetComponent<NpcPerception>();
+            health = GetComponent<Health>();
+            if (health != null) health.OnDamaged += HandleDamaged;
             if (voiceSource == null)
             {
                 // Prefer the actual grunt/death-cry source; fall back to any source.
@@ -92,15 +108,24 @@ namespace DungeonGen
             SnapToExpression(TargetExpression());
         }
 
+        void OnDisable()
+        {
+            if (health != null) health.OnDamaged -= HandleDamaged;
+        }
+
+        void HandleDamaged(DamageInfo info) => hurtUntil = Time.time + hitReactionTime;
+
         void LateUpdate()
         {
             if (jaw == null || eyebrow == null || expressions.Count == 0) return;
             if (!initialized) SnapToExpression(TargetExpression());
 
-            // Blend the current ranges toward the mood's target (edit mode: hold
-            // the first/neutral expression).
-            Expression target = TargetExpression();
-            float k = Application.isPlaying ? 1f - Mathf.Exp(-blendRate * Time.deltaTime) : 1f;
+            // A recent hit overrides the mood with the shock face, blended in fast
+            // so it snaps; once the window passes it eases back to the mood.
+            bool hurt = Application.isPlaying && Time.time < hurtUntil;
+            Expression target = hurt ? hurtExpression : TargetExpression();
+            float rate = hurt ? hitBlendRate : blendRate;
+            float k = Application.isPlaying ? 1f - Mathf.Exp(-rate * Time.deltaTime) : 1f;
             ebMin = Mathf.Lerp(ebMin, target.eyebrowRange.x, k);
             ebMax = Mathf.Lerp(ebMax, target.eyebrowRange.y, k);
             jMin = Mathf.Lerp(jMin, target.jawRange.x, k);

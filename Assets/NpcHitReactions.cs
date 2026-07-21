@@ -30,6 +30,12 @@ namespace DungeonGen
         [Tooltip("Extra stagger seconds per m/s of knockback, so a barrel to the chest keeps a goblin reeling longer than a graze. The shove itself is momentum-derived (see ThrownDamage), so this rides real physics.")]
         public float staggerPerImpulse = 0.08f;
 
+        [Header("Poise break (major stagger)")]
+        [Tooltip("Seconds of MAJOR stagger when poise breaks — a real opening, longer than a normal hit's reel. This is what a heavy (or a few lights) earns you.")]
+        public float poiseBreakStagger = 1.1f;
+        [Tooltip("Extra bone-flinch multiplier on a poise break, so the break reads as a bigger reaction than a chip hit.")]
+        public float poiseBreakFlinchScale = 1.6f;
+
         [Header("Thrown hits (physical reaction)")]
         [Tooltip("Fraction of a THROWN hit's shove redirected upward — knocks the victim slightly off its feet so the hit reads as a body blow, not an ice-slide. The pop follows a real ballistic arc via NpcLocomotion.")]
         [Range(0f, 1f)] public float thrownVerticalPop = 0.35f;
@@ -61,6 +67,7 @@ namespace DungeonGen
         NpcBoneReaction boneReaction;
         NpcFlinch flinch;
         NpcRagdollReaction ragdoll;
+        Poise poise;
         Coroutine stagger;
 
         void Awake()
@@ -74,6 +81,7 @@ namespace DungeonGen
             boneReaction = GetComponent<NpcBoneReaction>();
             flinch = GetComponent<NpcFlinch>();
             ragdoll = GetComponent<NpcRagdollReaction>();
+            poise = GetComponent<Poise>();
         }
 
         // Directional flinch preferred; plain spring is the fallback if no NpcFlinch.
@@ -87,10 +95,12 @@ namespace DungeonGen
         {
             health.OnDamaged += HandleDamaged;
             health.OnDied += HandleDied;
+            if (poise != null) poise.OnPoiseBreak += HandlePoiseBreak;
         }
 
         void OnDisable()
         {
+            if (poise != null) poise.OnPoiseBreak -= HandlePoiseBreak;
             health.OnDamaged -= HandleDamaged;
             health.OnDied -= HandleDied;
         }
@@ -124,6 +134,22 @@ namespace DungeonGen
             // Being hit is impossible to miss: full alert toward whoever did it.
             if (senses != null && info.instigator != null)
                 senses.ForceAlert(info.instigator.transform.position, awarenessOnHit);
+        }
+
+        /// <summary>
+        /// Poise emptied: the MAJOR reaction — a long stagger (a real opening) and a
+        /// bigger flinch than a chip hit. This is the tier that separates a heavy
+        /// (one-hit break) or a light flurry from ordinary trading. Regardless of
+        /// which reaction path the chip hits took, a break always reads as a beat.
+        /// </summary>
+        void HandlePoiseBreak(DamageInfo info)
+        {
+            if (health.IsDead) return;
+
+            Flinch(info.point, info.direction * (info.impulse * poiseBreakFlinchScale));
+
+            if (stagger != null) StopCoroutine(stagger);
+            stagger = StartCoroutine(Stagger(poiseBreakStagger));
         }
 
         IEnumerator Stagger(float duration)

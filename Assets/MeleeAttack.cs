@@ -28,10 +28,16 @@ namespace DungeonGen
         public float damage = 10f;
         [Tooltip("Reach of the sweep (m), measured from the origin forward.")]
         public float range = 1.6f;
-        [Tooltip("Radius of the sweep (m) — how 'wide' the swing is.")]
+        [Tooltip("Radius of the sweep (m) — how 'wide'/precise the swing is. The sweep is a vertical CAPSULE, so a THIN radius here still catches short AND tall enemies (the height is covered by the extents below). This is the precision dial you can shrink freely.")]
         public float sweepRadius = 0.45f;
+        [Tooltip("Vertical reach ABOVE the aim line (m). The sweep is a vertical capsule so height coverage is separate from radius.")]
+        public float sweepUpExtent = 0.3f;
+        [Tooltip("Vertical reach BELOW the aim line (m). Enemies are SHORT and the eye-height origin sits above them, so this must reach DOWN to their body — ~1.2-1.4 catches a goblin from eye level even when you're barely looking down.")]
+        public float sweepDownExtent = 1.3f;
         [Tooltip("Knockback impulse (m/s) delivered to victims.")]
         public float knockback = 5f;
+        [Tooltip("Poise damage per hit — chips the victim's poise pool (Poise component). Enough at once = a poise break → major stagger. Light attacks chip; heavy/bash break in one.")]
+        public float poiseDamage = 25f;
 
         [Header("Timing")]
         [Tooltip("Seconds between starting the swing and the hit landing — the victim's dodge window. THE combat-feel number.")]
@@ -128,8 +134,15 @@ namespace DungeonGen
             // cramped dungeon that's constant, and proximity to a wall must not
             // shorten your sword — walls don't need the fallback, they're not
             // damageable).
+            // The sweep is a VERTICAL CAPSULE, not a sphere: a thin radius still
+            // covers short-to-tall enemies because the height is the capsule's
+            // length, not its radius. A sphere on the eye-height aim line skimmed
+            // OVER short goblins unless the radius was fat.
+            Vector3 top = origin + Vector3.up * sweepUpExtent;
+            Vector3 bottom = origin - Vector3.up * sweepDownExtent;
+
             bool touchingTarget = false;
-            int probe = Physics.OverlapSphereNonAlloc(origin, sweepRadius, overlapScratch, hitMask, QueryTriggerInteraction.Ignore);
+            int probe = Physics.OverlapCapsuleNonAlloc(top, bottom, sweepRadius, overlapScratch, hitMask, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < probe; i++)
             {
                 // Same identity rule as TryHit: the damageable, never transform.root
@@ -150,12 +163,12 @@ namespace DungeonGen
             int hits;
             if (touchingTarget)
             {
-                hits = Physics.OverlapSphereNonAlloc(origin, Mathf.Max(sweepRadius, range * 0.6f), overlapScratch, hitMask, QueryTriggerInteraction.Ignore);
+                hits = Physics.OverlapCapsuleNonAlloc(top, bottom, sweepRadius, overlapScratch, hitMask, QueryTriggerInteraction.Ignore);
                 for (int i = 0; i < hits; i++) TryHit(overlapScratch[i], origin, dir, blowDir);
             }
             else
             {
-                hits = Physics.SphereCastNonAlloc(origin, sweepRadius, dir, castScratch, range, hitMask, QueryTriggerInteraction.Ignore);
+                hits = Physics.CapsuleCastNonAlloc(top, bottom, sweepRadius, dir, castScratch, range, hitMask, QueryTriggerInteraction.Ignore);
                 for (int i = 0; i < hits; i++) TryHit(castScratch[i].collider, origin, dir, blowDir);
             }
 
@@ -214,6 +227,7 @@ namespace DungeonGen
                 instigator = gameObject,
                 type = DamageType.Melee,
                 impulse = knockback,
+                poiseDamage = poiseDamage,
             };
             damageable.TakeDamage(info);
             landedThisSwing++;
@@ -224,11 +238,25 @@ namespace DungeonGen
 
         void OnDrawGizmosSelected()
         {
-            Vector3 origin = transform.position + Vector3.up * originHeight;
+            // Draw the vertical capsule at both ends of the sweep, so you can see it
+            // covers short enemies. Uses the same aim as DoSweep (camera if set).
+            Vector3 dir; Vector3 origin;
+            if (aimSource != null) { dir = aimSource.forward; origin = aimSource.position + dir * aimForwardOffset; }
+            else { dir = transform.forward; origin = transform.position + Vector3.up * originHeight; }
+
             Gizmos.color = IsSwinging ? Color.red : new Color(1f, 0.5f, 0f, 0.5f);
-            Gizmos.DrawWireSphere(origin, sweepRadius);
-            Gizmos.DrawWireSphere(origin + transform.forward * range, sweepRadius);
-            Gizmos.DrawLine(origin, origin + transform.forward * range);
+            DrawSweepCapsule(origin);
+            DrawSweepCapsule(origin + dir * range);
+            Gizmos.DrawLine(origin, origin + dir * range);
+        }
+
+        void DrawSweepCapsule(Vector3 at)
+        {
+            Vector3 top = at + Vector3.up * sweepUpExtent;
+            Vector3 bottom = at - Vector3.up * sweepDownExtent;
+            Gizmos.DrawWireSphere(top, sweepRadius);
+            Gizmos.DrawWireSphere(bottom, sweepRadius);
+            Gizmos.DrawLine(top, bottom);
         }
     }
 }

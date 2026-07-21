@@ -1,24 +1,21 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace DungeonGen
 {
     /// <summary>
-    /// The player's sword swing (melee-v1 phase 1). LMB drives a PROCEDURAL swing:
-    /// a windup → slash → recovery arc authored as camera-local pose keys, played
-    /// through ViewmodelSway.SetAttackPose — this component never touches the
-    /// weapon transform itself, so sway/attack/collision stay one composed pose
-    /// (the codebase's one-writer rule) and the blade still can't swing through a
-    /// wall (the collision clamp runs after the attack pose).
+    /// The player's melee: an LMB LIGHT COMBO (alternating directional swings) and an
+    /// RMB HEAVY (hold to charge, fires on release). Every swing is a SwingDefinition
+    /// — a procedural arc played THROUGH ViewmodelSway.SetAttackPose, so one system
+    /// owns the viewmodel transform (rest → sway → attack → collision clamp) and the
+    /// blade still can't swing through a wall. The sweep fires once at the swing's
+    /// impact instant, aimed from the camera; whether it landed drives the feel layer
+    /// (hitstop, camera kick) and OnImpact.
     ///
-    /// The sweep (MeleeAttack.DoSweep) fires ONCE at the authored impact instant,
-    /// aimed from the camera — you slash where you look, pitch included. Whether
-    /// it landed is captured and surfaced via OnImpact: phase 2's feel layer
-    /// (hitstop, the blade catching in a body, camera kick) keys entirely off
-    /// that hit/whiff divergence.
-    ///
-    /// Swinging is blocked while carrying (hands are full and the viewmodel is
-    /// stowed) and while the cursor is unlocked (menus).
+    /// Directional payoff: each combo swing has its own arc, so its blow direction
+    /// (windup→slash delta) differs → a different NpcFlinch profile fires. A right
+    /// cut shoves a goblin one way, a left cut the other, the overhead down.
     /// </summary>
     [RequireComponent(typeof(MeleeAttack))]
     [DisallowMultipleComponent]
@@ -27,303 +24,510 @@ namespace DungeonGen
         [Header("Rig")]
         [Tooltip("The SWORD hand's ViewmodelSway — the swing pose is injected through it.")]
         public ViewmodelSway swordSway;
+        [Tooltip("The SHIELD hand's ViewmodelSway. Its motion is DERIVED from the sword's (counter-motion), so no swing needs shield poses authored.")]
+        public ViewmodelSway shieldSway;
+
+        [Header("Shield counter-motion (derived — no authoring per swing)")]
+        [Tooltip("Per-axis multiplier turning the sword's POSITION offset into the shield's. NEGATIVE = counter-motion: swinging the sword one way twists the torso and throws the off-hand the other way (the body counterbalancing). Magnitude <1 because the passive arm moves less. X = lateral (strongest), Y = vertical, Z = forward/back.")]
+        public Vector3 shieldCounterPosition = new Vector3(-0.45f, -0.20f, -0.30f);
+        [Tooltip("Same, for ROTATION. Yaw/roll counter strongly (the torso twist); pitch less.")]
+        public Vector3 shieldCounterEuler = new Vector3(-0.20f, -0.35f, -0.40f);
+        [Tooltip("Seconds the shield TRAILS the sword. A small lag is what makes it read as the body following through instead of a rigid mirror. ~0.05-0.1.")]
+        public float shieldLag = 0.06f;
+        [Tooltip("How much of the sword's sway-suppression the shield inherits. Below 1 so the shield keeps some of its own idle sway during a swing — it isn't the hand doing the work.")]
+        [Range(0f, 1f)] public float shieldSuppressScale = 0.6f;
 
         [Header("Input")]
-        [Tooltip("0 = left mouse.")]
-        public int attackMouseButton = 0;
+        [Tooltip("0 = left mouse (LIGHT combo).")]
+        public int lightMouseButton = 0;
+        [Tooltip("1 = right mouse (HEAVY: hold to charge, release to swing).")]
+        public int heavyMouseButton = 1;
 
-        [Header("Swing timing (seconds / normalized)")]
-        [Tooltip("Total swing time, windup through recovery.")]
-        public float duration = 0.6f;
-        [Tooltip("Normalized t where the windup ends and the slash launches.")]
-        [Range(0.05f, 0.9f)] public float windupEnd = 0.3f;
-        [Tooltip("Normalized t of the IMPACT — the single frame the sweep fires. Just after the slash starts moving fast.")]
-        [Range(0.1f, 0.95f)] public float impactT = 0.42f;
-        [Tooltip("Normalized t where the slash arc ends and recovery eases back to rest.")]
-        [Range(0.2f, 0.95f)] public float slashEnd = 0.55f;
-        [Tooltip("Extra seconds after a swing before the next can start.")]
-        public float cooldown = 0.05f;
+        [Header("Light combo (LMB) — cycles per tap")]
+        [Tooltip("The light swings, played in order per LMB tap and wrapping. Give each a different arc so the directions vary.")]
+        public List<SwingDefinition> lightCombo = new List<SwingDefinition>();
+        [Tooltip("Seconds of no attack before the combo resets to the first swing.")]
+        public float comboResetWindow = 1.5f;
+        [Tooltip("An LMB press within this many seconds of the current swing ending is BUFFERED and fires next — mashing chains instead of dropping inputs.")]
+        public float inputBuffer = 0.15f;
 
-        [Header("Swing shape (camera-local offsets from the rest pose)")]
-        [Tooltip("Pose at the top of the windup — sword pulled up/back, coiled.")]
-        public Vector3 windupPosition = new Vector3(0.06f, 0.07f, -0.12f);
-        public Vector3 windupEuler = new Vector3(-35f, 25f, 15f);
-        [Tooltip("Pose at the end of the slash — down and across the body.")]
-        public Vector3 slashPosition = new Vector3(-0.10f, -0.06f, 0.16f);
-        public Vector3 slashEuler = new Vector3(50f, -35f, -25f);
+        [Header("Heavy (RMB) — hold to charge, release to swing")]
+        public SwingDefinition heavySwing = new SwingDefinition
+        {
+            name = "Heavy Overhead", duration = 0.9f, windupEnd = 0.45f, impactT = 0.6f, slashEnd = 0.72f,
+            damage = 28f, knockback = 9f, poiseDamage = 100f,
+            localHitstop = 0.13f, recoilDistance = 0.06f, globalDipDuration = 0.08f, globalDipScale = 0.08f,
+            hitKickEuler = new Vector3(3.5f, 0f, -1f), blowVerticalScale = 0.7f,
+            windupPosition = new Vector3(0.02f, 0.16f, -0.14f), windupEuler = new Vector3(-60f, 5f, 5f),
+            slashPosition = new Vector3(0f, -0.14f, 0.2f), slashEuler = new Vector3(70f, -5f, 0f),
+        };
+        [Tooltip("Move-speed multiplier while charging the heavy (commitment). 1 = no slow.")]
+        [Range(0.1f, 1f)] public float chargeMoveScale = 0.6f;
+        [Tooltip("How fast a CANCELLED charge rewinds to rest, as a multiple of the wind-up speed. Releasing RMB before the sword is FULLY wound aborts the swing and lowers it back — you must commit to the full draw to get the heavy.")]
+        public float chargeReturnSpeed = 2f;
 
-        [Tooltip("How much the reaction is biased toward straight-forward (into the target) vs. the swing's own lateral/vertical direction. 0 = the goblin recoils purely along the slash (a left cut shoves it right); 1 = always straight back. ~0.4 keeps a forward push while still reading the slash's direction. THE dial for 'reactions follow my swing'.")]
-        [Range(0f, 1f)] public float blowForwardBias = 0.4f;
-        [Tooltip("How much of the swing's VERTICAL motion becomes vertical push. Kept low on purpose: enemies are SHORT, so at melee range you look steeply down at them — if camera pitch fed the blow direction, every hit would shove them straight into the floor and look identical from every side. Camera pitch aims; it does not decide which way a body flies. Raise toward 1 for chops that visibly drive downward.")]
-        [Range(0f, 1f)] public float blowVerticalScale = 0.3f;
+        [Header("Charge tremor (held tension)")]
+        [Tooltip("Positional shake (m) while holding the fully-wound pose — the strain of holding a swing back. Small: a few mm.")]
+        public float chargeTremorPosition = 0.004f;
+        [Tooltip("Rotational shake (deg) while holding fully wound.")]
+        public float chargeTremorEuler = 0.9f;
+        [Tooltip("Tremor frequency (Hz). High = a tight buzz; low = a slow wobble.")]
+        public float chargeTremorFrequency = 26f;
+        [Tooltip("Seconds for the tremor to ramp in once fully wound, so it doesn't pop on.")]
+        public float tremorRampTime = 0.2f;
 
-        [Header("Feel — hit vs whiff (phase 2)")]
-        [Tooltip("Seconds the SWING freezes at the contact pose when a hit lands — the blade catching in the body before the arc completes. THE core feel number. A whiff never freezes; that divergence is the whole point.")]
-        public float localHitstop = 0.09f;
-        [Tooltip("How far (m) the blade recoils back along the slash during the freeze — meeting resistance, not a wall.")]
-        public float recoilDistance = 0.045f;
-        [Tooltip("Global time-dip on a landed hit: duration (unscaled seconds). Keep SHORT — timescale slows physics too.")]
-        public float globalDipDuration = 0.05f;
-        [Tooltip("Global time-dip scale (0.1 = world at 10% speed for the dip).")]
-        [Range(0f, 1f)] public float globalDipScale = 0.12f;
-        [Tooltip("Camera punch on a LANDED hit (deg: pitch, yaw, roll). Small — this is your head.")]
-        public Vector3 hitKickEuler = new Vector3(1.8f, -0.7f, -2.2f);
-        [Tooltip("Tiny camera counter-motion at swing START, for weight even on a whiff.")]
-        public Vector3 swingKickEuler = new Vector3(-0.5f, 0.3f, 0.7f);
-
-        [Tooltip("Log every swing with hit/whiff.")]
+        [Tooltip("Log every swing with its name and hit/whiff.")]
         public bool debugMelee = false;
 
-        [Header("Authoring (play mode)")]
-        [Tooltip("PLAY-MODE POSE SCRUB: drag off 0 and the sword freezes at that point of the swing arc (through the sway system, so it's exactly what a real swing shows). Workflow: enter play, drag this slider while editing the windup/slash pose fields and watch the sword move live in the Game view. Set back to 0 to release. The scene gizmo (select the player) draws the whole arc + the impact point.")]
+        [Header("Authoring (play/edit mode)")]
+        [Tooltip("Which swing the preview + gizmo target: -1 = the heavy, 0..N = lightCombo index.")]
+        public int previewSwingIndex = 0;
+        [Tooltip("PLAY-MODE POSE SCRUB: drag off 0 to freeze the previewed swing at that point of its arc, live in the Game view. Set back to 0 to release.")]
         [Range(0f, 1f)] public float previewT = 0f;
 
-        /// <summary>A swing started (windup begins). Phase 2/3: whoosh audio, sway kick.</summary>
+        /// <summary>A swing started (windup begins).</summary>
         public event Action OnSwingStarted;
         /// <summary>The impact frame fired; bool = did it damage anything. THE feel-layer hook.</summary>
         public event Action<bool> OnImpact;
 
         public bool IsSwinging => swinging;
+        public bool IsCharging => charging;
 
         MeleeAttack melee;
         PlayerCarry carry;
+        FirstPersonController controller;
         CameraKick cameraKick;
-        float t;              // normalized swing time
+
+        SwingDefinition active;   // the swing currently playing
+        float t;                  // normalized swing time
         bool swinging;
         bool sweepDone;
         float readyAt;
-        float freezeTimer;    // >0 = the blade is caught in a body (local hitstop)
-        Vector3 recoilDir;    // direction the blade bounces back during the freeze
-        bool carriedLastFrame; // LMB throws while carrying; without this, the SAME click would also swing (script order permitting) the frame the prop leaves the hands
+        float freezeTimer;
+        Vector3 recoilDir;
+        bool retractQueued;       // this swing hit → retreat home after the freeze
+        bool retracting;          // easing from the contact pose back to rest
+        float retractProgress;
+        Vector3 retractFromPos, retractFromEuler;
+        float retractFromSuppress;
+
+        int comboIndex;
+        float comboResetAt;       // combo returns to 0 after this time
+        bool bufferedLight;       // an LMB press queued during recovery
+
+        bool charging;
+        float chargeT;            // normalized swing time reached while charging (ramps to windupEnd, then holds)
+        bool returning;           // an aborted charge rewinding to rest
+        float tension;            // 0..1 tremor ramp once fully wound
+
+        bool carriedLastFrame;
+        bool previewReleased;
+
+        // Shield counter-motion: a target set by whatever pose the sword took this
+        // frame (zero when idle), smoothed toward so the off-hand trails.
+        Vector3 shieldTargetPos, shieldTargetEuler;
+        float shieldTargetSuppress;
+        Vector3 shieldPos, shieldEuler;
+        float shieldSuppress;
 
         void Awake()
         {
             melee = GetComponent<MeleeAttack>();
             carry = GetComponent<PlayerCarry>();
+            controller = GetComponent<FirstPersonController>();
             cameraKick = GetComponentInChildren<CameraKick>(true);
 
-            // Aim from the eye so the sweep follows pitch. Found here rather than
-            // serialized so the prefab stays self-wiring like the rest of the rig.
             if (melee.aimSource == null)
             {
-                var fpc = GetComponent<FirstPersonController>();
-                if (fpc != null && fpc.cam != null) melee.aimSource = fpc.cam;
-                else
-                {
-                    var c = GetComponentInChildren<Camera>();
-                    if (c != null) melee.aimSource = c.transform;
-                }
+                if (controller != null && controller.cam != null) melee.aimSource = controller.cam;
+                else { var c = GetComponentInChildren<Camera>(); if (c != null) melee.aimSource = c.transform; }
             }
 
             if (swordSway == null)
-                Debug.LogWarning("[PlayerMelee] No sword ViewmodelSway assigned — the sweep will work but the sword won't visibly swing.", this);
+                Debug.LogWarning("[PlayerMelee] No sword ViewmodelSway assigned — the sweep works but the sword won't visibly swing.", this);
+            if (lightCombo.Count == 0)
+                Debug.LogWarning("[PlayerMelee] lightCombo is empty — add at least one SwingDefinition for LMB.", this);
         }
 
         void Update()
         {
-            if (swinging)
-            {
-                TickSwing();
-            }
-            else if (previewT > 0f)
-            {
-                // Authoring scrub: hold the sword at previewT through the sway
-                // system — the one-writer rule holds even for the preview, so what
-                // you tune is exactly what a real swing renders.
-                ApplyPose(previewT);
-            }
-            else if (Input.GetMouseButtonDown(attackMouseButton) && CanSwing())
-            {
-                StartSwing();
-            }
-            else if (previewReleased)
-            {
-                // Slider just returned to 0: hand the pose cleanly back to sway.
-                swordSway?.SetAttackPose(Vector3.zero, Quaternion.identity, 0f);
-                previewReleased = false;
-            }
+            // Default the shield to rest each frame; whichever pose runs below sets
+            // its target. Idle frames therefore ease it home on their own.
+            shieldTargetPos = Vector3.zero;
+            shieldTargetEuler = Vector3.zero;
+            shieldTargetSuppress = 0f;
 
-            if (previewT > 0f) previewReleased = true;
+            if (swinging) { TickSwing(); FinishFrame(); return; }
+
+            // Preview scrub takes over when a swing isn't playing.
+            if (previewT > 0f) { ApplyPose(PreviewSwing(), previewT); previewReleased = true; FinishFrame(); return; }
+            if (previewReleased) { swordSway?.SetAttackPose(Vector3.zero, Quaternion.identity, 0f); previewReleased = false; }
+
+            if (returning) TickChargeReturn();   // a new charge/swing below cancels it
+
+            HandleCharge();
+            HandleLightInput();
+
+            // Combo decays back to the first swing after a lull.
+            if (comboIndex != 0 && Time.time >= comboResetAt) comboIndex = 0;
+
+            FinishFrame();
+        }
+
+        void FinishFrame()
+        {
+            TickShield();   // every path ends here, so the shield always eases toward its target
             carriedLastFrame = carry != null && carry.IsCarrying;
         }
 
-        bool previewReleased;
+        // ---------------- Input ----------------
 
-        bool CanSwing()
+        void HandleLightInput()
         {
-            if (Time.time < readyAt) return false;
-            if (Cursor.lockState != CursorLockMode.Locked) return false;  // menus
-            if (carry != null && carry.IsCarrying) return false;          // hands full (viewmodel stowed)
-            if (carriedLastFrame) return false;                           // this click was the THROW
+            if (charging || swinging || lightCombo.Count == 0) return;
+            if (Input.GetMouseButtonDown(lightMouseButton) && CanSwing())
+                StartSwing(NextLight(), isHeavy: false);
+        }
+
+        void HandleCharge()
+        {
+            if (Input.GetMouseButtonDown(heavyMouseButton) && CanSwing())
+                BeginCharge();
+
+            if (!charging) return;
+
+            if (Input.GetMouseButton(heavyMouseButton))
+            {
+                // WIND UP, then HOLD: chargeT walks the swing's own windup at its own
+                // pace and stops at windupEnd (the fully coiled pose). Not a snap —
+                // the sword visibly draws back and waits there, trembling.
+                if (controller != null) controller.moveScaleOverride = chargeMoveScale;
+                chargeT = Mathf.Min(chargeT + Time.deltaTime / Mathf.Max(0.05f, heavySwing.duration),
+                                    heavySwing.windupEnd);
+
+                bool wound = IsFullyWound;
+                tension = wound
+                    ? Mathf.Min(tension + Time.deltaTime / Mathf.Max(0.01f, tremorRampTime), 1f)
+                    : 0f;
+
+                ApplyChargePose(chargeT, tension);
+                return;
+            }
+
+            // Released.
+            if (controller != null) controller.moveScaleOverride = 1f;
+            charging = false;
+            tension = 0f;
+
+            if (IsFullyWound && CanSwing())
+            {
+                // CONTINUE from where the charge held, straight into the slash.
+                // (Starting at t=0 would snap back to rest and replay the windup.)
+                StartSwing(heavySwing, isHeavy: true, startT: chargeT);
+            }
+            else
+            {
+                // Let go too early — the swing is ABORTED. Commitment to the full
+                // draw is the cost of the heavy; a half-draw just lowers the sword.
+                returning = true;
+                if (debugMelee) Debug.Log("[PlayerMelee] heavy aborted — released before full wind-up.", this);
+            }
+        }
+
+        void BeginCharge()
+        {
+            charging = true;
+            returning = false;
+            chargeT = 0f;
+            tension = 0f;
+        }
+
+        /// <summary>The draw is complete — only then can a release become a swing.</summary>
+        bool IsFullyWound => chargeT >= heavySwing.windupEnd - 0.0001f;
+
+        /// <summary>
+        /// The held charge pose plus a tremor once fully wound — three incommensurate
+        /// sines per axis so the shake reads as strained muscle, not a loop. Ramped in
+        /// by `tension` so it doesn't pop the instant the draw completes.
+        /// </summary>
+        void ApplyChargePose(float nt, float amount)
+        {
+            heavySwing.ComputePose(nt, out Vector3 pos, out Vector3 euler, out float suppress);
+
+            if (amount > 0f && (chargeTremorPosition > 0f || chargeTremorEuler > 0f))
+            {
+                float tt = Time.time * chargeTremorFrequency;
+                Vector3 jitterPos = new Vector3(Mathf.Sin(tt), Mathf.Sin(tt * 1.37f + 1.1f), Mathf.Sin(tt * 0.83f + 2.3f));
+                Vector3 jitterRot = new Vector3(Mathf.Sin(tt * 1.19f), Mathf.Sin(tt * 0.91f + 0.7f), Mathf.Sin(tt * 1.53f + 1.9f));
+                pos += jitterPos * (chargeTremorPosition * amount);
+                euler += jitterRot * (chargeTremorEuler * amount);
+            }
+
+            // Derived: the shield braces as the sword draws back, and picks up a
+            // sympathetic tremor from the held tension — both for free.
+            SetHandPoses(pos, euler, suppress);
+        }
+
+        /// <summary>An aborted charge rewinds along its own arc back to rest.</summary>
+        void TickChargeReturn()
+        {
+            chargeT -= Time.deltaTime / Mathf.Max(0.05f, heavySwing.duration) * Mathf.Max(0.1f, chargeReturnSpeed);
+            if (chargeT <= 0f)
+            {
+                chargeT = 0f;
+                returning = false;
+                swordSway?.SetAttackPose(Vector3.zero, Quaternion.identity, 0f);
+                return;
+            }
+            ApplyPose(heavySwing, chargeT);
+        }
+
+        SwingDefinition NextLight()
+        {
+            SwingDefinition s = lightCombo[Mathf.Clamp(comboIndex, 0, lightCombo.Count - 1)];
+            comboIndex = (comboIndex + 1) % lightCombo.Count;
+            comboResetAt = Time.time + comboResetWindow;
+            return s;
+        }
+
+        bool CanSwing(bool ignoreCooldown = false)
+        {
+            if (!ignoreCooldown && Time.time < readyAt) return false;
+            if (Cursor.lockState != CursorLockMode.Locked) return false;
+            if (carry != null && carry.IsCarrying) return false;
+            if (carriedLastFrame) return false;               // this click was the THROW
             return true;
         }
 
-        void StartSwing()
+        // ---------------- Swing ----------------
+
+        /// <summary>
+        /// Begin a swing. `startT` lets a charged heavy resume from the windup pose
+        /// it was held at instead of replaying the windup from rest.
+        /// </summary>
+        void StartSwing(SwingDefinition swing, bool isHeavy, float startT = 0f)
         {
+            active = swing;
             swinging = true;
             sweepDone = false;
-            t = 0f;
+            returning = false;    // a new swing overrides an aborted charge's rewind
+            retractQueued = false;
+            retracting = false;
+            t = Mathf.Clamp01(startT);
             freezeTimer = 0f;
-            cameraKick?.Kick(swingKickEuler);
+            bufferedLight = false;
+            cameraKick?.Kick(swing.swingKickEuler);
             OnSwingStarted?.Invoke();
+            if (debugMelee) Debug.Log($"[PlayerMelee] swing '{swing.name}'{(isHeavy ? " (HEAVY)" : "")}.", this);
         }
 
         void TickSwing()
         {
-            // The blade is caught in a body: the swing's clock STOPS and the sword
-            // holds at the contact pose with a small recoil bounce — resistance,
-            // not a wall. Unscaled time, or the global dip would stretch the
-            // freeze ~10x. A whiff never enters this branch: hit and whiff FEELING
-            // different is the entire feel layer.
+            // Queue the next light the moment the swing is spent — captured at the
+            // TOP so a press during the freeze OR the retract counts too. On a hit the
+            // clock stops at impact (t < slashEnd), so the normal "past slashEnd"
+            // window never opens; the freeze/retract flags are the ending signal.
+            if (!charging && Input.GetMouseButtonDown(lightMouseButton))
+            {
+                bool endingWindow = retracting || freezeTimer > 0f
+                    || t >= active.slashEnd - inputBuffer / Mathf.Max(0.05f, active.duration);
+                if (endingWindow) bufferedLight = true;
+            }
+
+            // Caught in a body: the clock stops, the blade holds at the contact pose
+            // with a recoil bounce. Unscaled, or the global dip stretches it. When the
+            // freeze ends, a HIT hands off to the RETRACT (not the rest of the arc).
             if (freezeTimer > 0f)
             {
                 freezeTimer -= Time.unscaledDeltaTime;
-                float p = 1f - Mathf.Clamp01(freezeTimer / Mathf.Max(0.01f, localHitstop));
-                float envelope = Mathf.Sin(p * Mathf.PI);   // out and back — settles at the contact pose
+                float p = 1f - Mathf.Clamp01(freezeTimer / Mathf.Max(0.01f, active.localHitstop));
+                float envelope = Mathf.Sin(p * Mathf.PI);
+                active.ComputePose(t, out Vector3 fpos, out Vector3 feuler, out float fsup);
+                SetHandPoses(fpos + recoilDir * (active.recoilDistance * envelope), feuler, fsup);
 
-                ComputePose(t, out Vector3 fpos, out Vector3 feuler, out float fsup);
-                swordSway?.SetAttackPose(fpos + recoilDir * (recoilDistance * envelope), Quaternion.Euler(feuler), fsup);
+                if (freezeTimer <= 0f && retractQueued)
+                {
+                    // Retreat from the settled contact pose (envelope ~0 now) back
+                    // to rest — the blade met resistance and doesn't follow through.
+                    retractQueued = false;
+                    retracting = true;
+                    retractProgress = 0f;
+                    retractFromPos = fpos;
+                    retractFromEuler = feuler;
+                    retractFromSuppress = fsup;
+                }
                 return;
             }
 
-            t += Time.deltaTime / Mathf.Max(0.05f, duration);
+            // Hit retract: ease the contact pose home instead of completing the arc.
+            if (retracting)
+            {
+                retractProgress += Time.deltaTime / Mathf.Max(0.02f, active.hitRetractTime);
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(retractProgress));
+                SetHandPoses(Vector3.Lerp(retractFromPos, Vector3.zero, k),
+                             Vector3.Lerp(retractFromEuler, Vector3.zero, k),
+                             Mathf.Lerp(retractFromSuppress, 0f, k));
+                if (retractProgress >= 1f) EndSwing();
+                return;
+            }
 
-            // The impact is a single authored instant, not a phase — fire once.
-            if (!sweepDone && t >= impactT)
+            t += Time.deltaTime / Mathf.Max(0.05f, active.duration);
+
+            if (!sweepDone && t >= active.impactT)
             {
                 sweepDone = true;
-                melee.blowDirectionOverride = ComputeBlowDirection();
-                bool hit = melee.DoSweep();
-                if (debugMelee) Debug.Log($"[PlayerMelee] impact — {(hit ? "HIT" : "whiff")}.", this);
-
-                if (hit)
-                {
-                    // The catch: freeze the arc, bounce the blade back along the
-                    // slash, dip the world, punch the head. Layered, all brief.
-                    freezeTimer = localHitstop;
-                    recoilDir = -(slashPosition - windupPosition).normalized;
-                    Hitstop.Request(globalDipDuration, globalDipScale);
-                    cameraKick?.Kick(hitKickEuler, new Vector3(0f, 0f, -0.012f));
-                }
-
-                OnImpact?.Invoke(hit);
+                DoImpact();
             }
 
-            if (t >= 1f)
+            if (t >= 1f) { EndSwing(); return; }
+
+            ApplyPose(active, t);
+        }
+
+        void DoImpact()
+        {
+            // Push this swing's combat values onto the shared sweep, aim the blow.
+            melee.damage = active.damage;
+            melee.knockback = active.knockback;
+            melee.poiseDamage = active.poiseDamage;
+            if (active.range > 0f) melee.range = active.range;
+            if (active.sweepRadius > 0f) melee.sweepRadius = active.sweepRadius;
+            melee.blowDirectionOverride = ComputeBlowDirection(active);
+
+            bool hit = melee.DoSweep();
+            if (debugMelee) Debug.Log($"[PlayerMelee] '{active.name}' impact — {(hit ? "HIT" : "whiff")}.", this);
+
+            if (hit)
             {
-                EndSwing();
-                return;
+                freezeTimer = active.localHitstop;
+                retractQueued = true;   // after the freeze, retreat home (don't follow through)
+                recoilDir = -(active.slashPosition - active.windupPosition).normalized;
+                Hitstop.Request(active.globalDipDuration, active.globalDipScale);
+                cameraKick?.Kick(active.hitKickEuler, new Vector3(0f, 0f, -0.012f));
             }
 
-            ApplyPose(t);
+            OnImpact?.Invoke(hit);
         }
 
         void EndSwing()
         {
             swinging = false;
-            readyAt = Time.time + cooldown;
             swordSway?.SetAttackPose(Vector3.zero, Quaternion.identity, 0f);
+
+            // A BUFFERED chain fires immediately and skips the cooldown — that's the
+            // whole point of buffering, and setting readyAt first would block the
+            // very swing we just queued (CanSwing would see Time.time < readyAt).
+            if (bufferedLight && lightCombo.Count > 0 && CanSwing(ignoreCooldown: true))
+            {
+                bufferedLight = false;
+                StartSwing(NextLight(), isHeavy: false);
+                return;
+            }
+
+            bufferedLight = false;
+            readyAt = Time.time + active.cooldown;
+
+            // Still HOLDING RMB as the swing ends → roll straight into the heavy
+            // draw. HandleCharge can't see the press itself (it doesn't run while a
+            // swing is playing, so the button-DOWN was consumed mid-swing); testing
+            // "is it held now" catches press-and-hold during a light and picks up
+            // seamlessly, the same way the light chain does.
+            if (Input.GetMouseButton(heavyMouseButton) && CanSwing(ignoreCooldown: true))
+                BeginCharge();
         }
 
-        void ApplyPose(float nt)
+        void ApplyPose(SwingDefinition swing, float nt)
         {
-            ComputePose(nt, out Vector3 pos, out Vector3 euler, out float suppress);
-            swordSway?.SetAttackPose(pos, Quaternion.Euler(euler), suppress);
+            swing.ComputePose(nt, out Vector3 pos, out Vector3 euler, out float suppress);
+            SetHandPoses(pos, euler, suppress);
         }
 
         /// <summary>
-        /// The world direction the blade travels through the target — the camera-
-        /// local slash motion (windup pose → slash pose) rotated into world space,
-        /// then biased toward straight-forward so a weak lateral swing still drives
-        /// INTO the goblin. This is what makes the recoil follow the SWING instead
-        /// of always shoving straight back, and it's the hook a future left/right/
-        /// overhead swing set plugs into for free (each pose delta → its own
-        /// reaction direction).
+        /// Pose the sword, and DERIVE the shield's pose from it rather than authoring
+        /// one per swing: the off-hand counter-moves (negative weights) because a
+        /// swing twists the torso and throws the other arm the opposite way. The
+        /// shield target is smoothed in TickShield so it trails the sword — the lag
+        /// is what sells it as a body following through instead of a mirror.
         /// </summary>
-        Vector3 ComputeBlowDirection()
+        void SetHandPoses(Vector3 swordPos, Vector3 swordEuler, float suppress)
+        {
+            swordSway?.SetAttackPose(swordPos, Quaternion.Euler(swordEuler), suppress);
+
+            shieldTargetPos = Vector3.Scale(swordPos, shieldCounterPosition);
+            shieldTargetEuler = Vector3.Scale(swordEuler, shieldCounterEuler);
+            shieldTargetSuppress = suppress * shieldSuppressScale;
+        }
+
+        /// <summary>
+        /// Ease the shield toward its derived target every frame — including back to
+        /// rest when idle (the target defaults to zero), so it settles naturally after
+        /// a swing without anyone explicitly clearing it.
+        /// </summary>
+        void TickShield()
+        {
+            if (shieldSway == null) return;
+
+            float k = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.001f, shieldLag));
+            shieldPos = Vector3.Lerp(shieldPos, shieldTargetPos, k);
+            shieldEuler = Vector3.Lerp(shieldEuler, shieldTargetEuler, k);
+            shieldSuppress = Mathf.Lerp(shieldSuppress, shieldTargetSuppress, k);
+
+            shieldSway.SetAttackPose(shieldPos, Quaternion.Euler(shieldEuler), shieldSuppress);
+        }
+
+        /// <summary>
+        /// World blow direction from the swing's own motion: the camera-local
+        /// windup→slash delta, vertical damped (short enemies), rotated by camera
+        /// YAW only (pitch aims, not shoves), then biased toward forward. Each swing
+        /// → its own direction → its own NpcFlinch profile.
+        /// </summary>
+        Vector3 ComputeBlowDirection(SwingDefinition swing)
         {
             Transform eye = melee.aimSource != null ? melee.aimSource : transform;
-
-            Vector3 localMotion = slashPosition - windupPosition;
-            localMotion.y *= blowVerticalScale;
+            Vector3 localMotion = swing.slashPosition - swing.windupPosition;
+            localMotion.y *= swing.blowVerticalScale;
             if (localMotion.sqrMagnitude < 1e-6f) return eye.forward;
 
-            // YAW-ONLY frame. Enemies are short, so at melee range the camera is
-            // pitched steeply down — using the full camera rotation turned every
-            // blow into a downward stomp, identical from every side and mashing the
-            // ragdoll into the floor. Pitch aims the sweep; yaw (plus the swing's
-            // own damped vertical) decides which way the body is shoved.
             Quaternion yaw = Quaternion.Euler(0f, eye.eulerAngles.y, 0f);
             Vector3 worldMotion = (yaw * localMotion).normalized;
             Vector3 flatForward = yaw * Vector3.forward;
-
-            return Vector3.Slerp(worldMotion, flatForward, blowForwardBias).normalized;
+            return Vector3.Slerp(worldMotion, flatForward, swing.blowForwardBias).normalized;
         }
 
-        /// <summary>
-        /// The procedural arc: rest → windup (ease, coiling) → slash (fast,
-        /// committed) → rest (ease out). Pure function of t, shared by the swing,
-        /// the preview scrub, and the scene gizmo so they can never disagree.
-        /// </summary>
-        public void ComputePose(float nt, out Vector3 pos, out Vector3 euler, out float suppress)
+        SwingDefinition PreviewSwing()
         {
-            if (nt < windupEnd)
-            {
-                // Coil: ease into the windup pose.
-                float k = Mathf.SmoothStep(0f, 1f, nt / windupEnd);
-                pos = Vector3.Lerp(Vector3.zero, windupPosition, k);
-                euler = Vector3.Lerp(Vector3.zero, windupEuler, k);
-                suppress = k;
-            }
-            else if (nt < slashEnd)
-            {
-                // Slash: fast and front-loaded — most of the travel happens
-                // immediately (k^0.6 rises steeply), which is what makes it read
-                // as a strike rather than a wave.
-                float k = Mathf.Pow((nt - windupEnd) / (slashEnd - windupEnd), 0.6f);
-                pos = Vector3.LerpUnclamped(windupPosition, slashPosition, k);
-                euler = Vector3.LerpUnclamped(windupEuler, slashEuler, k);
-                suppress = 1f;
-            }
-            else
-            {
-                // Recovery: ease back to rest, hand sway back.
-                float k = Mathf.SmoothStep(0f, 1f, (nt - slashEnd) / (1f - slashEnd));
-                pos = Vector3.Lerp(slashPosition, Vector3.zero, k);
-                euler = Vector3.Lerp(slashEuler, Vector3.zero, k);
-                suppress = 1f - k;
-            }
+            if (previewSwingIndex < 0 || lightCombo.Count == 0) return heavySwing;
+            return lightCombo[Mathf.Clamp(previewSwingIndex, 0, lightCombo.Count - 1)];
         }
 
         void OnDisable()
         {
+            if (charging && controller != null) controller.moveScaleOverride = 1f;
+            charging = false;
+            returning = false;
+            tension = 0f;
             if (swinging) EndSwing();
         }
 
-        Vector3 swordRestLocal;     // captured at Awake for the play-mode gizmo (sway owns the live transform)
+        // ---------------- Gizmo ----------------
+
+        Vector3 swordRestLocal;
         bool haveRestLocal;
 
         void Start()
         {
-            if (swordSway != null)
-            {
-                swordRestLocal = swordSway.transform.localPosition;
-                haveRestLocal = true;
-            }
+            if (swordSway != null) { swordRestLocal = swordSway.transform.localPosition; haveRestLocal = true; }
         }
 
-        /// <summary>
-        /// Draws the whole swing arc through the sword's actual position in the
-        /// Scene view — windup yellow, slash red, recovery cyan, a sphere at the
-        /// impact instant. Works in edit mode too (select the player, look at the
-        /// sword), so the pose fields can be shaped before ever pressing play.
-        /// </summary>
         void OnDrawGizmosSelected()
         {
             if (swordSway == null) return;
             Transform hand = swordSway.transform;
             Transform parent = hand.parent;
             if (parent == null) return;
+
+            SwingDefinition swing = PreviewSwing();
+            if (swing == null) return;
 
             Vector3 restLocal = Application.isPlaying && haveRestLocal ? swordRestLocal : hand.localPosition;
 
@@ -332,15 +536,14 @@ namespace DungeonGen
             for (int i = 1; i <= steps; i++)
             {
                 float nt = i / (float)steps;
-                ComputePose(nt, out Vector3 pos, out _, out _);
+                swing.ComputePose(nt, out Vector3 pos, out _, out _);
                 Vector3 world = parent.TransformPoint(restLocal + pos);
-
-                Gizmos.color = nt < windupEnd ? Color.yellow : nt < slashEnd ? Color.red : Color.cyan;
+                Gizmos.color = nt < swing.windupEnd ? Color.yellow : nt < swing.slashEnd ? Color.red : Color.cyan;
                 Gizmos.DrawLine(prev, world);
                 prev = world;
             }
 
-            ComputePose(impactT, out Vector3 impactPos, out _, out _);
+            swing.ComputePose(swing.impactT, out Vector3 impactPos, out _, out _);
             Gizmos.color = Color.red;
             Gizmos.DrawWireSphere(parent.TransformPoint(restLocal + impactPos), 0.02f);
         }

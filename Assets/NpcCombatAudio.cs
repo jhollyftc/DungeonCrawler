@@ -39,6 +39,8 @@ namespace DungeonGen
         [Range(0f, 1f)][SerializeField] private float hurtMinimumVolume = 0.35f;
         [Tooltip("Minimum seconds between hurt grunts, so a flurry of hits doesn't machine-gun the voice.")]
         [SerializeField] private float hurtInterval = 0.25f;
+        [Tooltip("Chance (0..1) a hit plays a grunt at all — a grunt EVERY hit is too much. 0.4 ≈ grunts on roughly 2 of 5 hits. The impact SFX (SurfaceLibrary) still plays every hit; this only thins the VOICE. The killing blow's death cry is separate and always plays.")]
+        [Range(0f, 1f)][SerializeField] private float hurtChance = 0.4f;
 
         [Header("Death")]
         [Tooltip("The death cry, played the instant HP hits zero.")]
@@ -86,6 +88,7 @@ namespace DungeonGen
         {
             if (health.IsDead) return;                          // the killing blow gets the death cry, not a grunt
             if (Time.time < nextHurtTime) return;
+            if (Random.value > hurtChance) return;              // not every hit grunts — the impact SFX still plays
             nextHurtTime = Time.time + hurtInterval;
 
             float force = Mathf.Clamp01(info.impulse / Mathf.Max(0.01f, hurtFullImpulse));

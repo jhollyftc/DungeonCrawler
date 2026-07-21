@@ -16,6 +16,7 @@ namespace DungeonGen
         public GameObject instigator;// who caused it (may be null for environment)
         public DamageType type;
         public float impulse;        // knockback strength (m/s) — victims decide what it means
+        public float poiseDamage;    // chips the victim's poise pool; enough at once = a poise break (major stagger)
     }
 
     /// <summary>
