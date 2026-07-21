@@ -14,7 +14,11 @@ namespace DungeonGen
         public float range = 4.5f;
         [Tooltip("Thickness of the interaction 'ray'. Bigger = more forgiving aim.")]
         public float castRadius = 0.2f;
+        [Tooltip("What the interaction cast can hit. MUST exclude the Viewmodel layer (the swinging sword/shield sit right in front of the camera and would block the cast), and usually the Player's own layer. A closer non-interactable collider blanks the prompt — that's the flicker.")]
+        public LayerMask mask = ~0;
         public KeyCode key = KeyCode.E;
+        [Tooltip("Log what the cast hits when it ISN'T interactable — names the collider + layer that's blocking the prompt, so you can add it to the exclude mask.")]
+        public bool debugInteractor = false;
 
         IInteractable current;
         PlayerCarry carry;
@@ -23,6 +27,13 @@ namespace DungeonGen
         {
             carry = GetComponentInParent<PlayerCarry>();
             if (carry == null) carry = transform.root.GetComponentInChildren<PlayerCarry>();
+
+            // The viewmodel (sword/shield) sits right in front of the camera and is
+            // never interactable — always strip it from the cast so a held item
+            // can't block the prompt, no matter how the mask was authored. (Golden
+            // rule: world queries exclude the Viewmodel layer.)
+            int viewmodel = LayerMask.NameToLayer("Viewmodel");
+            if (viewmodel >= 0) mask &= ~(1 << viewmodel);
         }
 
         void Update()
@@ -38,9 +49,14 @@ namespace DungeonGen
 
             if (cam != null &&
                 Physics.SphereCast(cam.position, castRadius, cam.forward, out RaycastHit hit,
-                                   range, ~0, QueryTriggerInteraction.Ignore))
+                                   range, mask, QueryTriggerInteraction.Ignore))
             {
                 current = hit.collider.GetComponentInParent<IInteractable>();
+
+                if (debugInteractor && current == null)
+                    Debug.Log($"[Interactor] cast BLOCKED by '{hit.collider.name}' " +
+                              $"(layer {hit.collider.gameObject.layer} = '{LayerMask.LayerToName(hit.collider.gameObject.layer)}') " +
+                              $"at {hit.distance:0.00}m — nothing to interact with. Exclude that layer from the mask.", hit.collider);
             }
 
             if (current != null && Input.GetKeyDown(key))
