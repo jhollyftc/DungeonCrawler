@@ -16,13 +16,16 @@ MonoBehaviour:
   - label: 
     prefabs:
     - {fileID: 6030789269779412111, guid: 82f79d5c05277a84fa11157c42ca45d7, type: 3}
-    anchor: 2
+    anchor: 3
     tier: 3
     featurePositionMode: 0
     featureWallSide: 0
     featureSpot: 0
     featureFacing: 0
     featureYaw: 5
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
     guaranteed: 1
     count: 0
     chancePerCell: 1
@@ -32,5 +35,12 @@ MonoBehaviour:
     yawRange: {x: 0, y: 0}
     subCellJitter: 0
     snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
     wallGap: 0
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
     allowCenter: 0
