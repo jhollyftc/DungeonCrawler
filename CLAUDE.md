@@ -765,6 +765,19 @@ Formula-driven with authored override points (the user's explicit choice).
   the target comes from the ground raycast, an EXTERNAL stable reference — not the
   previous pose. `groundMask` must exclude the NPC layer (don't plant a foot on a
   neighbour). v1 has no pelvis drop, so a steep descent is limited by leg length.
+- **NPC facial expression (`JawSineAnimation` → planned `NpcFace`)** — a cheap,
+  high-charm life signal: jaw + eyebrow bones driven by THREE layered sines each
+  (fBm-style, so it never visibly loops), normalized 0..1 and lerped between a
+  min/max angle. **The min/max RANGE is the emotion** — narrow/raise the eyebrow
+  range for surprise, lower/narrow it for anger; widen the jaw for a teeth-grind.
+  Runs in LateUpdate (composes on top of any body animation), `[ExecuteAlways]` so
+  you tune the look in edit mode. Planned expansion: (1) **state-driven expression
+  presets** — the range sets become named moods (Calm/Suspicious/Angry) blended by
+  `NpcPerception.Awareness01` / brain state, one-way like `NpcAnimatorDriver`, so a
+  goblin's face hardens as it detects you; (2) **jaw ↔ vocalization sync** — the jaw
+  opens on / amplitude-follows `NpcCombatAudio` grunts, so it looks like it's making
+  the sound. (Class was `JawSineAnimation` in `FacePoseTester.cs` — renamed to match,
+  golden rule 3.)
 - **NavMesh from stairs — BUILD-ONLY TRAP (real, cost hours):** runtime navmesh baking
   reads triangles off MeshColliders, which **in a player build requires the mesh's
   Read/Write Enabled import setting**. Non-readable meshes are skipped from the bake
@@ -847,13 +860,19 @@ Cosmetic-first; combat is far off ("get the world together first").
     The goblin now senses, hunts, fights, suffers, and dies. (§10 has the detail
     and the field lessons: the build-only stairs Read/Write trap, RVO velocity
     feedback, the controller-clobber rule, FactionMember silent-whiff.)
-22. ⏳ **Player melee (`melee-v1-plan.md`)** — swinging sword + shield bash that
-    HIT the combat core built above (goblins already take damage/knockback/stagger
-    from `DamageInfo`), with player-facing GAME FEEL as the point: hitstop, the
-    weapon "catching" on a body mid-swing, screen shake, hit sparks/audio,
-    directional camera kick. The `MeleeAttack` sweep + `ViewmodelCollision`
-    anchors + `ViewmodelSway.proceduralWeight` are the pieces it composes.
-23. ⏳ NPC AI remaining phases: **call for help** (shout = a loud `NoiseEvent`; the
+22. **Player melee (`melee-v1-plan.md`)** — ✅ phases 1-2: procedural sword swing
+    (`PlayerMelee` through `ViewmodelSway.SetAttackPose`) that HITs the combat core,
+    + the FEEL layer (local swing-freeze/recoil, global `Hitstop`, `CameraKick`).
+    ⏳ phase 3 hit VFX + layered audio (hang off `MeleeAttack.OnHitLanded`), phase 4
+    shield block (`IDamageMitigator`) + bash, then directional/heavy swings.
+23. ✅ **NPC hit reactions v2** — directional spring flinch (`NpcFlinch`, authored
+    per-angle profiles, orbit debug tool) for living hits; full blended ragdoll
+    (`NpcRagdollReaction`, gravity-off flinch / gravity-on death) for death, opt-in
+    for reactions. Routed by `NpcHitReactions`.
+24. ⏳ **Emotive NPC face** — evolve `JawSineAnimation` into `NpcFace`: state-driven
+    expression presets (the min/max ranges ARE the mood) blended by awareness, +
+    jaw ↔ vocalization sync. See §10.
+25. ⏳ NPC AI remaining phases: **call for help** (shout = a loud `NoiseEvent`; the
     `NpcRegistry` and death cry already exist — rate-limit or it alert-loops);
     **equipment/disarm/rearm** (`WeaponDefinition` SO + `PropSocket`-style hand
     socket; a dropped weapon is NOT a `Carryable`, whose `Interact()` hard-codes
@@ -863,11 +882,11 @@ Cosmetic-first; combat is far off ("get the world together first").
     DepthProfile, per-room-type `EnemySet` in RoomStyle, own placer on free hash
     stream 11007); optional **Unity Behavior** tree swap (install via Package
     Manager UI — never hand-pin a version).
-24. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material) —
+26. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material) —
     mostly Blender/texture work; toon shader packed-mask already ready.
-25. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit → home
+27. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit → home
     base → depth increment → sell/replenish). Design chat first.
-26. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
+28. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
     doored rooms = lockable set), difficulty gradient by graph depth, equipment
     + SwayProfiles.
 
