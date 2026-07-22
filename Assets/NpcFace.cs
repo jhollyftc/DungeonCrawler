@@ -72,9 +72,20 @@ namespace DungeonGen
         public Vector3 jawAxis = Vector3.right;
         public Vector3 eyebrowAxis = Vector3.right;
 
+        [Serializable]
+        public struct EyeSlot
+        {
+            [Tooltip("Renderer whose mesh includes the eye submesh — usually the SAME renderer as the rest of the goblin body (eyes are typically just one material SLOT among several on one SkinnedMeshRenderer, not a separate GameObject).")]
+            public Renderer renderer;
+            [Tooltip("Material SLOT index (0-based, matches the order in the renderer's Materials list in the Inspector) that IS the eye material. -1 = auto-resolve from eyeMaterialAsset below by scanning this renderer's material list — leave it at -1 and just assign eyeMaterialAsset in the usual case.")]
+            public int materialIndex;
+        }
+
         [Header("Eyes")]
-        [Tooltip("Renderer(s) using the eye (ToonLit) material — usually one if both eyes share a mesh/material, or two if separate. Applied via a MaterialPropertyBlock so many goblins sharing one eye material each get their own live values WITHOUT instancing a unique material per NPC (keeps GPU batching intact). Leave empty to skip eye control entirely.")]
-        public Renderer[] eyeRenderers;
+        [Tooltip("Each entry targets ONE material SLOT on a renderer via the INDEXED SetPropertyBlock overload. This matters: the non-indexed overload applies to the WHOLE renderer, so if eyes are one material slot on the same mesh as the goblin's skin, using it would tint the entire goblin (skin included) with the eye's pupil/sclera values — that's the 'whole mesh turns into the eye material' bug. The indexed overload touches only the eye submesh.")]
+        public EyeSlot[] eyeSlots;
+        [Tooltip("The eye Material asset (e.g. Goblin_Eyes) — used to AUTO-FIND each unresolved slot's materialIndex by scanning its renderer's material list, so you don't have to count slots by hand. Leave a slot's materialIndex at -1 to use this.")]
+        public Material eyeMaterialAsset;
 
         [Header("Expressions (sorted by minAwareness)")]
         public List<Expression> expressions = new List<Expression>
@@ -143,6 +154,7 @@ namespace DungeonGen
                 var combat = GetComponent<NpcCombatAudio>();
                 voiceSource = combat != null && combat.Source != null ? combat.Source : GetComponent<AudioSource>();
             }
+            ResolveEyeSlots(warn: true);
             SnapToExpression(TargetExpression());
         }
 
@@ -200,25 +212,65 @@ namespace DungeonGen
         }
 
         /// <summary>
-        /// Push the blended pupil/sclera values to the eye material(s) via a
-        /// MaterialPropertyBlock — NOT renderer.material, which would instantiate a
-        /// unique material per NPC and break GPU instancing for a high-count asset.
+        /// Push the blended pupil/sclera values to the eye material's SLOT via the
+        /// INDEXED MaterialPropertyBlock overload — never renderer.material (would
+        /// instantiate a unique material per NPC and break GPU instancing) and never
+        /// the non-indexed SetPropertyBlock (applies to the WHOLE renderer, so a shared
+        /// body+eyes mesh would have its skin tinted by the eye values too).
         /// </summary>
         void ApplyEyes()
         {
-            if (eyeRenderers == null || eyeRenderers.Length == 0) return;
+            if (eyeSlots == null || eyeSlots.Length == 0) return;
+            ResolveEyeSlots();
             if (eyeBlock == null) eyeBlock = new MaterialPropertyBlock();
 
-            for (int i = 0; i < eyeRenderers.Length; i++)
+            for (int i = 0; i < eyeSlots.Length; i++)
             {
-                Renderer r = eyeRenderers[i];
-                if (r == null) continue;
-                r.GetPropertyBlock(eyeBlock);
+                Renderer r = eyeSlots[i].renderer;
+                int idx = eyeSlots[i].materialIndex;
+                if (r == null || idx < 0 || idx >= r.sharedMaterials.Length) continue;
+
+                r.GetPropertyBlock(eyeBlock, idx);
                 eyeBlock.SetColor(PropBaseColor, pupilColorCur);
                 eyeBlock.SetColor(PropRimColor, scleraColorCur);
                 eyeBlock.SetFloat(PropRimAmount, scleraBrightCur);
                 eyeBlock.SetFloat(PropRimThreshold, pupilSizeCur);
-                r.SetPropertyBlock(eyeBlock);
+                r.SetPropertyBlock(eyeBlock, idx);
+            }
+        }
+
+        /// <summary>
+        /// Verifies each slot's materialIndex actually points at eyeMaterialAsset, and
+        /// re-scans/fixes it if not — SELF-VERIFYING rather than sentinel-based, because
+        /// a freshly-added array element zero-initializes materialIndex to 0, which would
+        /// silently look "already resolved" (and usually points at the SKIN slot, not the
+        /// eyes) if we only trusted a -1-means-unresolved check. Cheap once correct (an
+        /// index compare), so it's safe to call every frame — that also self-heals if you
+        /// re-point the renderer/material live in the Inspector during edit-mode tuning.
+        /// </summary>
+        void ResolveEyeSlots(bool warn = false)
+        {
+            if (eyeMaterialAsset == null || eyeSlots == null) return;
+            for (int i = 0; i < eyeSlots.Length; i++)
+            {
+                EyeSlot slot = eyeSlots[i];
+                if (slot.renderer == null) continue;
+
+                Material[] mats = slot.renderer.sharedMaterials;
+                if (slot.materialIndex >= 0 && slot.materialIndex < mats.Length && mats[slot.materialIndex] == eyeMaterialAsset)
+                    continue;   // already correct — no rescan needed
+
+                int found = -1;
+                for (int m = 0; m < mats.Length; m++)
+                    if (mats[m] == eyeMaterialAsset) { found = m; break; }
+
+                // Either way, WRITE BACK: on success the resolved index; on failure force
+                // -1 so ApplyEyes skips this slot instead of silently writing eye values
+                // into whatever stale/default index (often 0 = the skin slot) it had.
+                slot.materialIndex = found;
+                eyeSlots[i] = slot;
+                if (found < 0 && warn)
+                    Debug.LogWarning($"[NpcFace] Eye material '{eyeMaterialAsset.name}' not found on '{slot.renderer.name}'s material list — set this eye slot's Material Index by hand.", this);
             }
         }
 
