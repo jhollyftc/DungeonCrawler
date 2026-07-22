@@ -65,8 +65,8 @@ namespace DungeonGen
         public float separationStrength = 2f;
 
         [Header("Push resistance (don't let the player shove NPCs around)")]
-        [Tooltip("Small slack (m) added to the allowed per-frame horizontal displacement before rejecting the excess. Prevents floating-point/skin-width jitter from getting clamped away on frames with legitimate zero-ish intended motion.")]
-        public float pushTolerance = 0.02f;
+        [Tooltip("A microscopic NUMERICAL-NOISE guard only (m) — not a physical allowance. ANY nonzero amount left ungranted here is handed out again every frame contact continues, and even a tiny per-frame grant compounds into real, unbounded drift given enough sustained contact (this is exactly what let the goblin still creep backward after the first attempted fix — the tolerance was 20x too large AND was being re-granted every frame instead of consumed once). Keep this at float-rounding scale (~0.0001-0.001); it exists only so the correction doesn't fight true floating-point jitter, never to let the player win any ground.")]
+        public float pushTolerance = 0.0005f;
 
         public NavMeshAgent Agent { get; private set; }
         public CharacterController Controller { get; private set; }
@@ -223,10 +223,24 @@ namespace DungeonGen
         {
             Vector3 afterPos = transform.position;
             Vector3 actualHorizontal = new Vector3(afterPos.x - beforePos.x, 0f, afterPos.z - beforePos.z);
-            float allowed = horizontalIntent.magnitude + pushTolerance;
-            if (actualHorizontal.magnitude <= allowed) return;
+            float intendedMag = horizontalIntent.magnitude;
+            float overshoot = actualHorizontal.magnitude - intendedMag;
 
-            Vector3 excess = actualHorizontal - actualHorizontal.normalized * allowed;
+            // MUST be provably driftless under sustained contact, not just "smaller than
+            // before": ANY nonzero amount left ungranted here — however small — is handed
+            // out again every frame contact continues, and a per-frame grant compounds
+            // LINEARLY with frame count with no upper bound. (This is exactly why the
+            // first attempted fix still let the goblin creep: it snapped back to
+            // intended+tolerance instead of exactly intended, so the tolerance itself was
+            // re-granted every frame instead of consumed once.) So: no distance-scale
+            // grant at all. pushTolerance only decides whether the correction is worth
+            // PERFORMING (skip true float-rounding noise); whenever it IS performed, it
+            // removes the FULL overshoot, snapping to exactly the intended magnitude —
+            // every frame's ending displacement is capped there, so nothing accumulates
+            // no matter how many frames the player holds contact.
+            if (overshoot <= pushTolerance) return;
+
+            Vector3 excess = actualHorizontal - actualHorizontal.normalized * intendedMag;
             transform.position -= excess;
         }
 
