@@ -263,7 +263,7 @@ namespace DungeonGen
             if (damageable == null) return;
             Transform root = damageable.Transform;
             if (root == transform || root.IsChildOf(transform)) return;   // never hit yourself
-            if (!hitThisSwing.Add(root)) return;                          // one hit per victim
+            if (hitThisSwing.Contains(root)) return;                      // already resolved this root this swing
             if (FactionMember.Of(root) == ownFaction) return;
             if (damageable.IsDead) return;
 
@@ -282,6 +282,15 @@ namespace DungeonGen
             // standing in the next room through it).
             if (Physics.Linecast(origin, c.ClosestPoint(origin), losBlockMask, QueryTriggerInteraction.Ignore))
                 return;
+
+            // Dedupe LAST, only once this collider has passed every rejection check.
+            // The broad cone query returns EVERY collider on a goblin — capsule AND
+            // every dormant ragdoll bone — in no particular order. Deduping earlier
+            // meant a stray bone collider with a bad LOS path (tucked near a wall/
+            // corner) could consume the goblin's one-hit slot before the loop ever
+            // reached its actual capsule, which had clear LOS the whole time — the
+            // goblin silently never got hit despite looking completely unobstructed.
+            if (!hitThisSwing.Add(root)) return;
 
             // Radial blow: from straight-forward (sideBias 0) toward the target's own
             // outward bearing (sideBias 1). This is what fans the crowd back AND aside.
@@ -334,7 +343,7 @@ namespace DungeonGen
 
             Transform root = damageable.Transform;
             if (root == transform || root.IsChildOf(transform)) return;  // never hit yourself
-            if (!hitThisSwing.Add(root)) return;                         // one hit per victim per swing
+            if (hitThisSwing.Contains(root)) return;                     // already resolved this root this swing
             if (FactionMember.Of(root) == ownFaction)
             {
                 if (debugAttack) Debug.Log($"[Melee] {name}: '{root.name}' rejected — same faction ({ownFaction}). If this is a valid target, someone's FactionMember is missing or wrong.", this);
@@ -362,6 +371,12 @@ namespace DungeonGen
                 if (debugAttack) Debug.Log($"[Melee] {name}: '{root.name}' rejected — no line of sight (blocked by a wall/door).", this);
                 return;
             }
+
+            // Dedupe LAST, only once this collider has passed every check — same
+            // reasoning as ConeHit: a victim can present several colliders (capsule +
+            // ragdoll bones) to this sweep, and an early dedupe risked burning the
+            // one-hit slot on a badly-positioned one before a good one was tried.
+            if (!hitThisSwing.Add(root)) return;
 
             var info = new DamageInfo
             {
