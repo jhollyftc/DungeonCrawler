@@ -110,6 +110,8 @@ namespace DungeonGen
         [Header("Death")]
         [Tooltip("Separate force multiplier for the KILLING blow, decoupled from the live reaction's forceScale. NpcHitReactions already adds a flat +3 boost to the death impulse so even a weak killing tap topples convincingly — multiplying THAT by forceScale (tuned for a graze-strength flinch) compounds into an excessive impulse on an already-strong killing hit (a heavy swing, a bash), which is what sends limbs whipping/oscillating at the joints. Keep this noticeably lower than forceScale — a corpse only needs a modest kick to read as a convincing collapse; gravity does the rest.")]
         public float deathForceScale = 1.2f;
+        [Tooltip("ON: the player's capsule stops colliding with this corpse's ragdoll bones the moment it dies, so a fallen goblin doesn't block a corridor or stop the player dead like a wall — you walk through it. World collision (floor/walls) is untouched, so the ragdoll still lands and settles normally; only the PLAYER is excused. OFF = corpses stay solid obstacles.")]
+        public bool playerWalksThroughCorpse = true;
         [Tooltip("Seconds the ragdoll corpse lies there before sinking away.")]
         public float corpseLinger = 8f;
         [Tooltip("Seconds to sink the corpse through the floor, then destroy.")]
@@ -436,6 +438,19 @@ namespace DungeonGen
                 }
         }
 
+        /// <summary>
+        /// Finds the PLAYER's own CharacterController — not just any CharacterController,
+        /// since NPCs drive one too (NpcLocomotion) and a generic FindObjectOfType could
+        /// return a nearby goblin's. FirstPersonController is unique to the player. A
+        /// fresh lookup each death (not cached) — deaths are rare and the player object
+        /// gets recreated on a scene reload (F1/regen), which would stale a static cache.
+        /// </summary>
+        static CharacterController FindPlayerController()
+        {
+            var fpc = FindObjectOfType<FirstPersonController>();
+            return fpc != null ? fpc.GetComponent<CharacterController>() : null;
+        }
+
         /// <summary>Full ragdoll death — stay limp, no blend back. The killing blow's impulse throws it. Owns its own linger + sink + destroy.</summary>
         public void Die(Vector3 point, Vector3 impulse)
         {
@@ -446,6 +461,16 @@ namespace DungeonGen
 
             EnterPhysics(fullBody: true, gravity: true);   // a corpse collapses whole, under gravity
             ApplyForce(point, impulse * deathForceScale);  // deathForceScale, NOT forceScale — see its tooltip
+
+            if (playerWalksThroughCorpse)
+            {
+                CharacterController player = FindPlayerController();
+                if (player != null)
+                    for (int i = 0; i < bodies.Length; i++)
+                        if (activeNow[i] && cols[i] != null)
+                            Physics.IgnoreCollision(player, cols[i], true);
+            }
+
             StartCoroutine(DeathRoutine());
         }
 
