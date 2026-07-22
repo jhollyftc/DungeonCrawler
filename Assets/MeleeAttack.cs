@@ -50,6 +50,8 @@ namespace DungeonGen
         public float originHeight = 1.1f;
         [Tooltip("What the sweep can HIT (victims' colliders). Exclude this NPC's own layer or it can clip itself.")]
         public LayerMask hitMask = ~0;
+        [Tooltip("Blocks a hit if anything on this mask sits between the attacker and the victim — a wall or shut door defeats the swing even though the capsule sweep geometrically reached past it (CapsuleCast/Overlap test volume intersection only, not solid occlusion, so a goblin on the far side of a thin door was hittable with no LOS check at all). Should be WORLD geometry only; the NPC and Viewmodel layers are auto-stripped in Awake so a crowd can't block its own hits and the held weapon model can't self-occlude.")]
+        public LayerMask losBlockMask = ~0;
         [Tooltip("Optional: aim the sweep from this transform (position + forward) instead of the body. The PLAYER sets this to the camera so you slash where you LOOK — pitch included. NPCs leave it empty and sweep from the body.")]
         public Transform aimSource;
         [Tooltip("With an aimSource, start the sweep this far forward of it — pushes the origin out of the attacker's own capsule so the point-blank CheckSphere tests the TARGET, not your own chest.")]
@@ -96,7 +98,20 @@ namespace DungeonGen
         // OverlapSphere and drops most goblins. Give the cone plenty of room.
         static readonly Collider[] coneScratch = new Collider[128];
 
-        void Awake() => ownFaction = FactionMember.Of(transform);
+        void Awake()
+        {
+            ownFaction = FactionMember.Of(transform);
+
+            // The LOS mask must be world geometry only: an NPC layer entry would let a
+            // crowd block its own attacks on each other, and Viewmodel (the held
+            // weapon model, right in front of the camera) would self-occlude every
+            // player swing. Auto-stripped so it works without hand-tuning the mask,
+            // same convention as PlayerInteractor's cast mask.
+            int npc = LayerMask.NameToLayer("NPC");
+            if (npc >= 0) losBlockMask &= ~(1 << npc);
+            int viewmodel = LayerMask.NameToLayer("Viewmodel");
+            if (viewmodel >= 0) losBlockMask &= ~(1 << viewmodel);
+        }
 
         /// <summary>Begin a swing. Returns false if still recovering/suppressed.</summary>
         public bool TryAttack()
@@ -261,6 +276,13 @@ namespace DungeonGen
 
             if (Vector3.Dot(toDir, flatDir) < cosHalf) return;        // outside the cone
 
+            // Line of sight — same reasoning as TryHit: a wall/door between the
+            // attacker and this target defeats the bash even though it's geometrically
+            // inside the cone (a shut door beside the player shouldn't shove someone
+            // standing in the next room through it).
+            if (Physics.Linecast(origin, c.ClosestPoint(origin), losBlockMask, QueryTriggerInteraction.Ignore))
+                return;
+
             // Radial blow: from straight-forward (sideBias 0) toward the target's own
             // outward bearing (sideBias 1). This is what fans the crowd back AND aside.
             Vector3 blow = Vector3.Slerp(flatDir, toDir, sideBias).normalized;
@@ -329,6 +351,15 @@ namespace DungeonGen
             if (to.sqrMagnitude > 0.0004f && Vector3.Dot(to.normalized, dir) < 0.1f)
             {
                 if (debugAttack) Debug.Log($"[Melee] {name}: '{root.name}' rejected — behind the swing (dot {Vector3.Dot(to.normalized, dir):0.00}).", this);
+                return;
+            }
+
+            // Line of sight: a wall/shut door between attacker and victim defeats the
+            // swing even though the capsule geometrically reached past it.
+            Vector3 victimPoint = c.ClosestPoint(origin);
+            if (Physics.Linecast(origin, victimPoint, losBlockMask, QueryTriggerInteraction.Ignore))
+            {
+                if (debugAttack) Debug.Log($"[Melee] {name}: '{root.name}' rejected — no line of sight (blocked by a wall/door).", this);
                 return;
             }
 
