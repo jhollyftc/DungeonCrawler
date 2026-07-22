@@ -47,6 +47,8 @@ namespace DungeonGen
         [Header("Reaction routing")]
         [Tooltip("ON: living hits use the blended RAGDOLL (NpcRagdollReaction) — the tuning-heavy one. OFF (default): living hits use the directional spring FLINCH (NpcFlinch), and the ragdoll is used only for DEATH. Lets you shelve ragdoll REACTIONS while keeping ragdoll DEATH.")]
         public bool useRagdollForReactions = false;
+        [Tooltip("ON (default): a hit also shoves the CAPSULE backward (NpcLocomotion.AddImpulse — the whole-body slide, and now correctly drives the Animator's speed-blend stumble too). Turn OFF to isolate the BONE flinch (NpcFlinch) for tuning: the capsule slide is a separate, unrelated system from the bone spring — NpcFlinch.impulseScale has zero effect on it, so with capsule knockback on it's easy to mistake 'the whole goblin sliding backward' for 'the flinch reacting' while actually tuning a spring that's barely moving at all. Flip off while dialing in NpcFlinch profiles, flip back on for real gameplay feel.")]
+        public bool applyCapsuleKnockback = true;
 
         [Header("Death")]
         [Tooltip("Seconds the corpse topples before despawn (fallback path — only when the controller has no Die state).")]
@@ -118,12 +120,15 @@ namespace DungeonGen
 
             if (!ragdolled)
             {
-                // Capsule knockback through the locomotion capability so it composes
-                // with pathing. Thrown hits redirect part of the shove UPWARD onto a
-                // ballistic arc — a body blow, not an ice-slide.
-                Vector3 flat = new Vector3(info.direction.x, 0f, info.direction.z).normalized;
-                float pop = info.type == DamageType.Thrown ? thrownVerticalPop : 0f;
-                body.AddImpulse(flat * info.impulse * (1f - pop) + Vector3.up * info.impulse * pop);
+                if (applyCapsuleKnockback)
+                {
+                    // Capsule knockback through the locomotion capability so it composes
+                    // with pathing. Thrown hits redirect part of the shove UPWARD onto a
+                    // ballistic arc — a body blow, not an ice-slide.
+                    Vector3 flat = new Vector3(info.direction.x, 0f, info.direction.z).normalized;
+                    float pop = info.type == DamageType.Thrown ? thrownVerticalPop : 0f;
+                    body.AddImpulse(flat * info.impulse * (1f - pop) + Vector3.up * info.impulse * pop);
+                }
 
                 Flinch(info.point, info.direction * info.impulse);
 
