@@ -47,6 +47,10 @@ namespace DungeonGen
             new Profile { name = "Left",  attackedFromAngle = 270f, kickAxis = new Vector3( 0f, 0f,  1f), strength = 6f },
         };
 
+        [Header("Impulse scale")]
+        [Tooltip("Scales the raw impulse magnitude BEFORE it drives bone rotation — the single dial for 'real combat hits look rougher/clipped compared to the debug tool.' The per-profile strength values were tuned against a low reference impulse; real combat knockback (light ~5, heavy ~10, bash ~30) is well above that, so the kick math (strength × profile.strength × falloff × 8, uncapped going in) overdrives the spring and slams into maxDeflection — a hard clip that reads as an abrupt, unfinished snap instead of a full arc, instead of the clean motion a lighter impulse produces. Turn this DOWN until a real sword hit looks as fluid as the debug tool at a strength you already like — e.g. if debugStrength 2 looks right and your light swing knocks back at 5, try ~0.4 as a starting point (2/5) and tune from there. Applies to BOTH real hits and the debug tool (same ApplyHit call), so they stay directly comparable.")]
+        public float impulseScale = 0.4f;
+
         [Header("Spring")]
         [Tooltip("How hard bones pull back to the animated pose. Higher = snappier recovery.")]
         public float stiffness = 140f;
@@ -83,10 +87,11 @@ namespace DungeonGen
         /// </summary>
         public void ApplyHit(Vector3 worldPoint, Vector3 impulse)
         {
-            float strength = impulse.magnitude;
-            if (strength < 0.01f || bones == null || profiles.Count == 0) return;
+            float rawMag = impulse.magnitude;
+            if (rawMag < 0.01f || bones == null || profiles.Count == 0) return;
+            float strength = rawMag * impulseScale;   // impulseScale drives the KICK only; direction below stays true to the raw impulse
 
-            Profile p = ProfileForBlow(impulse / strength);
+            Profile p = ProfileForBlow(impulse / rawMag);
             if (p == null) return;
 
             // Author the kick in the NPC's local frame, then convert per bone.
