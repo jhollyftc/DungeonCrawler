@@ -66,6 +66,12 @@ namespace DungeonGen
         public float arrowHeadLength = 0.18f;
         [Tooltip("Spread angle (deg) of the arrowhead lines away from the shaft.")]
         public float arrowHeadAngle = 22f;
+        [Tooltip("Also draw a HEIGHT RULER for every hit: a vertical hips→head reference line (offset to the side, so it's not lost inside the mesh) with a colored tick showing exactly where that hit's Y-height falls on the same 0..1 scale debugHeight uses. Real sword hits always land at roughly the SAME height (MeleeAttack.TryHit uses the sweep's fixed eye-height origin — ClosestPoint on the victim from there, regardless of which swing landed it; only the BLOW DIRECTION varies per swing, height never has), so this is what lets you visually confirm that against the debug tool's deliberately-variable height.")]
+        public bool showHeightRuler = true;
+        [Tooltip("How far to the side (m) the height ruler is offset from the spine, so it doesn't get lost inside the model.")]
+        public float rulerSideOffset = 0.4f;
+        [Tooltip("Ruler reference-line color.")]
+        public Color rulerColor = new Color(0.7f, 0.7f, 0.7f);
 
         /// <summary>
         /// A 3D arrow: a shaft plus a flared cross of 4 short lines at the tip (up/
@@ -91,6 +97,47 @@ namespace DungeonGen
             Debug.DrawRay(tip, left.normalized * headLen, color, duration);
             Debug.DrawRay(tip, up.normalized * headLen, color, duration);
             Debug.DrawRay(tip, down.normalized * headLen, color, duration);
+        }
+
+        Animator bodyAnimator;
+
+        /// <summary>Hips/head world positions for the height ruler and DebugPoint's height scrub. Null if the rig isn't humanoid.</summary>
+        bool TryGetHipsHead(out Vector3 hips, out Vector3 head)
+        {
+            if (bodyAnimator == null) bodyAnimator = GetComponentInChildren<Animator>();
+            if (bodyAnimator != null && bodyAnimator.isHuman)
+            {
+                Transform h = bodyAnimator.GetBoneTransform(HumanBodyBones.Hips);
+                Transform hd = bodyAnimator.GetBoneTransform(HumanBodyBones.Head);
+                if (h != null && hd != null) { hips = h.position; head = hd.position; return true; }
+            }
+            hips = head = Vector3.zero;
+            return false;
+        }
+
+        /// <summary>
+        /// A vertical hips→head reference line, offset to the side, with a colored tick
+        /// at the hit's Y-height projected onto it (0 = hips, 1 = head — the same scale
+        /// debugHeight uses) plus a faint line connecting the tick back to the actual
+        /// hit point. Real sword hits all land near the same eye-height-derived point
+        /// (see MeleeAttack.TryHit) regardless of swing, so this is what lets you SEE
+        /// that clustering directly, compared against the debug tool's deliberately
+        /// variable height.
+        /// </summary>
+        void DrawHeightRuler(Vector3 hitPoint, Color color, float duration)
+        {
+            if (!showHeightRuler || !TryGetHipsHead(out Vector3 hips, out Vector3 head)) return;
+
+            Vector3 side = transform.right * rulerSideOffset;
+            Vector3 rulerBottom = hips + side;
+            Vector3 rulerTop = head + side;
+            Debug.DrawLine(rulerBottom, rulerTop, rulerColor, duration);
+
+            float t = Mathf.InverseLerp(hips.y, head.y, hitPoint.y);
+            Vector3 tick = Vector3.Lerp(rulerBottom, rulerTop, Mathf.Clamp01(t));
+            Vector3 tickAxis = transform.right * 0.12f;
+            Debug.DrawLine(tick - tickAxis, tick + tickAxis, color, duration);
+            Debug.DrawLine(hitPoint, tick, color * 0.6f, duration);
         }
 
         [Header("Spring")]
@@ -157,6 +204,7 @@ namespace DungeonGen
                 // different lengths, not just the same-size arrow in a different spot.
                 float len = Mathf.Clamp(strength * 0.1f, 0.25f, arrowMaxLength);
                 DrawArrow(worldPoint, impulse / rawMag, len, hitArrowColor, hitArrowDuration);
+                DrawHeightRuler(worldPoint, hitArrowColor, hitArrowDuration);
             }
         }
 
@@ -224,7 +272,6 @@ namespace DungeonGen
         public float debugInterval = 1.2f;
 
         float debugNextFire;
-        Animator debugAnimator;
 
         void Update()
         {
@@ -233,7 +280,11 @@ namespace DungeonGen
             Vector3 from = DebugFromDir();
             Vector3 at = DebugPoint();
             Debug.DrawLine(at + from * 0.6f, at, Color.yellow);   // incoming, from the attacker
-            if (showHitArrows) DrawArrow(at, -from, arrowMaxLength, previewArrowColor, 0f);   // the push, live preview (orange, redrawn every frame)
+            if (showHitArrows)
+            {
+                DrawArrow(at, -from, arrowMaxLength, previewArrowColor, 0f);   // the push, live preview (orange, redrawn every frame)
+                DrawHeightRuler(at, previewArrowColor, 0f);
+            }
 
             if (debugAutoFire && Time.time >= debugNextFire)
             {
@@ -249,13 +300,7 @@ namespace DungeonGen
 
         Vector3 DebugPoint()
         {
-            if (debugAnimator == null) debugAnimator = GetComponentInChildren<Animator>();
-            if (debugAnimator != null && debugAnimator.isHuman)
-            {
-                Transform hips = debugAnimator.GetBoneTransform(HumanBodyBones.Hips);
-                Transform head = debugAnimator.GetBoneTransform(HumanBodyBones.Head);
-                if (hips != null && head != null) return Vector3.Lerp(hips.position, head.position, debugHeight);
-            }
+            if (TryGetHipsHead(out Vector3 hips, out Vector3 head)) return Vector3.Lerp(hips, head, debugHeight);
             return transform.position + Vector3.up * Mathf.Lerp(0.2f, 1.4f, debugHeight);
         }
 
