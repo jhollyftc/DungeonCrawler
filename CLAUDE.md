@@ -608,8 +608,12 @@ Formula-driven with authored override points (the user's explicit choice).
   `IMoveIntent` (`FirstPersonController.IntendedSpeed` = input × speed, reported BEFORE
   the world blocks it); the push scales by `Max(intent, achieved)`, so leaning on a
   stuck door still delivers real torque, and crouch still eases doors (lower INTENDED
-  speed) rather than merely stalling. NPCs have no `IMoveIntent` yet → fall back to
-  achieved velocity (the deliberate "lean on the door" behaviour).
+  speed) rather than merely stalling. **But this is OBJECT-CHOSEN, not global** —
+  `IPushable.PreferIntentPush` — because doors and heavy props want OPPOSITE things from
+  the same stall: a door SHOULD yield to a lean (intent, stays strong → opens), a heavy
+  prop (the wooden table) SHOULD resist and slow you (achieved, collapses → stubborn).
+  Making intent global was a regression that made every heavy prop shove easily. Doors
+  return true; props (and plain Rigidbodies, and NPCs without `IMoveIntent`) use achieved.
 - **DEPENETRATION LAUNCH (real field bug — THE "door flies open with zero push"):** a
   dynamic door (mass 20) ejects from an overlapping collider at up to
   `Rigidbody.maxDepenetrationVelocity` — Unity's default ~10 m/s. The player's

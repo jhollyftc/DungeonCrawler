@@ -31,6 +31,11 @@ namespace DungeonGen
 
         private void Awake() => body = GetComponent<Rigidbody>();
 
+        // Props scale by ACHIEVED velocity (not intent): a heavy prop stalls you as you
+        // lean, so the push collapses and it resists and slows you — the momentum feel.
+        // The opposite of a door, which should yield to a lean (see IPushable).
+        public bool PreferIntentPush => false;
+
         public void Push(Vector3 contactPoint, Vector3 pushDirection, float force)
         {
             if (body == null || body.isKinematic) return;

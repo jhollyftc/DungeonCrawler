@@ -22,5 +22,15 @@ namespace DungeonGen
         /// <param name="pushDirection">Normalised, horizontal.</param>
         /// <param name="force">Impulse magnitude the player is delivering, already scaled by how fast they're moving.</param>
         void Push(Vector3 contactPoint, Vector3 pushDirection, float force);
+
+        /// <summary>
+        /// Which speed the player's push scales by. FALSE (default, props) = ACHIEVED
+        /// velocity: leaning on a heavy prop stalls you, so the push collapses and the
+        /// prop resists and slows you — the momentum feel. TRUE (doors) = INTENDED speed:
+        /// a door you shoulder blocks you too, but it SHOULD open, so the push stays
+        /// strong while you lean rather than collapsing to nothing. The two want opposite
+        /// things from the same stall, so the object picks.
+        /// </summary>
+        bool PreferIntentPush => false;
     }
 }

@@ -331,6 +331,12 @@ namespace DungeonGen
         /// feels heavy, and pushing near the hinge barely moves it while pushing at
         /// the outer edge swings it — the real-feeling leverage you want.
         /// </summary>
+        // A door SHOULD yield to a sustained lean, so it scales by INTENDED speed — a
+        // door you shoulder stalls your achieved velocity to ~0, and achieved-velocity
+        // scaling would then starve the push exactly when you want it to open. (Props
+        // want the opposite; they keep the default false and resist.)
+        public bool PreferIntentPush => true;
+
         public void Push(Vector3 contactPoint, Vector3 pushDirection, float strength)
         {
             // Clamp SWING speed, not linear speed (see maxSwingSpeed tooltip).

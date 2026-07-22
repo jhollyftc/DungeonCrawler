@@ -63,9 +63,21 @@ namespace DungeonGen
                 return;
             pushDirection.Normalize();
 
-            // How hard you shove follows how fast you're actually moving. This is
-            // the whole sneak mechanic: crouch → slow → gentle push → the door
-            // barely swings → it never passes the door's thunkArmAngle → silent.
+            // If the object knows how to be pushed, let IT decide what the shove
+            // means. A PhysicsDoor turns it into torque about its hinge (a linear
+            // force would fight the joint and tear the door off); a PushableProp
+            // applies its own multiplier and speed cap. The player just supplies
+            // the force — objects own their own response, so tuning a barrel can
+            // never un-tune the doors. Resolved FIRST because the object also picks
+            // whether the push scales by intent (doors) or achieved velocity (props).
+            IPushable pushable = body.GetComponent<IPushable>();
+            bool useIntent = pushable != null && pushable.PreferIntentPush;
+
+            // How hard you shove follows how fast you're moving. This is the whole
+            // sneak mechanic: crouch → slow → gentle push → the door barely swings →
+            // it never passes the door's thunkArmAngle → silent. Doors read INTENDED
+            // speed (so leaning on a stuck door still opens it); props read ACHIEVED
+            // (so a heavy prop stalls you and resists) — see IPushable.PreferIntentPush.
             //
             // The Time.deltaTime term is the FRAMERATE FIX. This runs once per
             // frame and delivers an Impulse (instantaneous, time-agnostic), so raw
@@ -73,15 +85,8 @@ namespace DungeonGen
             // fast PCs open doors, slow PCs can't. Multiplying by (deltaTime x
             // referenceFrameRate) makes the per-second delivery identical on every
             // machine and equal to what `force` means at the reference rate.
-            float force = pushForce * CurrentPushScale() * (Time.deltaTime * referenceFrameRate);
+            float force = pushForce * CurrentPushScale(useIntent) * (Time.deltaTime * referenceFrameRate);
 
-            // If the object knows how to be pushed, let IT decide what the shove
-            // means. A PhysicsDoor turns it into torque about its hinge (a linear
-            // force would fight the joint and tear the door off); a PushableProp
-            // applies its own multiplier and speed cap. The player just supplies
-            // the force — objects own their own response, so tuning a barrel can
-            // never un-tune the doors.
-            IPushable pushable = body.GetComponent<IPushable>();
             if (pushable != null)
             {
                 pushable.Push(hit.point, pushDirection, force);
@@ -97,19 +102,21 @@ namespace DungeonGen
             body.AddForceAtPosition(pushDirection * force, hit.point, ForceMode.Impulse);
         }
 
-        private float CurrentPushScale()
+        private float CurrentPushScale(bool useIntent)
         {
             if (!scaleByPlayerSpeed || controller == null) return 1f;
 
-            // Prefer INTENDED speed over achieved. A door you're shouldering blocks your
-            // CharacterController, so controller.velocity collapses to ~0 and the scale
-            // would bottom out at minimumPushScale — the door then gets almost no torque
-            // and is bulldozed off its hinge by depenetration instead of swinging open.
-            // Intent stays high while you keep walking into it. Max() keeps whichever is
-            // larger, so a mover without intent (NPCs) still works off achieved velocity.
             Vector3 v = controller.velocity;
             float achieved = new Vector3(v.x, 0f, v.z).magnitude;
-            float speed = moveIntent != null ? Mathf.Max(moveIntent.IntendedSpeed, achieved) : achieved;
+
+            // Doors (useIntent) prefer INTENDED speed: shouldering a door stalls the
+            // controller so achieved velocity collapses to ~0, which would starve the
+            // push exactly when you want the door to open — intent stays high while you
+            // lean. Max() so a fast free walk still reads full. Props leave useIntent
+            // false and scale by ACHIEVED velocity, so a heavy prop stalls you and the
+            // push collapses — it resists and slows you (the momentum feel). NPCs have no
+            // IMoveIntent, so intent falls back to achieved too.
+            float speed = (useIntent && moveIntent != null) ? Mathf.Max(moveIntent.IntendedSpeed, achieved) : achieved;
             return Mathf.Clamp(speed / Mathf.Max(0.01f, speedForFullPush), minimumPushScale, 1f);
         }
     }
