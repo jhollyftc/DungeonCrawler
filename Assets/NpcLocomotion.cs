@@ -75,15 +75,20 @@ namespace DungeonGen
         public NavMeshAgent Agent { get; private set; }
         public CharacterController Controller { get; private set; }
 
-        /// <summary>Actual horizontal speed (m/s) — what the body is really doing, not what the agent wanted.</summary>
-        public float CurrentSpeed
-        {
-            get
-            {
-                Vector3 v = Controller != null ? Controller.velocity : Vector3.zero;
-                return new Vector3(v.x, 0f, v.z).magnitude;
-            }
-        }
+        /// <summary>
+        /// Actual horizontal speed (m/s) — what the body is really doing, not what the
+        /// agent wanted. Deliberately NOT Controller.velocity: Unity computes that from
+        /// the RAW pre-push-correction Move() result, so during a player-shove event it
+        /// can report 20-40+ m/s for several frames even though RejectUnwantedPush has
+        /// already cancelled the position back to net-zero that same frame (confirmed via
+        /// debugPush logging — finalActual stayed 0.0000 throughout while ccVel spiked).
+        /// NpcAnimatorDriver feeds this straight into the Animator's Speed parameter, so
+        /// the phantom velocity was visually reading as the goblin "running in place" —
+        /// legs cycling through a walk/run animation while the root stayed provably
+        /// fixed. trueVelocity is OUR OWN measurement of actually-achieved displacement,
+        /// computed after correction, so it can't lie this way.
+        /// </summary>
+        public float CurrentSpeed => new Vector3(trueVelocity.x, 0f, trueVelocity.z).magnitude;
 
         /// <summary>Reached the current destination (or has none).</summary>
         public bool HasArrived
@@ -112,6 +117,11 @@ namespace DungeonGen
         float impulseTimer;
         float lastGroundedY;
         bool haveGroundedY;
+
+        // Actual achieved horizontal velocity, measured AFTER RejectUnwantedPush —
+        // see CurrentSpeed's doc for why this exists instead of reading
+        // Controller.velocity directly.
+        Vector3 trueVelocity;
 
         // All living NPC bodies, for separation (and, later, shouts — this is the
         // registry phase 5 wants). OnEnable/OnDisable keep it exact: death disables
@@ -213,10 +223,14 @@ namespace DungeonGen
                 transform.position -= excess;
             }
 
+            // What ACTUALLY happened this frame, after correction — see CurrentSpeed's
+            // doc comment for why this (not Controller.velocity) drives speed elsewhere.
+            Vector3 finalPos = transform.position;
+            Vector3 finalHorizontal = new Vector3(finalPos.x - beforePos.x, 0f, finalPos.z - beforePos.z);
+            trueVelocity = dt > 0f ? finalHorizontal / dt : Vector3.zero;
+
             if (debugPush)
             {
-                Vector3 finalPos = transform.position;
-                Vector3 finalHorizontal = new Vector3(finalPos.x - beforePos.x, 0f, finalPos.z - beforePos.z);
                 Debug.Log($"[NpcPush] {name}: intended={intendedMag:0.0000}m rawActual={rawActualHorizontal.magnitude:0.0000}m " +
                           $"finalActual={finalHorizontal.magnitude:0.0000}m corrected={corrected} " +
                           $"(want={want.magnitude:0.00} impulse={impulse.magnitude:0.00} sep={sep.magnitude:0.00}) " +
@@ -321,8 +335,13 @@ namespace DungeonGen
                 // avoidance (RVO) predicts neighbors from their VELOCITY, and an
                 // externally-moved agent reports ~zero — every NPC tells every
                 // other "I'm stationary", prediction collapses, and they walk
-                // straight through each other. Feed the real velocity back.
-                Agent.velocity = Controller.velocity;
+                // straight through each other. Feed the real velocity back — OUR
+                // OWN measured trueVelocity, not Controller.velocity, which can
+                // spike to 20-40+ m/s for several frames during a player-push event
+                // even though the position was already corrected back to net-zero
+                // that same frame (see CurrentSpeed's doc). Raw Controller.velocity
+                // here would tell nearby NPCs' avoidance this one is sprinting away.
+                Agent.velocity = trueVelocity;
                 return;
             }
 
