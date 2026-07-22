@@ -529,6 +529,15 @@ namespace DungeonGen
             // seamlessly, the same way the light chain does.
             if (Input.GetMouseButton(heavyMouseButton) && CanSwing(ignoreCooldown: true))
                 BeginCharge();
+            // Same idea for a held bashKey: HandleBashCharge can't see the press either
+            // (it doesn't run while a swing is playing), so "is it held now" catches a
+            // press-and-hold during a light/heavy and starts the bash wind immediately.
+            else if (Input.GetKey(bashKey) && CanBash(ignoreCooldown: true))
+            {
+                bashCharging = true;
+                bashChargeT = 0f;
+                swordSway?.SetAttackPose(Vector3.zero, Quaternion.identity, 0f);
+            }
         }
 
         void ApplyPose(SwingDefinition swing, float nt)
@@ -539,9 +548,9 @@ namespace DungeonGen
 
         // ---------------- Shield bash ----------------
 
-        bool CanBash()
+        bool CanBash(bool ignoreCooldown = false)
         {
-            if (Time.time < readyAt) return false;                // shares the swing cooldown gate
+            if (!ignoreCooldown && Time.time < readyAt) return false;   // shares the swing cooldown gate
             if (Cursor.lockState != CursorLockMode.Locked) return false;
             if (swinging || charging) return false;
             if (carry != null && carry.IsCarrying) return false;
@@ -729,6 +738,12 @@ namespace DungeonGen
 
             bufferedLight = false;
             readyAt = Time.time + shieldBash.cooldown;
+
+            // Still HOLDING RMB as the bash ends → roll straight into the heavy draw,
+            // same "is it held now" pattern as EndSwing (HandleCharge can't see the
+            // press itself — it doesn't run while the bash owns the frame).
+            if (Input.GetMouseButton(heavyMouseButton) && CanSwing(ignoreCooldown: true))
+                BeginCharge();
         }
 
         /// <summary>Bash owns BOTH hands this frame: the shield is written directly, the sword counters it (TickSword). Skip TickShield; still tick FOV + carry latch.</summary>
