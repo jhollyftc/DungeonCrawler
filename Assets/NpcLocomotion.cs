@@ -64,6 +64,10 @@ namespace DungeonGen
         [Tooltip("Push-apart speed (m/s) at full overlap, fading to zero at the radius edge. Keep below walk speed or the crowd vibrates.")]
         public float separationStrength = 2f;
 
+        [Header("Debug")]
+        [Tooltip("Log per-frame INTENDED vs ACTUAL horizontal displacement, broken down by want/impulse/separation — diagnostic for 'the player can push/jitter me' investigations. Turn on, stand pressed against this NPC, and read the console: if actual >> intended while want/impulse/sep all read ~0, that confirms CharacterController's own overlap resolution is the source, independent of anything this script asked for.")]
+        public bool debugPush = false;
+
         public NavMeshAgent Agent { get; private set; }
         public CharacterController Controller { get; private set; }
 
@@ -179,8 +183,21 @@ namespace DungeonGen
             else verticalVelocity += gravity * dt;
             verticalVelocity = Mathf.Max(verticalVelocity, -maxFallSpeed);
 
-            Vector3 motion = (want + impulse + Separation()) * dt + Vector3.up * verticalVelocity * dt;
+            Vector3 sep = Separation();
+            Vector3 horizontalIntent = (want + impulse + sep) * dt;
+            Vector3 motion = horizontalIntent + Vector3.up * verticalVelocity * dt;
+
+            Vector3 beforePos = transform.position;
             Controller.Move(motion);
+
+            if (debugPush)
+            {
+                Vector3 afterPos = transform.position;
+                Vector3 actualHorizontal = new Vector3(afterPos.x - beforePos.x, 0f, afterPos.z - beforePos.z);
+                Debug.Log($"[NpcPush] {name}: intended={horizontalIntent.magnitude:0.0000}m actual={actualHorizontal.magnitude:0.0000}m " +
+                          $"(want={want.magnitude:0.00} impulse={impulse.magnitude:0.00} sep={sep.magnitude:0.00}) " +
+                          $"grounded={Controller.isGrounded} ccVel={Controller.velocity}", this);
+            }
 
             IsBlocked = want.magnitude > blockedDesiredSpeed && CurrentSpeed < blockedSpeed;
 
