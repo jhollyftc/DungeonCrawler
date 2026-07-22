@@ -13,6 +13,12 @@ namespace DungeonGen
     /// from the one shared SurfaceLibrary. Put it on the attacker (the player,
     /// beside MeleeAttack); it listens to OnHitLanded, which carries the world
     /// contact point and blow direction.
+    ///
+    /// ALSO listens to OnEnvironmentHit — a swing that found no living target but
+    /// connected with a wall, door, or prop still sparks off THAT surface, same
+    /// SurfaceLibrary, same visual language as a landed blow. Without this, whiffing
+    /// against the world was silent and invisible even when the blade clearly caught
+    /// stone or wood.
     /// </summary>
     [RequireComponent(typeof(MeleeAttack))]
     [DisallowMultipleComponent]
@@ -22,6 +28,8 @@ namespace DungeonGen
         public SurfaceLibrary surfaceLibrary;
         [Tooltip("Surface used when the victim has no Surface component. A melee target is almost always Flesh, so that's the sensible default here (the WORLD defaults to Stone elsewhere).")]
         public SurfaceType defaultTargetSurface = SurfaceType.Flesh;
+        [Tooltip("Surface used when a struck wall/door/prop has no Surface component. The world default is Stone; tag doors/props with a Surface component (Wood/Metal/...) to get their real material instead.")]
+        public SurfaceType defaultEnvironmentSurface = SurfaceType.Stone;
         [Tooltip("3D source for pitched impact SFX. Left empty, a positioned one-shot is used (no pitch variation).")]
         public AudioSource hitSource;
 
@@ -34,13 +42,28 @@ namespace DungeonGen
                 Debug.LogWarning("[MeleeHitEffects] No SurfaceLibrary assigned — hits will land but spawn no impact effect.", this);
         }
 
-        void OnEnable() => melee.OnHitLanded += HandleHit;
-        void OnDisable() => melee.OnHitLanded -= HandleHit;
+        void OnEnable()
+        {
+            melee.OnHitLanded += HandleHit;
+            melee.OnEnvironmentHit += HandleEnvironmentHit;
+        }
+
+        void OnDisable()
+        {
+            melee.OnHitLanded -= HandleHit;
+            melee.OnEnvironmentHit -= HandleEnvironmentHit;
+        }
 
         void HandleHit(IDamageable victim, DamageInfo info)
         {
             SurfaceType surface = Surface.Of(victim.Transform, defaultTargetSurface);
             SurfaceImpact.Spawn(surfaceLibrary, surface, info.point, info.direction, hitSource);
+        }
+
+        void HandleEnvironmentHit(Vector3 point, Vector3 direction, Collider hit)
+        {
+            SurfaceType surface = Surface.Of(hit, defaultEnvironmentSurface);
+            SurfaceImpact.Spawn(surfaceLibrary, surface, point, direction, hitSource);
         }
     }
 }

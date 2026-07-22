@@ -67,6 +67,14 @@ namespace DungeonGen
         public event Action OnSwingEnd;
         /// <summary>A hit landed on a victim.</summary>
         public event Action<IDamageable, DamageInfo> OnHitLanded;
+        /// <summary>
+        /// The swing found no living target but connected with the WORLD — a wall, door,
+        /// prop — the "whiff sparks off the surface" moment. point/dir/collider let a
+        /// listener spawn a surface-appropriate effect (MeleeHitEffects), matching the
+        /// visual language of a landed hit. Fires at most once per swing, and only when
+        /// nothing was damaged (a real hit already sells contact on its own).
+        /// </summary>
+        public event Action<Vector3, Vector3, Collider> OnEnvironmentHit;
 
         public bool IsSwinging { get; private set; }
         public bool CanAttack => !IsSwinging && Time.time >= readyAt && !Suppressed;
@@ -75,6 +83,9 @@ namespace DungeonGen
 
         float readyAt;
         int landedThisSwing;   // victims actually damaged (hitThisSwing also counts walls)
+        bool envHitFound;      // this swing touched a non-damageable solid — the first one found
+        Vector3 envHitPoint;
+        Collider envHitCollider;
         Faction ownFaction;
         readonly HashSet<Transform> hitThisSwing = new HashSet<Transform>();
         static readonly Collider[] overlapScratch = new Collider[16];
@@ -117,6 +128,7 @@ namespace DungeonGen
         {
             hitThisSwing.Clear();
             landedThisSwing = 0;
+            envHitFound = false;
 
             Vector3 origin;
             Vector3 dir;
@@ -178,6 +190,12 @@ namespace DungeonGen
             }
 
             blowDirectionOverride = Vector3.zero;
+
+            // No living target, but the blade caught a wall/door/prop — spark off IT
+            // instead of connecting with nothing. Only when nothing was damaged: a real
+            // hit already sells contact on its own, and a swing shouldn't double up.
+            if (landedThisSwing == 0 && envHitFound)
+                OnEnvironmentHit?.Invoke(envHitPoint, blowDir, envHitCollider);
 
             if (debugAttack)
                 Debug.Log($"[Melee] {name}: sweep [{(touchingTarget ? "overlap" : "cast")}] saw {hits} collider(s) → {(landedThisSwing > 0 ? $"{landedThisSwing} HIT" : "whiff")}.", this);
@@ -278,6 +296,16 @@ namespace DungeonGen
             var damageable = c.GetComponentInParent<IDamageable>();
             if (damageable == null)
             {
+                // Not a living target — remember it as the ENVIRONMENT candidate (first
+                // one found; a short melee sweep rarely catches more than one solid) so a
+                // whiff still sparks off whatever the blade actually connected with.
+                // Excludes the attacker's own colliders, same identity rule as a real hit.
+                if (!envHitFound && c.transform != transform && !c.transform.IsChildOf(transform))
+                {
+                    envHitFound = true;
+                    envHitPoint = c.ClosestPoint(origin);
+                    envHitCollider = c;
+                }
                 if (debugAttack) Debug.Log($"[Melee] {name}: '{c.transform.root.name}/{c.name}' rejected — no IDamageable (scenery).", this);
                 return;
             }
