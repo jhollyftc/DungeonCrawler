@@ -134,9 +134,16 @@ namespace DungeonGen
             doorBody.interpolation = RigidbodyInterpolation.Interpolate;
             doorBody.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
 
-            // RigidbodyConstraints are WORLD-space, but the hinge axis is LOCAL 
-            // FBX doors carry a BlenderHinge that happens to have up-down local Z axis in alignment with world space 
-            // The HingeJoint already constrains rotation to its own axis, but this helps.
+            // Belt-and-suspenders against off-hinge TOPPLE: freeze the two rotation axes
+            // PERPENDICULAR to the hinge, leaving the hinge axis free to swing. The
+            // HingeJoint already constrains rotation to its axis, but a hard
+            // CharacterController depenetration spike can violate it for a step and tip
+            // the door — freezing the other two axes rigidly forbids that tilt.
+            // hinge.axis = local Z here, so the perpendicular pair is X + Y. Confirmed
+            // via debugPush: constraints=48, worldAxis stays (0,1,0), door swings freely.
+            // (This is why the OLD "freezing welds the door" bug happened — that froze a
+            // pair that INCLUDED the hinge axis. Never freeze the hinge's own axis; if a
+            // door is ever authored with a different hinge.axis, change this pair to match.)
             doorBody.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationY;
 
             // THE fix: solve the joint far more tightly than the default 6 iterations,

@@ -630,8 +630,14 @@ Formula-driven with authored override points (the user's explicit choice).
   clamped (`maxSwingSpeed`) — a hinged door's LINEAR velocity is ~0, so a linear
   clamp never fires and impulses compound. Angle comes from the transform
   (`CurrentAngle`), NOT `HingeJoint.angle` (returns 0 and NaN, which poisoned the
-  logic). NO `RigidbodyConstraints` (world-space, vs the LOCAL hinge axis — freezing
-  world X/Z welded the FBX doors shut). **One-way-per-swing:** opens either way,
+  logic). **`RigidbodyConstraints` freeze the two rotation axes PERPENDICULAR to the
+  hinge** (`FreezeRotationX | FreezeRotationY`, since `hinge.axis` = local Z), leaving
+  the hinge free to swing but rigidly forbidding the off-axis TOPPLE a depenetration
+  spike causes. NEVER freeze the hinge's own axis — that welds the door (the original
+  bug froze a pair that included it). Confirmed via `debugPush`: `constraints=48`,
+  `worldAxis` stays `(0,1,0)`, door swings freely. If a door is authored with a
+  different `hinge.axis`, change the frozen pair to the two perpendicular to it.
+  **One-way-per-swing:** opens either way,
   but once past `commitAngle` the opposite limit snaps to 0 so it can't pass through
   closed — hits a hard stop and thunks like a real frame; full range restored once
   settled. `thunkArmAngle` gates the closing thunk (a shoving match jittering around
