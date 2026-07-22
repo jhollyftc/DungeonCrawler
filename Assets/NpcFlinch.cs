@@ -186,11 +186,32 @@ namespace DungeonGen
             // Author the kick in the NPC's local frame, then convert per bone.
             Vector3 worldAxis = (transform.rotation * p.kickAxis).normalized;
 
+            // GUARANTEE something reacts: worldPoint is a point on the COLLIDER
+            // SURFACE (MeleeAttack's ClosestPoint), not on any actual skeleton bone —
+            // for a stylized/wide rig those can sit much farther apart than hitRadius
+            // ever anticipated, silently selecting ZERO bones and producing NO visible
+            // flinch no matter how high impulseScale/strength go (impulseScale only
+            // scales bones already selected; it can't rescue a selection of none —
+            // real field bug, real hits never flinched while the debug tool, whose
+            // test point is built directly FROM bone positions, always worked). Find
+            // the nearest bone regardless of hitRadius so it always gets at least a
+            // floor-strength kick; bones genuinely within hitRadius still use the
+            // normal distance falloff on top of that.
+            int nearestIdx = -1;
+            float nearestDist = float.MaxValue;
+            for (int i = 0; i < bones.Length; i++)
+            {
+                float d = Vector3.Distance(bones[i].bone.position, worldPoint);
+                if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+            }
+
             for (int i = 0; i < bones.Length; i++)
             {
                 float dist = Vector3.Distance(bones[i].bone.position, worldPoint);
-                if (dist > p.hitRadius) continue;
-                float falloff = 1f - dist / p.hitRadius;
+                float falloff;
+                if (dist <= p.hitRadius) falloff = 1f - dist / p.hitRadius;
+                else if (i == nearestIdx) falloff = 0.35f;   // outside hitRadius, but nothing else is closer — guaranteed floor
+                else continue;
 
                 Vector3 localAxis = bones[i].bone.InverseTransformDirection(worldAxis);
                 bones[i].rotVel += localAxis * (strength * p.strength * falloff * 8f);
