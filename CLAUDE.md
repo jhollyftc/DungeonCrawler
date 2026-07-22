@@ -600,7 +600,29 @@ Formula-driven with authored override points (the user's explicit choice).
   doors, slow PCs couldn't. Fixed by scaling the push by
   `Time.deltaTime × referenceFrameRate`, so per-second delivery is identical on
   every machine. (Carrying a prop into a door always worked because that contact
-  resolves in the fixed-rate physics step.)
+  resolves in the fixed-rate physics step.) **INTENT, NOT ACHIEVED VELOCITY (real
+  field bug):** the speed-scaling originally read `controller.velocity` — the speed
+  actually achieved. But a door you're shouldering BLOCKS the controller, so achieved
+  velocity collapses to ~0 exactly when you're leaning on it, and the push scale
+  bottomed out at `minimumPushScale` — the door then got almost no torque. Fixed with
+  `IMoveIntent` (`FirstPersonController.IntendedSpeed` = input × speed, reported BEFORE
+  the world blocks it); the push scales by `Max(intent, achieved)`, so leaning on a
+  stuck door still delivers real torque, and crouch still eases doors (lower INTENDED
+  speed) rather than merely stalling. NPCs have no `IMoveIntent` yet → fall back to
+  achieved velocity (the deliberate "lean on the door" behaviour).
+- **DEPENETRATION LAUNCH (real field bug — THE "door flies open with zero push"):** a
+  dynamic door (mass 20) ejects from an overlapping collider at up to
+  `Rigidbody.maxDepenetrationVelocity` — Unity's default ~10 m/s. The player's
+  CharacterController sinking into the door then FLINGS it open (and off its hinge)
+  purely by depenetration, INDEPENDENT of push torque — so it flew open even with
+  `pushForce` at 0.0001. Diagnosis tell: `debugPush` showed torque ~0.06 (nothing) yet
+  the `worldAxis` tilted off vertical (toppling). Fix: `PhysicsDoor` clamps
+  `maxDepenetrationVelocity` LOW (**0.1** for these kit doors — their mesh is tiny ×
+  large scale, so the world-space collider is genuinely thin and penetrates easily).
+  Now the capsule can't out-push the separation: the door RESISTS and slows you, and
+  only the controlled hinge torque (scaled by intent, above) opens it — the "force it
+  open" feel. A thick collider had masked this by keeping penetration shallow; thinning
+  the collider to fight NPC-head clipping exposed it (wrong lever — see the door prefab).
 - **PhysicsDoor + PhysicsDoorAudio** — a door you push open by walking into it.
   Contact → **pure torque about the hinge axis** (never `AddForceAtPosition`,
   which injects linear velocity the joint fights and tears the door off its
@@ -863,8 +885,34 @@ Cosmetic-first; combat is far off ("get the world together first").
 22. **Player melee (`melee-v1-plan.md`)** — ✅ phases 1-2: procedural sword swing
     (`PlayerMelee` through `ViewmodelSway.SetAttackPose`) that HITs the combat core,
     + the FEEL layer (local swing-freeze/recoil, global `Hitstop`, `CameraKick`).
-    ⏳ phase 3 hit VFX + layered audio (hang off `MeleeAttack.OnHitLanded`), phase 4
-    shield block (`IDamageMitigator`) + bash, then directional/heavy swings.
+    ✅ **directional light combo** (LMB, cycles per-tap → varied blow directions →
+    varied `NpcFlinch` profiles) + **heavy charge** (RMB hold-to-wind, release-to-
+    swing, abort if released early, tension tremor) + **poise** (`Poise`, chip vs
+    break → major stagger, anti-stunlock resistance window). ✅ **hit feel**: hit-
+    retract-home (blade stops in the body and retreats instead of following through),
+    shield counter-motion (off-hand derived from the sword, no per-swing authoring),
+    vertical capsule sweep (short enemies). ✅ **phase 3** hit VFX/SFX via the SURFACE
+    system (§ below) off `MeleeAttack.OnHitLanded`, + swing WHOOSH audio
+    (`PlayerMeleeAudio` on `OnAttackSwung`, fired at slash-launch; distinct from the
+    surface-driven impact sound so they layer). The SURFACE system is one shared
+    `SurfaceLibrary` (SO) mapping `SurfaceType`→VFX/SFX, spawned through the single
+    `SurfaceImpact.Spawn`; a `Surface` component tags exceptions (goblin = Flesh) and
+    the world defaults to Stone. Every hit source routes through it — melee
+    (`MeleeHitEffects`), THROWN/collided props (`SurfaceCollisionImpact`, on any hard
+    impact, gated like `ImpactAudio` so a bouncing barrel doesn't spam), future
+    projectiles — so "what an impact looks/sounds like" lives in one place.
+    ✅ **phase 4 shield BASH** (`bashKey`,
+    default Q): a HOLD-to-wind charged **lunge** — release fires a forward dash
+    (`FirstPersonController.AddImpulse`, a decaying external velocity folded into the
+    one `cc.Move`), an FOV widen→drop tell (world camera only; the overlay keeps its
+    FOV), and a **cone shove** (`MeleeAttack.DoConeSweep`) that flings everyone in a
+    forward cone along their OWN bearing (center back, flanks aside) with a guaranteed
+    poise break — a control tool, not a damage tool. The sword counters the bash pose
+    (mirror of the shield counter-motion). GOTCHA: the cone's OverlapSphere needs a
+    BIG buffer (128) — each goblin carries its capsule + all dormant ragdoll bone
+    colliders, so a crowd overflows a 16-slot NonAlloc buffer and drops most targets.
+    ⏳ still open: shield BLOCK (`IDamageMitigator`) — needs a binding since RMB is now
+    heavy; non-damageable surface hits (wall/prop swing sparks).
 23. ✅ **NPC hit reactions v2** — directional spring flinch (`NpcFlinch`, authored
     per-angle profiles, orbit debug tool) for living hits; full blended ragdoll
     (`NpcRagdollReaction`, gravity-off flinch / gravity-on death) for death, opt-in
