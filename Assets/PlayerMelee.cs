@@ -420,11 +420,15 @@ namespace DungeonGen
             // TOP so a press during the freeze OR the retract counts too. On a hit the
             // clock stops at impact (t < slashEnd), so the normal "past slashEnd"
             // window never opens; the freeze/retract flags are the ending signal.
-            // HELD (not just a fresh press) so holding LMB down chains continuously —
-            // each swing starts the instant the previous ends, no re-clicking needed —
-            // while a single tap-and-release still behaves exactly as before (it's
-            // just "held" for the one frame it's down).
-            if (!charging && Input.GetMouseButton(lightMouseButton))
+            // A fresh PRESS only (not held) — a tap buffered slightly early should
+            // still fire even if released by the time the swing actually ends, that's
+            // the whole point of buffering it. Continuing a HELD button is handled
+            // separately, at the point of consumption (EndSwing), by checking whether
+            // the button is STILL down right then — using "held" here too would latch
+            // true the instant the window opens (which happens on basically every
+            // frame while fighting) and then fire regardless of having since released,
+            // sneaking in an extra attack after letting go.
+            if (!charging && Input.GetMouseButtonDown(lightMouseButton))
             {
                 bool endingWindow = retracting || freezeTimer > 0f
                     || t >= active.slashEnd - inputBuffer / Mathf.Max(0.05f, active.duration);
@@ -518,10 +522,17 @@ namespace DungeonGen
             swinging = false;
             swordSway?.SetAttackPose(Vector3.zero, Quaternion.identity, 0f);
 
-            // A BUFFERED chain fires immediately and skips the cooldown — that's the
-            // whole point of buffering, and setting readyAt first would block the
-            // very swing we just queued (CanSwing would see Time.time < readyAt).
-            if (bufferedLight && lightCombo.Count > 0 && CanSwing(ignoreCooldown: true))
+            // Chain immediately and skip the cooldown — that's the whole point of
+            // buffering, and setting readyAt first would block the very swing we just
+            // queued (CanSwing would see Time.time < readyAt). Two DIFFERENT reasons to
+            // chain, checked separately: bufferedLight is a tap that landed slightly
+            // early (fires regardless of current hold state — don't punish a fast
+            // tap-release for good timing); GetMouseButton is checked fresh RIGHT NOW
+            // for a held button (NOT latched — a stale "was held sometime during the
+            // window" flag would keep firing one swing after release, sneaking in an
+            // extra attack the instant you let go).
+            bool continueChain = bufferedLight || Input.GetMouseButton(lightMouseButton);
+            if (continueChain && lightCombo.Count > 0 && CanSwing(ignoreCooldown: true))
             {
                 bufferedLight = false;
                 StartSwing(NextLight(), isHeavy: false);
@@ -630,11 +641,11 @@ namespace DungeonGen
 
         void TickBash()
         {
-            // Same buffering as the sword (TickSwing): held LMB near the end of the bash
-            // (or during its hit freeze) queues a light attack that fires the instant the
-            // bash finishes, skipping the cooldown — holding chains into the bash instead
-            // of eating the input, same as a tap always did.
-            if (Input.GetMouseButton(lightMouseButton))
+            // Same buffering as the sword (TickSwing): a fresh PRESS (not held — see
+            // TickSwing's comment for why) near the end of the bash queues a light
+            // attack that fires the instant the bash finishes, skipping the cooldown.
+            // Continuing a HELD button is handled separately at EndBash.
+            if (Input.GetMouseButtonDown(lightMouseButton))
             {
                 bool endingWindow = bashFreeze > 0f
                     || bt >= 1f - inputBuffer / Mathf.Max(0.05f, shieldBash.duration);
@@ -735,10 +746,12 @@ namespace DungeonGen
             swordPos = swordEuler = Vector3.zero;
             swordSuppress = 0f;
 
-            // A BUFFERED light fires immediately and skips the cooldown — same as
-            // EndSwing's chain: that's the whole point of buffering, and setting readyAt
-            // first would block the very swing we just queued.
-            if (bufferedLight && lightCombo.Count > 0 && CanSwing(ignoreCooldown: true))
+            // Same two-reasons-to-chain split as EndSwing: a tap buffered slightly
+            // early (bufferedLight) fires regardless of current hold state; a held
+            // button is checked fresh right now, not latched, so releasing before the
+            // bash finishes doesn't sneak in an extra attack.
+            bool continueChain = bufferedLight || Input.GetMouseButton(lightMouseButton);
+            if (continueChain && lightCombo.Count > 0 && CanSwing(ignoreCooldown: true))
             {
                 bufferedLight = false;
                 StartSwing(NextLight(), isHeavy: false);
