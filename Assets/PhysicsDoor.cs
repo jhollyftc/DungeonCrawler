@@ -9,6 +9,8 @@ namespace DungeonGen
         [Header("Opening Limits")]
         [SerializeField] private float minimumAngle = -100f;
         [SerializeField] private float maximumAngle = 100f;
+        [Tooltip("Degrees of soft cushion the solver starts resisting within, BEFORE the hard limit. Was 0 (a fully hard, zero-cushion stop) — a small positive value gives the solver room to ease into the limit instead of a dead-hard wall, which can reduce violent snap/jitter specifically AT the open/closed extremes.")]
+        [SerializeField] private float limitContactDistance = 3f;
 
         [Header("Self Closing")]
         [SerializeField] private float closedAngle = 0f;
@@ -25,8 +27,10 @@ namespace DungeonGen
         [SerializeField] private float maxDepenetrationVelocity = 0.1f;
 
         [Header("Push")]
-        [Tooltip("Stop adding torque once the door is already swinging this fast (rad/s). Clamping ANGULAR speed is the point — a hinged door's LINEAR velocity is ~0 by design, so a linear clamp would never fire and pushes would compound until the joint tore.")]
+        [Tooltip("Stop adding torque once the door is already swinging this fast (rad/s), AND actively clamped to this every FixedUpdate regardless of source. The Push()-side check alone only stops US adding MORE torque once already fast — it can't catch velocity that arrived some other way (a solver correction, the spring, a depenetration spike). The active clamp is an unconditional safety net on top of that.")]
         [SerializeField] private float maxSwingSpeed = 6f;
+        [Tooltip("A hinged door's LINEAR velocity should be ~0 by design (all real motion is rotation about the anchor) — actively clamped every FixedUpdate as a safety net. A door carrying real linear velocity is itself evidence the joint is being stressed (separating, or fighting an overlap), so this doubles as a low-cost circuit breaker against exactly that.")]
+        [SerializeField] private float maxLinearSpeed = 0.5f;
         [Tooltip("Log every push (world axis, lever, torque, constraints). Turn on when a door won't move — it pinpoints a bad hinge axis, a zero lever, or a blocking constraint immediately.")]
         [SerializeField] private bool debugPush = false;
 
@@ -171,7 +175,7 @@ namespace DungeonGen
             limits.min = minimumAngle;
             limits.max = maximumAngle;
             limits.bounciness = 0f;
-            limits.contactDistance = 0f;
+            limits.contactDistance = limitContactDistance;
 
             hinge.limits = limits;
             hinge.useLimits = true;
@@ -217,6 +221,18 @@ namespace DungeonGen
             // the joint, instead of fighting the spring for control of it every step.
             if (!hinge.useSpring && Time.time - lastPushTime > pushSpringSuppressTime)
                 hinge.useSpring = true;
+
+            // Unconditional safety net, regardless of source: Push()'s maxSwingSpeed
+            // check only stops US adding MORE torque once already fast — it can't
+            // catch velocity that arrived some other way (a solver correction, the
+            // spring, a depenetration spike). Angular is the door's real motion, so
+            // clamp it directly; linear should be ~0 by design (all real motion is
+            // rotation about the anchor), so any real linear speed is itself evidence
+            // the joint is being stressed — clamping it doubles as a circuit breaker.
+            if (doorBody.angularVelocity.sqrMagnitude > maxSwingSpeed * maxSwingSpeed)
+                doorBody.angularVelocity = doorBody.angularVelocity.normalized * maxSwingSpeed;
+            if (doorBody.linearVelocity.sqrMagnitude > maxLinearSpeed * maxLinearSpeed)
+                doorBody.linearVelocity = doorBody.linearVelocity.normalized * maxLinearSpeed;
 
             float angle = CurrentAngle;   // NOT hinge.angle — that returns 0/NaN
             float speed = doorBody.angularVelocity.magnitude;
