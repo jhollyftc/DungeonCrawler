@@ -15,6 +15,8 @@ namespace DungeonGen
         [SerializeField] private float springStrength = 30f;
         [SerializeField] private float springDamper = 8f;
         [SerializeField] private bool useAcceleration = true;
+        [Tooltip("Seconds after the LAST push before the self-closing spring re-engages. Field lesson: while something actively pushes the door, the spring's continuous competing torque (pulling toward closedAngle) fights the push torque AND the gentle depenetration correction (maxDepenetrationVelocity) for control of the same joint every physics step — confirmed by disabling Use Spring entirely making the door far more resistant to being knocked off its hinge or 'warping' (tunneling) through the pushing capsule. Rather than lose self-closing, the spring is suppressed for this long after any push and resumes once nothing has pushed for a moment — so only ONE major torque source acts on the joint at a time.")]
+        [SerializeField] private float pushSpringSuppressTime = 0.3f;
 
         [Header("Door Physics")]
         [SerializeField] private float doorMass = 20f;
@@ -55,6 +57,7 @@ namespace DungeonGen
 
         private enum Side { Closed, Positive, Negative }
         private Side side = Side.Closed;
+        private float lastPushTime = float.NegativeInfinity;   // suppresses the self-closing spring while recently pushed — see pushSpringSuppressTime
         private bool thunked;
         private bool slammed;
         private bool swinging;
@@ -208,6 +211,13 @@ namespace DungeonGen
         /// </summary>
         private void FixedUpdate()
         {
+            // Resume self-closing once nothing has pushed for a moment — see
+            // pushSpringSuppressTime. While suppressed the push torque (and the
+            // gentle depenetration correction) is the ONLY major torque acting on
+            // the joint, instead of fighting the spring for control of it every step.
+            if (!hinge.useSpring && Time.time - lastPushTime > pushSpringSuppressTime)
+                hinge.useSpring = true;
+
             float angle = CurrentAngle;   // NOT hinge.angle — that returns 0/NaN
             float speed = doorBody.angularVelocity.magnitude;
 
@@ -339,6 +349,13 @@ namespace DungeonGen
 
         public void Push(Vector3 contactPoint, Vector3 pushDirection, float strength)
         {
+            // Let the push win uncontested — see pushSpringSuppressTime's tooltip.
+            // Recorded/applied on EVERY push (even one that's about to be speed-
+            // clamped below) so sustained contact keeps the spring suppressed the
+            // whole time, not just on the first frame of a shove.
+            lastPushTime = Time.time;
+            if (hinge.useSpring) hinge.useSpring = false;
+
             // Clamp SWING speed, not linear speed (see maxSwingSpeed tooltip).
             if (doorBody.angularVelocity.magnitude >= maxSwingSpeed)
             {
