@@ -268,7 +268,12 @@ namespace DungeonGen
         void HandleLightInput()
         {
             if (charging || swinging || lightCombo.Count == 0) return;
-            if (Input.GetMouseButtonDown(lightMouseButton) && CanSwing())
+            // HELD, not just pressed: starts the first swing from idle same as a tap
+            // always did, and is also the fallback that keeps a HELD button attacking
+            // if a chain ever isn't caught by the buffer below (e.g. a longer cooldown
+            // than inputBuffer). The buffer is what makes the common case seamless —
+            // this is what guarantees holding LMB never just stops.
+            if (Input.GetMouseButton(lightMouseButton) && CanSwing())
                 StartSwing(NextLight(), isHeavy: false);
         }
 
@@ -415,7 +420,11 @@ namespace DungeonGen
             // TOP so a press during the freeze OR the retract counts too. On a hit the
             // clock stops at impact (t < slashEnd), so the normal "past slashEnd"
             // window never opens; the freeze/retract flags are the ending signal.
-            if (!charging && Input.GetMouseButtonDown(lightMouseButton))
+            // HELD (not just a fresh press) so holding LMB down chains continuously —
+            // each swing starts the instant the previous ends, no re-clicking needed —
+            // while a single tap-and-release still behaves exactly as before (it's
+            // just "held" for the one frame it's down).
+            if (!charging && Input.GetMouseButton(lightMouseButton))
             {
                 bool endingWindow = retracting || freezeTimer > 0f
                     || t >= active.slashEnd - inputBuffer / Mathf.Max(0.05f, active.duration);
@@ -621,11 +630,11 @@ namespace DungeonGen
 
         void TickBash()
         {
-            // Same buffering as the sword (TickSwing): a press near the end of the bash
+            // Same buffering as the sword (TickSwing): held LMB near the end of the bash
             // (or during its hit freeze) queues a light attack that fires the instant the
-            // bash finishes, skipping the cooldown — mashing chains into the bash instead
-            // of eating a dropped input.
-            if (Input.GetMouseButtonDown(lightMouseButton))
+            // bash finishes, skipping the cooldown — holding chains into the bash instead
+            // of eating the input, same as a tap always did.
+            if (Input.GetMouseButton(lightMouseButton))
             {
                 bool endingWindow = bashFreeze > 0f
                     || bt >= 1f - inputBuffer / Mathf.Max(0.05f, shieldBash.duration);
