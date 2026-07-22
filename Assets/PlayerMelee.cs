@@ -604,6 +604,7 @@ namespace DungeonGen
             bashSweepDone = false;
             bashFreeze = 0f;
             returning = false;
+            bufferedLight = false;
             cameraKick?.Kick(shieldBash.swingKickEuler);
             OnAttackSwung?.Invoke(AttackKind.Bash);   // release = the thrust launches
             if (debugMelee) Debug.Log("[PlayerMelee] shield bash (lunge).", this);
@@ -611,6 +612,17 @@ namespace DungeonGen
 
         void TickBash()
         {
+            // Same buffering as the sword (TickSwing): a press near the end of the bash
+            // (or during its hit freeze) queues a light attack that fires the instant the
+            // bash finishes, skipping the cooldown — mashing chains into the bash instead
+            // of eating a dropped input.
+            if (Input.GetMouseButtonDown(lightMouseButton))
+            {
+                bool endingWindow = bashFreeze > 0f
+                    || bt >= 1f - inputBuffer / Mathf.Max(0.05f, shieldBash.duration);
+                if (endingWindow) bufferedLight = true;
+            }
+
             // Caught in a body: hold the thrust with a recoil bounce (unscaled, like the
             // sword's freeze). A thrust recovers straight back along its own axis, so no
             // separate retract phase is needed — just resume the arc when the freeze ends.
@@ -704,6 +716,18 @@ namespace DungeonGen
             swordSway?.SetAttackPose(Vector3.zero, Quaternion.identity, 0f);
             swordPos = swordEuler = Vector3.zero;
             swordSuppress = 0f;
+
+            // A BUFFERED light fires immediately and skips the cooldown — same as
+            // EndSwing's chain: that's the whole point of buffering, and setting readyAt
+            // first would block the very swing we just queued.
+            if (bufferedLight && lightCombo.Count > 0 && CanSwing(ignoreCooldown: true))
+            {
+                bufferedLight = false;
+                StartSwing(NextLight(), isHeavy: false);
+                return;
+            }
+
+            bufferedLight = false;
             readyAt = Time.time + shieldBash.cooldown;
         }
 
