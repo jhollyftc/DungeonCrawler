@@ -180,6 +180,20 @@ namespace DungeonGen
             body.enabled = false;
             if (body.Controller != null) body.Controller.enabled = false;
 
+            // MUST disable before ragdoll.Die() takes the bones over: NpcFlinch's
+            // LateUpdate keeps forcibly overwriting bone.localRotation on a timer
+            // (its own spring settling), completely independent of Health/death — if
+            // still active (mid-decay from a recent hit, or a new one right on the
+            // killing blow) it fights the ragdoll's physics for the SAME bones every
+            // frame once they go non-kinematic. Each overwrite teleports a jointed
+            // Rigidbody, and PhysX slams it back with a violent CharacterJoint
+            // correction — limbs flying everywhere. Animation and physics must never
+            // drive the same bone at once (see NpcRagdollReaction's own doc) — this
+            // was invisible while the flinch bug meant it never actually rotated
+            // anything; now that it reliably kicks bones, it has to be shut off here.
+            if (flinch != null) flinch.enabled = false;
+            if (boneReaction != null) boneReaction.enabled = false;
+
             // Full ragdoll death (physical + directional) if the goblin has one —
             // the killing blow throws it, and NpcRagdollReaction owns linger + sink
             // + destroy. Otherwise the death animation, then the code topple as a
