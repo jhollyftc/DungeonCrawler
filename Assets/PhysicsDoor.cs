@@ -19,6 +19,8 @@ namespace DungeonGen
         [Header("Door Physics")]
         [SerializeField] private float doorMass = 20f;
         [SerializeField] private float angularDamping = 2f;
+        [Tooltip("Max speed (m/s) the physics engine may shove this door out of an overlapping collider — THE fix for 'the player's capsule launches the door open'. Unity's default (~10) means any real penetration ejects a mass-20 door at up to 10 m/s, so it flies open with NO push (depenetration, not torque). Clamped LOW, the capsule can't push through faster than the door separates, so the door RESISTS and slows you, and the controlled hinge torque does the opening. Also stops the door being knocked off its hinge by a penetration spike. These kit doors have a thin world-space collider (tiny mesh × large scale), so they need a very gentle 0.1; raise it only if a door ever spawns embedded and can't wriggle free.")]
+        [SerializeField] private float maxDepenetrationVelocity = 0.1f;
 
         [Header("Push")]
         [Tooltip("Stop adding torque once the door is already swinging this fast (rad/s). Clamping ANGULAR speed is the point — a hinged door's LINEAR velocity is ~0 by design, so a linear clamp would never fire and pushes would compound until the joint tore.")]
@@ -132,17 +134,23 @@ namespace DungeonGen
             doorBody.interpolation = RigidbodyInterpolation.Interpolate;
             doorBody.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
 
-            // NO rotation constraints here. RigidbodyConstraints are WORLD-space,
-            // but the hinge axis is LOCAL — and these FBX doors carry a Blender
-            // axis-correction rotation, so "freeze world X/Z" can freeze the very
-            // rotation the door needs and weld it shut. The HingeJoint already
-            // constrains rotation to its own axis; that's its whole job.
-            doorBody.constraints = RigidbodyConstraints.None;
+            // RigidbodyConstraints are WORLD-space, but the hinge axis is LOCAL 
+            // FBX doors carry a BlenderHinge that happens to have up-down local Z axis in alignment with world space 
+            // The HingeJoint already constrains rotation to its own axis, but this helps.
+            doorBody.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationY;
 
             // THE fix: solve the joint far more tightly than the default 6 iterations,
             // so a CharacterController's hard depenetration can't rip it off the anchor.
             doorBody.solverIterations = 32;
             doorBody.solverVelocityIterations = 16;
+
+            // Clamp how violently PhysX separates the door from an overlapping collider.
+            // Unmclamped (~10 m/s default), the player's CharacterController sinking into
+            // the door ejects it at up to 10 m/s — the door "flies open" with zero push
+            // (it's depenetration, not torque) and can be knocked off its hinge. Clamped
+            // low, the capsule can't out-push the separation, so the door RESISTS (slows
+            // you) and only the controlled hinge torque opens it — the "force it open" feel.
+            doorBody.maxDepenetrationVelocity = maxDepenetrationVelocity;
 
             doorBody.angularDamping = angularDamping;   // Unity 6 name
         }
@@ -153,7 +161,7 @@ namespace DungeonGen
             limits.min = minimumAngle;
             limits.max = maximumAngle;
             limits.bounciness = 0f;
-            limits.contactDistance = 2f;
+            limits.contactDistance = 0f;
 
             hinge.limits = limits;
             hinge.useLimits = true;

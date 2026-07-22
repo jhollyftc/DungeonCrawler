@@ -33,8 +33,13 @@ namespace DungeonGen
         [Range(0f, 1f)][SerializeField] private float minimumPushScale = 0.05f;
 
         private CharacterController controller;
+        private IMoveIntent moveIntent;
 
-        private void Awake() => controller = GetComponent<CharacterController>();
+        private void Awake()
+        {
+            controller = GetComponent<CharacterController>();
+            moveIntent = GetComponent<IMoveIntent>();   // player reports input×speed; null = fall back to achieved velocity
+        }
 
         [Tooltip("Don't keep accelerating a loose body once it's already moving this fast (m/s). Doors clamp their own SWING speed instead — see PhysicsDoor.")]
         [SerializeField] private float maximumPushSpeed = 3f;
@@ -96,8 +101,15 @@ namespace DungeonGen
         {
             if (!scaleByPlayerSpeed || controller == null) return 1f;
 
+            // Prefer INTENDED speed over achieved. A door you're shouldering blocks your
+            // CharacterController, so controller.velocity collapses to ~0 and the scale
+            // would bottom out at minimumPushScale — the door then gets almost no torque
+            // and is bulldozed off its hinge by depenetration instead of swinging open.
+            // Intent stays high while you keep walking into it. Max() keeps whichever is
+            // larger, so a mover without intent (NPCs) still works off achieved velocity.
             Vector3 v = controller.velocity;
-            float speed = new Vector3(v.x, 0f, v.z).magnitude;
+            float achieved = new Vector3(v.x, 0f, v.z).magnitude;
+            float speed = moveIntent != null ? Mathf.Max(moveIntent.IntendedSpeed, achieved) : achieved;
             return Mathf.Clamp(speed / Mathf.Max(0.01f, speedForFullPush), minimumPushScale, 1f);
         }
     }
