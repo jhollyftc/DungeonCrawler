@@ -15,7 +15,8 @@ namespace DungeonGen
         /// <param name="point">World contact point.</param>
         /// <param name="dir">Blow direction; the VFX faces back along it (out of the wound).</param>
         /// <param name="sfxSource">Optional source for PITCHED playback; null = a positioned one-shot at the point.</param>
-        public static void Spawn(SurfaceLibrary lib, SurfaceType surface, Vector3 point, Vector3 dir, AudioSource sfxSource = null)
+        /// <param name="playSfx">False = spawn the VFX only (e.g. a thrown prop that already has its own ImpactAudio for sound).</param>
+        public static void Spawn(SurfaceLibrary lib, SurfaceType surface, Vector3 point, Vector3 dir, AudioSource sfxSource = null, bool playSfx = true)
         {
             if (lib == null) return;
             var e = lib.For(surface);
@@ -28,7 +29,7 @@ namespace DungeonGen
                 if (e.vfxLifetime > 0f) Object.Destroy(fx, e.vfxLifetime);
             }
 
-            if (e.sfx != null && e.sfx.Length > 0)
+            if (playSfx && e.sfx != null && e.sfx.Length > 0)
             {
                 AudioClip clip = e.sfx[e.sfx.Length == 1 ? 0 : Random.Range(0, e.sfx.Length)];
                 if (clip == null) return;

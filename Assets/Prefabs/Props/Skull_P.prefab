@@ -78,6 +78,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0867625478681ad4f8d9770fb054fab8, type: 3}
       insertIndex: -1
       addedObject: {fileID: 213058714771111416}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0867625478681ad4f8d9770fb054fab8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -3430098156394823837}
   m_SourcePrefab: {fileID: 100100000, guid: 0867625478681ad4f8d9770fb054fab8, type: 3}
 --- !u!1 &931912726832256661 stripped
 GameObject:
@@ -145,9 +148,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.Carryable
   displayName: Skull
-  holdDistance: 0.9
-  throwSpeed: 10
-  throwSpin: 9
+  holdDistance: 0.7
+  throwSpeed: 15
+  throwSpin: 15
 --- !u!114 &-1148524827089901701
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -172,7 +175,7 @@ MonoBehaviour:
   minimumInterval: 0.08
   pitchRange: {x: 0.92, y: 1.08}
   forcePitchRange: {x: 1.05, y: 0.9}
-  debugAudio: 1
+  debugAudio: 0
 --- !u!114 &-3526673989486755869
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -190,7 +193,7 @@ MonoBehaviour:
   maxDamage: 15
   fullDamageMass: 20
   momentumTransfer: 0.06
-  maxKnockback: 7
+  maxKnockback: 10
   armedDuration: 3
   debugDamage: 0
 --- !u!114 &213058714771111416
@@ -207,3 +210,21 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ImpactNoiseEmitter
   faction: 2
   loudnessScale: 1
+--- !u!114 &-3430098156394823837
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 931912726832256661}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c707839d47c5835448aa84c708162403, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.SurfaceCollisionImpact
+  surfaceLibrary: {fileID: 11400000, guid: 37df9bb4b5dd2cb4d93c00877b2392ad, type: 2}
+  minImpactSpeed: 3
+  retriggerInterval: 0.1
+  playSurfaceSfx: 0
+  sfxSource: {fileID: 0}
+  debugImpact: 0

@@ -601,6 +601,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
       insertIndex: -1
       addedObject: {fileID: 4587786975983526201}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 443851053096224069}
   m_SourcePrefab: {fileID: 100100000, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
 --- !u!1 &8418309518360107936 stripped
 GameObject:
@@ -687,7 +690,7 @@ MonoBehaviour:
   displayName: Barrel
   holdDistance: 1.3
   throwSpeed: 9
-  throwSpin: 4
+  throwSpin: 20
 --- !u!114 &-420888613499045188
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -712,7 +715,7 @@ MonoBehaviour:
   minimumInterval: 0.08
   pitchRange: {x: 0.92, y: 2}
   forcePitchRange: {x: 1.05, y: 0.9}
-  debugAudio: 1
+  debugAudio: 0
 --- !u!114 &-9041524765185514843
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -743,9 +746,28 @@ MonoBehaviour:
   fullDamageSpeed: 10
   maxDamage: 15
   fullDamageMass: 20
-  knockback: 4
+  momentumTransfer: 0.06
+  maxKnockback: 15
   armedDuration: 3
   debugDamage: 0
+--- !u!114 &443851053096224069
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8418309518360107936}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c707839d47c5835448aa84c708162403, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.SurfaceCollisionImpact
+  surfaceLibrary: {fileID: 11400000, guid: 37df9bb4b5dd2cb4d93c00877b2392ad, type: 2}
+  minImpactSpeed: 3
+  retriggerInterval: 0.1
+  playSurfaceSfx: 0
+  sfxSource: {fileID: 0}
+  debugImpact: 0
 --- !u!4 &9194106658946842906 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c0a306c914e07074ea7bed2fac918cd2, type: 3}
