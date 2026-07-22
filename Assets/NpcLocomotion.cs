@@ -64,10 +64,6 @@ namespace DungeonGen
         [Tooltip("Push-apart speed (m/s) at full overlap, fading to zero at the radius edge. Keep below walk speed or the crowd vibrates.")]
         public float separationStrength = 2f;
 
-        [Header("Push resistance (don't let the player shove NPCs around)")]
-        [Tooltip("A microscopic NUMERICAL-NOISE guard only (m) — not a physical allowance. ANY nonzero amount left ungranted here is handed out again every frame contact continues, and even a tiny per-frame grant compounds into real, unbounded drift given enough sustained contact (this is exactly what let the goblin still creep backward after the first attempted fix — the tolerance was 20x too large AND was being re-granted every frame instead of consumed once). Keep this at float-rounding scale (~0.0001-0.001); it exists only so the correction doesn't fight true floating-point jitter, never to let the player win any ground.")]
-        public float pushTolerance = 0.0005f;
-
         public NavMeshAgent Agent { get; private set; }
         public CharacterController Controller { get; private set; }
 
@@ -183,12 +179,8 @@ namespace DungeonGen
             else verticalVelocity += gravity * dt;
             verticalVelocity = Mathf.Max(verticalVelocity, -maxFallSpeed);
 
-            Vector3 horizontalIntent = (want + impulse + Separation()) * dt;
-            Vector3 motion = horizontalIntent + Vector3.up * verticalVelocity * dt;
-
-            Vector3 beforePos = transform.position;
+            Vector3 motion = (want + impulse + Separation()) * dt + Vector3.up * verticalVelocity * dt;
             Controller.Move(motion);
-            RejectUnwantedPush(beforePos, horizontalIntent);
 
             IsBlocked = want.magnitude > blockedDesiredSpeed && CurrentSpeed < blockedSpeed;
 
@@ -196,64 +188,6 @@ namespace DungeonGen
 
             SyncAgentToBody();
             FaceMovement(want, dt);
-        }
-
-        /// <summary>
-        /// FIELD LESSON — the player could shove NPCs backward, even through thin
-        /// geometry given enough sustained contact: CharacterController.Move ALWAYS
-        /// resolves any overlap the capsule finds itself in, regardless of the
-        /// requested motion vector — a well-known Unity CC quirk. So while
-        /// NpcLocomotion runs (Move() is called every frame, even while idle with
-        /// near-zero requested motion), the player simply walking into a goblin and
-        /// holding forward gets it silently displaced every frame by that automatic
-        /// resolution, and enough frames of it can accumulate real distance. Only
-        /// happened with NpcLocomotion ON because that's what calls Move() at all —
-        /// disabled, nothing ever moves the capsule, so nothing can push it.
-        ///
-        /// The fix doesn't touch collision (the player still bumps into and is
-        /// blocked by NPCs, unchanged) — it rejects the DISPLACEMENT afterward.
-        /// The key fact that makes this safe: normal wall-blocking/sliding can only
-        /// ever REDUCE a character's displacement below what it asked for; it can't
-        /// add displacement in a direction nobody requested. So any horizontal
-        /// movement beyond horizontalIntent's magnitude (which already includes
-        /// pathing, knockback, AND NPC-NPC separation — all legitimate) can only be
-        /// an external body shoving into the capsule. Reject exactly that excess.
-        /// </summary>
-        void RejectUnwantedPush(Vector3 beforePos, Vector3 horizontalIntent)
-        {
-            Vector3 afterPos = transform.position;
-            Vector3 actualHorizontal = new Vector3(afterPos.x - beforePos.x, 0f, afterPos.z - beforePos.z);
-            float intendedMag = horizontalIntent.magnitude;
-            float overshoot = actualHorizontal.magnitude - intendedMag;
-
-            // MUST be provably driftless under sustained contact, not just "smaller than
-            // before": ANY nonzero amount left ungranted here — however small — is handed
-            // out again every frame contact continues, and a per-frame grant compounds
-            // LINEARLY with frame count with no upper bound. (This is exactly why the
-            // first attempted fix still let the goblin creep: it snapped back to
-            // intended+tolerance instead of exactly intended, so the tolerance itself was
-            // re-granted every frame instead of consumed once.) So: no distance-scale
-            // grant at all. pushTolerance only decides whether the correction is worth
-            // PERFORMING (skip true float-rounding noise); whenever it IS performed, it
-            // removes the FULL overshoot, snapping to exactly the intended magnitude —
-            // every frame's ending displacement is capped there, so nothing accumulates
-            // no matter how many frames the player holds contact.
-            if (overshoot <= pushTolerance) return;
-
-            Vector3 excess = actualHorizontal - actualHorizontal.normalized * intendedMag;
-
-            // Toggle Controller.enabled around the direct write — same pattern
-            // WarpToNavMesh already uses. CharacterController caches internal
-            // collision state per Move() call; writing transform.position directly
-            // while it's still enabled leaves that cache pointing at the PRE-
-            // correction position, so next frame's Move() resolves from a picture of
-            // the capsule that doesn't match reality — and that mismatch is itself a
-            // fresh source of "overlap", corrected again next frame, and so on. Zero
-            // NET drift (each correction is exact), but a rapid in-place jitter —
-            // exactly what standing pressed against the goblin produced without this.
-            Controller.enabled = false;
-            transform.position -= excess;
-            Controller.enabled = true;
         }
 
         /// <summary>
