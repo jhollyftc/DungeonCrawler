@@ -627,6 +627,18 @@ Formula-driven with authored override points (the user's explicit choice).
   only the controlled hinge torque (scaled by intent, above) opens it — the "force it
   open" feel. A thick collider had masked this by keeping penetration shallow; thinning
   the collider to fight NPC-head clipping exposed it (wrong lever — see the door prefab).
+  **This is a PROJECT-WIDE issue, not just doors** (real field bug #2): the CharacterController
+  is treated as effectively infinite mass, so a stalled capsule sinking into ANY dynamic
+  Rigidbody launches it by raw depenetration — independent of `Push()`/impulse entirely.
+  A heavy prop (a table) shoved easily at FULL RUN SPEED with `Rigidbody.mass` at 45000,
+  `PushableProp.pushMultiplier`/`maxPushSpeed` at 0.001, and even the whole component
+  DISABLED — none of it mattered because none of it is in the path actually moving the
+  table. Fixed at TWO levels: the project default
+  (`ProjectSettings > Physics > Default Max Depenetration Velocity`, dropped 10 → 1) so
+  every prop is sane out of the box, and `PushableProp.maxDepenetrationVelocity`
+  (default 0.5) as a per-prop override for anything needing its own value. **Any new
+  pushable/collidable dynamic body should get its own explicit override if the project
+  default ever changes** — don't rely on inheriting it silently.
 - **PhysicsDoor + PhysicsDoorAudio** — a door you push open by walking into it.
   Contact → **pure torque about the hinge axis** (never `AddForceAtPosition`,
   which injects linear velocity the joint fights and tears the door off its

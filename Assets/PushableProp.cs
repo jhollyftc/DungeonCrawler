@@ -27,9 +27,16 @@ namespace DungeonGen
         [Tooltip("ON: push at the contact point, so props tip and spin realistically when you catch them high or off-centre. OFF: push at the centre of mass, so they slide flat and never topple (good for things that shouldn't fall over).")]
         [SerializeField] private bool pushAtContactPoint = true;
 
+        [Tooltip("Max speed (m/s) the physics engine may shove this prop out of an overlapping collider. Unity's PROJECT DEFAULT is ~10 m/s and treats the player's CharacterController as effectively infinite mass — so a stalled capsule sinking into ANY prop, at ANY Rigidbody.mass or pushMultiplier, launches it by raw depenetration, not by Push()/impulse. That is why mass/multiplier/maxPushSpeed tuning (and even disabling this component) had zero effect on a heavy table: none of it is in the path that was actually moving it. Same root cause and same fix as the door topple (see PhysicsDoor.maxDepenetrationVelocity).")]
+        [SerializeField] private float maxDepenetrationVelocity = 0.5f;
+
         private Rigidbody body;
 
-        private void Awake() => body = GetComponent<Rigidbody>();
+        private void Awake()
+        {
+            body = GetComponent<Rigidbody>();
+            body.maxDepenetrationVelocity = maxDepenetrationVelocity;
+        }
 
         // Props scale by ACHIEVED velocity (not intent): a heavy prop stalls you as you
         // lean, so the push collapses and it resists and slows you — the momentum feel.
