@@ -802,6 +802,24 @@ Formula-driven with authored override points (the user's explicit choice).
   settle into a ring, not a stack. Its living-NPC registry is the `NpcRegistry` a
   shout system wants — it exists for free, and death disabling `NpcLocomotion` drops
   corpses from the crowd automatically.
+- **The player could shove NPCs around, even through walls (real field bug):**
+  `CharacterController.Move` ALWAYS resolves any overlap the capsule finds itself
+  in, regardless of the requested motion vector — a well-known Unity CC quirk. Since
+  `NpcLocomotion.Update` calls `Move` every frame it's enabled (even idle, with
+  near-zero requested motion), the player simply walking into a goblin and holding
+  forward got it silently displaced every frame by that automatic resolution, and
+  enough sustained frames of it accumulated real distance — occasionally enough to
+  tunnel through thin geometry. Confirmed by the tell: it only happened with
+  `NpcLocomotion` ON, because that's what calls `Move` at all. **Not** the boids
+  separation above (verified from source — its registry is NPC-only, never the
+  player). Fixed WITHOUT touching collision (the player still bumps into and is
+  blocked by NPCs, unchanged) by rejecting the DISPLACEMENT after each `Move`:
+  normal wall-blocking/sliding can only ever REDUCE a character's displacement below
+  what it asked for, never add displacement in an unrequested direction, so any
+  horizontal movement beyond `(want + impulse + Separation()) * dt`'s magnitude —
+  which already legitimately covers pathing, knockback, AND NPC-NPC separation —
+  can only be an external shove. `NpcLocomotion.RejectUnwantedPush` clamps exactly
+  that excess back out.
 - **NPC foot IK (`NpcFootIK`, Animation Rigging package)** — per-leg `TwoBoneIK`
   grounding for the generic rig: while the animation has a foot in stance, its IK
   target snaps to the raycast ground height (feet land ON stair treads); mid-swing the

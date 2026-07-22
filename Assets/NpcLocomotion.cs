@@ -64,6 +64,10 @@ namespace DungeonGen
         [Tooltip("Push-apart speed (m/s) at full overlap, fading to zero at the radius edge. Keep below walk speed or the crowd vibrates.")]
         public float separationStrength = 2f;
 
+        [Header("Push resistance (don't let the player shove NPCs around)")]
+        [Tooltip("Small slack (m) added to the allowed per-frame horizontal displacement before rejecting the excess. Prevents floating-point/skin-width jitter from getting clamped away on frames with legitimate zero-ish intended motion.")]
+        public float pushTolerance = 0.02f;
+
         public NavMeshAgent Agent { get; private set; }
         public CharacterController Controller { get; private set; }
 
@@ -179,8 +183,12 @@ namespace DungeonGen
             else verticalVelocity += gravity * dt;
             verticalVelocity = Mathf.Max(verticalVelocity, -maxFallSpeed);
 
-            Vector3 motion = (want + impulse + Separation()) * dt + Vector3.up * verticalVelocity * dt;
+            Vector3 horizontalIntent = (want + impulse + Separation()) * dt;
+            Vector3 motion = horizontalIntent + Vector3.up * verticalVelocity * dt;
+
+            Vector3 beforePos = transform.position;
             Controller.Move(motion);
+            RejectUnwantedPush(beforePos, horizontalIntent);
 
             IsBlocked = want.magnitude > blockedDesiredSpeed && CurrentSpeed < blockedSpeed;
 
@@ -188,6 +196,38 @@ namespace DungeonGen
 
             SyncAgentToBody();
             FaceMovement(want, dt);
+        }
+
+        /// <summary>
+        /// FIELD LESSON — the player could shove NPCs backward, even through thin
+        /// geometry given enough sustained contact: CharacterController.Move ALWAYS
+        /// resolves any overlap the capsule finds itself in, regardless of the
+        /// requested motion vector — a well-known Unity CC quirk. So while
+        /// NpcLocomotion runs (Move() is called every frame, even while idle with
+        /// near-zero requested motion), the player simply walking into a goblin and
+        /// holding forward gets it silently displaced every frame by that automatic
+        /// resolution, and enough frames of it can accumulate real distance. Only
+        /// happened with NpcLocomotion ON because that's what calls Move() at all —
+        /// disabled, nothing ever moves the capsule, so nothing can push it.
+        ///
+        /// The fix doesn't touch collision (the player still bumps into and is
+        /// blocked by NPCs, unchanged) — it rejects the DISPLACEMENT afterward.
+        /// The key fact that makes this safe: normal wall-blocking/sliding can only
+        /// ever REDUCE a character's displacement below what it asked for; it can't
+        /// add displacement in a direction nobody requested. So any horizontal
+        /// movement beyond horizontalIntent's magnitude (which already includes
+        /// pathing, knockback, AND NPC-NPC separation — all legitimate) can only be
+        /// an external body shoving into the capsule. Reject exactly that excess.
+        /// </summary>
+        void RejectUnwantedPush(Vector3 beforePos, Vector3 horizontalIntent)
+        {
+            Vector3 afterPos = transform.position;
+            Vector3 actualHorizontal = new Vector3(afterPos.x - beforePos.x, 0f, afterPos.z - beforePos.z);
+            float allowed = horizontalIntent.magnitude + pushTolerance;
+            if (actualHorizontal.magnitude <= allowed) return;
+
+            Vector3 excess = actualHorizontal - actualHorizontal.normalized * allowed;
+            transform.position -= excess;
         }
 
         /// <summary>
