@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace DungeonGen
@@ -57,6 +58,8 @@ namespace DungeonGen
         public float breakDistance = 2.5f;
         [Tooltip("Blocks an instant re-grab after dropping, so E doesn't drop-and-repick in one press.")]
         public float pickupCooldown = 0.25f;
+        [Tooltip("Seconds the shield/sword stay STOWED after a THROW (not a drop) before reappearing. The viewmodel is a whole GameObject SetActive(false) while carrying, colliders included — reactivating it the instant you throw pops the shield/sword collider back into existence right where the freshly-launched prop is passing through, so it visibly 'hits' your own shield a frame after leaving your hand. This delay gives the prop time to clear the viewmodel first. 0 = old instant behaviour.")]
+        public float viewmodelReturnDelay = 0.15f;
 
         [Header("Input")]
         [Tooltip("Drops the held object. Shares the interact key: PlayerInteractor stands down while something is held, so E is unambiguous — grab when empty-handed, drop when full.")]
@@ -199,9 +202,15 @@ namespace DungeonGen
             // Mass has to be read BEFORE Release() lets go of the body.
             float mass = body != null ? body.mass : 0f;
 
-            Release();
+            // Keep the shield/sword stowed a moment longer — see viewmodelReturnDelay.
+            // A DROP still restores instantly (restoreViewmodel defaults true).
+            Release(restoreViewmodel: false);
 
-            if (thrown == null || body == null || eye == null) return;
+            if (thrown == null || body == null || eye == null)
+            {
+                if (viewmodel != null) viewmodel.SetViewmodelVisible(true);   // nothing actually launched
+                return;
+            }
 
             // Launch SPEED is authored per prop, not derived from mass — see the
             // note on Carryable.throwSpeed.
@@ -213,6 +222,24 @@ namespace DungeonGen
             body.GetComponent<ThrownDamage>()?.Arm(gameObject);
 
             PlayExertion(mass);
+
+            if (viewmodel != null)
+            {
+                if (viewmodelReturnDelay > 0f) StartCoroutine(RestoreViewmodelAfterThrow(viewmodelReturnDelay));
+                else viewmodel.SetViewmodelVisible(true);
+            }
+        }
+
+        /// <summary>
+        /// Re-shows the shield/sword after the thrown prop has had time to clear their
+        /// colliders. Checks IsCarrying before restoring — if a NEW pickup happened
+        /// during the delay window, the viewmodel must stay stowed for THAT carry, not
+        /// get yanked back into view by this now-stale timer.
+        /// </summary>
+        IEnumerator RestoreViewmodelAfterThrow(float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (viewmodel != null && !IsCarrying) viewmodel.SetViewmodelVisible(true);
         }
 
         /// <summary>
@@ -235,7 +262,7 @@ namespace DungeonGen
             voiceSource.PlayOneShot(clip, voiceVolume);
         }
 
-        void Release()
+        void Release(bool restoreViewmodel = true)
         {
             if (heldBody != null)
             {
@@ -251,7 +278,7 @@ namespace DungeonGen
             heldColliders = null;
             nextPickupTime = Time.time + pickupCooldown;
 
-            if (viewmodel != null) viewmodel.SetViewmodelVisible(true);
+            if (restoreViewmodel && viewmodel != null) viewmodel.SetViewmodelVisible(true);
         }
 
         // Regenerating the dungeon or respawning while holding a prop would
