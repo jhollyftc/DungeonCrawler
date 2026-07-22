@@ -115,6 +115,17 @@ namespace DungeonGen
         [Tooltip("Blend rate INTO the shock (per second) — much faster than the mood blend, so a hit snaps the face rather than easing.")]
         public float hitBlendRate = 22f;
 
+        [Header("Death (permanent)")]
+        [Tooltip("The face on death: slack jaw, frozen brow, pupils blown wide and fixed in a glassy dead stare. eyebrowSpeed/jawSpeed left at 0 FREEZES the pose — with zero motion, Wave01's idle sway collapses to a constant midpoint every frame, so the face doesn't keep twitching on a corpse. Once triggered this OVERRIDES the mood and hit-shock PERMANENTLY — an NPC never wakes back up.")]
+        public Expression deathExpression = new Expression
+        {
+            name = "Dead", eyebrowRange = new Vector2(75f, 75f), jawRange = new Vector2(140f, 140f),
+            eyebrowSpeed = 0f, jawSpeed = 0f,
+            pupilColor = Color.black, pupilSize = 0.35f, scleraColor = new Color(0.42f, 0.40f, 0.38f), scleraBrightness = 0.4f,
+        };
+        [Tooltip("Blend rate INTO the death face (per second) — fast, like the hit shock, so the face settles quickly rather than slowly sagging.")]
+        public float deathBlendRate = 15f;
+
         [Header("Voice sync")]
         [Tooltip("The NPC's voice AudioSource (grunts/death cry). The jaw opens to its live amplitude, so it looks like it's making the sound. Left empty, NpcCombatAudio's source is used automatically.")]
         public AudioSource voiceSource;
@@ -139,6 +150,7 @@ namespace DungeonGen
         NpcPerception perception;
         Health health;
         float hurtUntil;
+        bool dead;   // permanent once set — see deathExpression
         readonly float[] sampleBuf = new float[256];
 
         const float WaveAmplitudeSum = 0.15f + 0.05f + 0.02f;
@@ -147,7 +159,12 @@ namespace DungeonGen
         {
             perception = GetComponent<NpcPerception>();
             health = GetComponent<Health>();
-            if (health != null) health.OnDamaged += HandleDamaged;
+            if (health != null)
+            {
+                health.OnDamaged += HandleDamaged;
+                health.OnDied += HandleDied;
+                dead = health.IsDead;   // re-enabled on an already-dead NPC picks the dead face up immediately, no flinch-through-death
+            }
             if (voiceSource == null)
             {
                 // Prefer the actual grunt/death-cry source; fall back to any source.
@@ -160,22 +177,29 @@ namespace DungeonGen
 
         void OnDisable()
         {
-            if (health != null) health.OnDamaged -= HandleDamaged;
+            if (health != null)
+            {
+                health.OnDamaged -= HandleDamaged;
+                health.OnDied -= HandleDied;
+            }
         }
 
         void HandleDamaged(DamageInfo info) => hurtUntil = Time.time + hitReactionTime;
+        void HandleDied(DamageInfo info) => dead = true;
 
         void LateUpdate()
         {
             if (expressions.Count == 0) return;
             if (!initialized) SnapToExpression(TargetExpression());
 
-            // A recent hit overrides the mood with the shock face, blended in fast
-            // so it snaps; once the window passes it eases back to the mood. Shared by
-            // jaw/eyebrow AND eyes, so a hit reads as one coherent flinch, not two.
+            // DEAD outranks everything, permanently — never falls back to a hit-shock
+            // or a mood re-read once triggered. Otherwise a recent hit overrides the
+            // mood with the shock face, blended in fast so it snaps; once the window
+            // passes it eases back to the mood. Shared by jaw/eyebrow AND eyes, so both
+            // a hit and death read as one coherent reaction, not disjoint systems.
             bool hurt = Application.isPlaying && Time.time < hurtUntil;
-            Expression target = hurt ? hurtExpression : TargetExpression();
-            float rate = hurt ? hitBlendRate : blendRate;
+            Expression target = dead ? deathExpression : hurt ? hurtExpression : TargetExpression();
+            float rate = dead ? deathBlendRate : hurt ? hitBlendRate : blendRate;
             float k = Application.isPlaying ? 1f - Mathf.Exp(-rate * Time.deltaTime) : 1f;
 
             if (jaw != null && eyebrow != null)
