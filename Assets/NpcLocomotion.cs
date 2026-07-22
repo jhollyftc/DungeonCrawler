@@ -64,6 +64,10 @@ namespace DungeonGen
         [Tooltip("Push-apart speed (m/s) at full overlap, fading to zero at the radius edge. Keep below walk speed or the crowd vibrates.")]
         public float separationStrength = 2f;
 
+        [Header("Push resistance (don't let the player shove NPCs around)")]
+        [Tooltip("A microscopic NUMERICAL-NOISE guard only (m) — not a physical allowance. Whenever actual horizontal displacement exceeds intended by more than this, the FULL excess is corrected out (snap to exactly intended), never leaving this tolerance itself ungranted — so it can't compound into drift no matter how long contact continues. Keep at float-rounding scale.")]
+        public float pushTolerance = 0.0005f;
+
         [Header("Debug")]
         [Tooltip("Log per-frame INTENDED vs ACTUAL horizontal displacement, broken down by want/impulse/separation — diagnostic for 'the player can push/jitter me' investigations. Turn on, stand pressed against this NPC, and read the console: if actual >> intended while want/impulse/sep all read ~0, that confirms CharacterController's own overlap resolution is the source, independent of anything this script asked for.")]
         public bool debugPush = false;
@@ -190,11 +194,31 @@ namespace DungeonGen
             Vector3 beforePos = transform.position;
             Controller.Move(motion);
 
+            // ISOLATED-VARIABLE RETRY: the exact math from commit 919fe8b (snap fully
+            // back to horizontalIntent's magnitude — never intended+tolerance, which
+            // was THE compounding-drift bug) but WITHOUT 1b868da's Controller.enabled
+            // toggle, which is the one variable that changed between "drift" (attempt 2,
+            // no toggle) and "jitter" (attempt 3, with toggle). Testing whether the
+            // toggle itself was the source of the jitter rather than the correction
+            // concept. debugPush logs BOTH the pre-correction spike and the post-
+            // correction result on the same line so this can be verified numerically.
+            Vector3 rawAfterPos = transform.position;
+            Vector3 rawActualHorizontal = new Vector3(rawAfterPos.x - beforePos.x, 0f, rawAfterPos.z - beforePos.z);
+            float intendedMag = horizontalIntent.magnitude;
+            float overshoot = rawActualHorizontal.magnitude - intendedMag;
+            bool corrected = overshoot > pushTolerance;
+            if (corrected)
+            {
+                Vector3 excess = rawActualHorizontal - rawActualHorizontal.normalized * intendedMag;
+                transform.position -= excess;
+            }
+
             if (debugPush)
             {
-                Vector3 afterPos = transform.position;
-                Vector3 actualHorizontal = new Vector3(afterPos.x - beforePos.x, 0f, afterPos.z - beforePos.z);
-                Debug.Log($"[NpcPush] {name}: intended={horizontalIntent.magnitude:0.0000}m actual={actualHorizontal.magnitude:0.0000}m " +
+                Vector3 finalPos = transform.position;
+                Vector3 finalHorizontal = new Vector3(finalPos.x - beforePos.x, 0f, finalPos.z - beforePos.z);
+                Debug.Log($"[NpcPush] {name}: intended={intendedMag:0.0000}m rawActual={rawActualHorizontal.magnitude:0.0000}m " +
+                          $"finalActual={finalHorizontal.magnitude:0.0000}m corrected={corrected} " +
                           $"(want={want.magnitude:0.00} impulse={impulse.magnitude:0.00} sep={sep.magnitude:0.00}) " +
                           $"grounded={Controller.isGrounded} ccVel={Controller.velocity}", this);
             }
