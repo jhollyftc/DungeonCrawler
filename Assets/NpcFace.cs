@@ -21,6 +21,17 @@ namespace DungeonGen
     /// jaw reads as a snarl or teeth-grind. So a "mood" is just a set of ranges +
     /// speeds, and the face blends between them.
     ///
+    /// EYES ride the same trick, no extra bones needed: the eye material is the
+    /// ToonLit shader's rim-light effect turned into an iris — _BaseColor (Tint) is
+    /// the pupil, _RimColor/_RimAmount are the sclera ("whites") color/brightness, and
+    /// _RimThreshold is pupil SIZE (higher threshold = bigger pupil, less white showing
+    /// — verified against the shader's rim math). Blended through the exact same
+    /// mood/hit-shock system as jaw/eyebrow (MaterialPropertyBlock, so many goblins
+    /// sharing one eye material don't each get a unique instance): calm eyes stay dark
+    /// and soft, alertness tightens the pupil and brightens the whites, and full anger
+    /// can push the pupil color to red (rage) while a hit blows the pupils wide (the
+    /// physiological "big eyes" of shock) for a moment before easing back to the mood.
+    ///
     /// [ExecuteAlways] so you can tune each expression's look in edit mode — with no
     /// perception in edit mode it holds the FIRST expression (author your neutral there).
     /// </summary>
@@ -42,6 +53,16 @@ namespace DungeonGen
             public float eyebrowSpeed = 0.5f;
             [Tooltip("Jaw idle speed. Crank up with anger for a teeth-grind.")]
             public float jawSpeed = 0.5f;
+
+            [Header("Eyes — ToonLit rim-light trick on the eye sphere")]
+            [Tooltip("Pupil color (the eye material's Tint / _BaseColor). Blend calm → enraged through this — e.g. dark → red for rage.")]
+            public Color pupilColor = Color.black;
+            [Tooltip("Pupil SIZE (the eye material's _RimThreshold). HIGHER = BIGGER pupil (less white showing); LOWER = smaller pupil (more white) — verified against the shader's rim math, not a guess. Big for surprise/fear, small and tight for anger/focus.")]
+            [Range(0f, 1f)] public float pupilSize = 0.2f;
+            [Tooltip("Sclera ('whites') color — the eye material's _RimColor.")]
+            public Color scleraColor = new Color(0.368f, 0.368f, 0.368f);
+            [Tooltip("Sclera brightness — the eye material's _RimAmount. Higher = whites read brighter/wider (alert, wide-eyed); lower = sleepy/relaxed.")]
+            [Range(0f, 1f)] public float scleraBrightness = 0.6f;
         }
 
         [Header("Bones")]
@@ -51,12 +72,19 @@ namespace DungeonGen
         public Vector3 jawAxis = Vector3.right;
         public Vector3 eyebrowAxis = Vector3.right;
 
+        [Header("Eyes")]
+        [Tooltip("Renderer(s) using the eye (ToonLit) material — usually one if both eyes share a mesh/material, or two if separate. Applied via a MaterialPropertyBlock so many goblins sharing one eye material each get their own live values WITHOUT instancing a unique material per NPC (keeps GPU batching intact). Leave empty to skip eye control entirely.")]
+        public Renderer[] eyeRenderers;
+
         [Header("Expressions (sorted by minAwareness)")]
         public List<Expression> expressions = new List<Expression>
         {
-            new Expression { name = "Calm",       minAwareness = 0f,   eyebrowRange = new Vector2(30f, 90f),  jawRange = new Vector2(90f, 155f), eyebrowSpeed = 0.5f, jawSpeed = 0.5f },
-            new Expression { name = "Suspicious", minAwareness = 0.4f, eyebrowRange = new Vector2(30f, 70f),  jawRange = new Vector2(95f, 140f), eyebrowSpeed = 0.7f, jawSpeed = 0.7f },
-            new Expression { name = "Angry",      minAwareness = 0.8f, eyebrowRange = new Vector2(30f, 55f),  jawRange = new Vector2(105f, 150f), eyebrowSpeed = 1.0f, jawSpeed = 1.4f },
+            new Expression { name = "Calm",       minAwareness = 0f,   eyebrowRange = new Vector2(30f, 90f),  jawRange = new Vector2(90f, 155f), eyebrowSpeed = 0.5f, jawSpeed = 0.5f,
+                pupilColor = Color.black, pupilSize = 0.24f, scleraColor = new Color(0.368f, 0.368f, 0.368f), scleraBrightness = 0.55f },
+            new Expression { name = "Suspicious", minAwareness = 0.4f, eyebrowRange = new Vector2(30f, 70f),  jawRange = new Vector2(95f, 140f), eyebrowSpeed = 0.7f, jawSpeed = 0.7f,
+                pupilColor = Color.black, pupilSize = 0.16f, scleraColor = new Color(0.368f, 0.368f, 0.368f), scleraBrightness = 0.76f },
+            new Expression { name = "Angry",      minAwareness = 0.8f, eyebrowRange = new Vector2(30f, 55f),  jawRange = new Vector2(105f, 150f), eyebrowSpeed = 1.0f, jawSpeed = 1.4f,
+                pupilColor = new Color(0.55f, 0.03f, 0.03f), pupilSize = 0.08f, scleraColor = new Color(0.42f, 0.34f, 0.34f), scleraBrightness = 0.9f },
         };
 
         [Header("Mood blend")]
@@ -64,11 +92,12 @@ namespace DungeonGen
         public float blendRate = 4f;
 
         [Header("Hit reaction (brief shock)")]
-        [Tooltip("The face when struck — a flash of shock: raise/widen the brow and drop the jaw open. Overrides the mood for a moment on every hit.")]
+        [Tooltip("The face when struck — a flash of shock: raise/widen the brow, drop the jaw open, and blow the pupils WIDE (physiological surprise) with a brief bloodshot-white flash. Overrides the mood for a moment on every hit.")]
         public Expression hurtExpression = new Expression
         {
             name = "Hurt", eyebrowRange = new Vector2(70f, 95f), jawRange = new Vector2(120f, 150f),
             eyebrowSpeed = 0.2f, jawSpeed = 0.2f,
+            pupilColor = Color.black, pupilSize = 0.4f, scleraColor = new Color(0.4f, 0.36f, 0.36f), scleraBrightness = 0.95f,
         };
         [Tooltip("Seconds the shocked face holds after a hit before easing back to the mood.")]
         public float hitReactionTime = 0.3f;
@@ -86,6 +115,15 @@ namespace DungeonGen
         // Current (blended) ranges/speeds.
         float ebMin, ebMax, jMin, jMax, ebSpeed, jSpeed;
         bool initialized;
+
+        // Current (blended) eye state, pushed to the material each frame.
+        Color pupilColorCur, scleraColorCur;
+        float pupilSizeCur, scleraBrightCur;
+        MaterialPropertyBlock eyeBlock;
+        static readonly int PropBaseColor = Shader.PropertyToID("_BaseColor");
+        static readonly int PropRimColor = Shader.PropertyToID("_RimColor");
+        static readonly int PropRimAmount = Shader.PropertyToID("_RimAmount");
+        static readonly int PropRimThreshold = Shader.PropertyToID("_RimThreshold");
 
         NpcPerception perception;
         Health health;
@@ -117,35 +155,71 @@ namespace DungeonGen
 
         void LateUpdate()
         {
-            if (jaw == null || eyebrow == null || expressions.Count == 0) return;
+            if (expressions.Count == 0) return;
             if (!initialized) SnapToExpression(TargetExpression());
 
             // A recent hit overrides the mood with the shock face, blended in fast
-            // so it snaps; once the window passes it eases back to the mood.
+            // so it snaps; once the window passes it eases back to the mood. Shared by
+            // jaw/eyebrow AND eyes, so a hit reads as one coherent flinch, not two.
             bool hurt = Application.isPlaying && Time.time < hurtUntil;
             Expression target = hurt ? hurtExpression : TargetExpression();
             float rate = hurt ? hitBlendRate : blendRate;
             float k = Application.isPlaying ? 1f - Mathf.Exp(-rate * Time.deltaTime) : 1f;
-            ebMin = Mathf.Lerp(ebMin, target.eyebrowRange.x, k);
-            ebMax = Mathf.Lerp(ebMax, target.eyebrowRange.y, k);
-            jMin = Mathf.Lerp(jMin, target.jawRange.x, k);
-            jMax = Mathf.Lerp(jMax, target.jawRange.y, k);
-            ebSpeed = Mathf.Lerp(ebSpeed, target.eyebrowSpeed, k);
-            jSpeed = Mathf.Lerp(jSpeed, target.jawSpeed, k);
 
-            float t = Time.time;
+            if (jaw != null && eyebrow != null)
+            {
+                ebMin = Mathf.Lerp(ebMin, target.eyebrowRange.x, k);
+                ebMax = Mathf.Lerp(ebMax, target.eyebrowRange.y, k);
+                jMin = Mathf.Lerp(jMin, target.jawRange.x, k);
+                jMax = Mathf.Lerp(jMax, target.jawRange.y, k);
+                ebSpeed = Mathf.Lerp(ebSpeed, target.eyebrowSpeed, k);
+                jSpeed = Mathf.Lerp(jSpeed, target.jawSpeed, k);
 
-            // Idle jaw sways WITHIN the mood's range; the voice then pulls it toward
-            // the fully-open angle, PAST that range — so an angry, near-clamped jaw
-            // still opens to grunt. (Blending toward jawMax instead would cap the
-            // opening at the mood's tight idle range — the bug this fixes.)
-            float idleJaw = Mathf.Lerp(jMin, jMax, Wave01(t, jSpeed));
-            float jawAngle = Mathf.Lerp(idleJaw, jawOpenAngle, VoiceOpen());
+                float t = Time.time;
 
-            float ebValue = Wave01(t, ebSpeed);
+                // Idle jaw sways WITHIN the mood's range; the voice then pulls it toward
+                // the fully-open angle, PAST that range — so an angry, near-clamped jaw
+                // still opens to grunt. (Blending toward jawMax instead would cap the
+                // opening at the mood's tight idle range — the bug this fixes.)
+                float idleJaw = Mathf.Lerp(jMin, jMax, Wave01(t, jSpeed));
+                float jawAngle = Mathf.Lerp(idleJaw, jawOpenAngle, VoiceOpen());
 
-            jaw.localRotation = Quaternion.AngleAxis(jawAngle, jawAxis.normalized);
-            eyebrow.localRotation = Quaternion.AngleAxis(Mathf.Lerp(ebMin, ebMax, ebValue), eyebrowAxis.normalized);
+                float ebValue = Wave01(t, ebSpeed);
+
+                jaw.localRotation = Quaternion.AngleAxis(jawAngle, jawAxis.normalized);
+                eyebrow.localRotation = Quaternion.AngleAxis(Mathf.Lerp(ebMin, ebMax, ebValue), eyebrowAxis.normalized);
+            }
+
+            // Eyes blend through the SAME k (mood or hit-shock) as jaw/eyebrow — a hit
+            // dilates the pupils in lockstep with the brow flying up, not on its own clock.
+            pupilColorCur = Color.Lerp(pupilColorCur, target.pupilColor, k);
+            pupilSizeCur = Mathf.Lerp(pupilSizeCur, target.pupilSize, k);
+            scleraColorCur = Color.Lerp(scleraColorCur, target.scleraColor, k);
+            scleraBrightCur = Mathf.Lerp(scleraBrightCur, target.scleraBrightness, k);
+            ApplyEyes();
+        }
+
+        /// <summary>
+        /// Push the blended pupil/sclera values to the eye material(s) via a
+        /// MaterialPropertyBlock — NOT renderer.material, which would instantiate a
+        /// unique material per NPC and break GPU instancing for a high-count asset.
+        /// </summary>
+        void ApplyEyes()
+        {
+            if (eyeRenderers == null || eyeRenderers.Length == 0) return;
+            if (eyeBlock == null) eyeBlock = new MaterialPropertyBlock();
+
+            for (int i = 0; i < eyeRenderers.Length; i++)
+            {
+                Renderer r = eyeRenderers[i];
+                if (r == null) continue;
+                r.GetPropertyBlock(eyeBlock);
+                eyeBlock.SetColor(PropBaseColor, pupilColorCur);
+                eyeBlock.SetColor(PropRimColor, scleraColorCur);
+                eyeBlock.SetFloat(PropRimAmount, scleraBrightCur);
+                eyeBlock.SetFloat(PropRimThreshold, pupilSizeCur);
+                r.SetPropertyBlock(eyeBlock);
+            }
         }
 
         /// <summary>Three incommensurate sines → an organic 0..1 wave that never visibly loops.</summary>
@@ -184,6 +258,10 @@ namespace DungeonGen
             ebMin = e.eyebrowRange.x; ebMax = e.eyebrowRange.y;
             jMin = e.jawRange.x; jMax = e.jawRange.y;
             ebSpeed = e.eyebrowSpeed; jSpeed = e.jawSpeed;
+            pupilColorCur = e.pupilColor;
+            pupilSizeCur = e.pupilSize;
+            scleraColorCur = e.scleraColor;
+            scleraBrightCur = e.scleraBrightness;
             initialized = true;
         }
     }
