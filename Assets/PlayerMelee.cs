@@ -37,11 +37,23 @@ namespace DungeonGen
         [Tooltip("How much of the sword's sway-suppression the shield inherits. Below 1 so the shield keeps some of its own idle sway during a swing — it isn't the hand doing the work.")]
         [Range(0f, 1f)] public float shieldSuppressScale = 0.6f;
 
+        [Header("Sword counter-motion (derived — during a shield bash)")]
+        [Tooltip("The MIRROR of the shield counter-motion: during a BASH, the shield thrusts and the SWORD hand is thrown the opposite way (the torso twist), so the bash reads as a whole-body lunge instead of a lone arm. Per-axis multiplier on the shield's position offset. NEGATIVE = counter.")]
+        public Vector3 swordCounterPosition = new Vector3(-0.40f, -0.15f, -0.25f);
+        [Tooltip("Same, for ROTATION.")]
+        public Vector3 swordCounterEuler = new Vector3(-0.15f, -0.30f, -0.35f);
+        [Tooltip("Seconds the sword TRAILS the shield during a bash (the follow-through lag).")]
+        public float swordLag = 0.06f;
+        [Tooltip("How much of the shield's sway-suppression the sword inherits during a bash.")]
+        [Range(0f, 1f)] public float swordSuppressScale = 0.6f;
+
         [Header("Input")]
         [Tooltip("0 = left mouse (LIGHT combo).")]
         public int lightMouseButton = 0;
         [Tooltip("1 = right mouse (HEAVY: hold to charge, release to swing).")]
         public int heavyMouseButton = 1;
+        [Tooltip("SHIELD BASH key. A dedicated off-hand key, kept off the mouse so it's independent of light/heavy (and leaves the mouse free for a future shield BLOCK bind).")]
+        public KeyCode bashKey = KeyCode.Q;
 
         [Header("Light combo (LMB) — cycles per tap")]
         [Tooltip("The light swings, played in order per LMB tap and wrapping. Give each a different arc so the directions vary.")]
@@ -76,6 +88,34 @@ namespace DungeonGen
         [Tooltip("Seconds for the tremor to ramp in once fully wound, so it doesn't pop on.")]
         public float tremorRampTime = 0.2f;
 
+        [Header("Shield bash (bashKey) — a forward shield thrust")]
+        [Tooltip("The bash arc/feel/combat, authored like a swing but played on the SHIELD hand (windup = cock the shield back, slash = punch it forward). Low damage, high knockback, huge poise damage — a CONTROL tool that guarantees a poise break, not a damage dealer. Its recovery brings the shield straight home, so no hit-retract phase is needed.")]
+        public SwingDefinition shieldBash = new SwingDefinition
+        {
+            name = "Shield Bash", duration = 0.45f, windupEnd = 0.3f, impactT = 0.42f, slashEnd = 0.55f, cooldown = 0.2f,
+            damage = 5f, knockback = 12f, poiseDamage = 130f, range = 1.7f, sweepRadius = 0.5f,
+            localHitstop = 0.08f, recoilDistance = 0.05f, globalDipDuration = 0.05f, globalDipScale = 0.1f,
+            hitKickEuler = new Vector3(1.2f, 0.6f, 0.8f), swingKickEuler = new Vector3(-0.6f, 0f, 0f),
+            blowForwardBias = 1f, blowVerticalScale = 0.1f,
+            windupPosition = new Vector3(0.04f, 0.02f, -0.10f), windupEuler = new Vector3(-8f, -12f, 6f),
+            slashPosition = new Vector3(0.02f, -0.02f, 0.28f), slashEuler = new Vector3(10f, 8f, -4f),
+        };
+        [Header("Bash lunge + cone (HOLD to wind, RELEASE to lunge-bash)")]
+        [Tooltip("Forward lunge speed (m/s) added to the player on release. Decays fast (see FirstPersonController.externalDamping) into a short step, not a slide.")]
+        public float bashDashSpeed = 6.5f;
+        [Tooltip("Reach (m) of the bash's CONE shove — bigger than the sweep; it's a crowd-parting AoE, not a single strike.")]
+        public float bashConeRange = 3f;
+        [Tooltip("Half-angle (deg) of the cone in front. 55 ≈ a 110° fan.")]
+        [Range(10f, 150f)] public float bashConeHalfAngle = 55f;
+        [Tooltip("How radial the shove is. 0 = everyone straight back; 1 = everyone flung fully away along their own bearing (max fan-out). ~0.8 reads as 'back and to the side'.")]
+        [Range(0f, 1f)] public float bashConeSideBias = 0.8f;
+        [Tooltip("Degrees the world FOV widens while winding the bash (the lunge tell), easing back on release. 0 = no FOV kick. The viewmodel overlay keeps its own FOV, so only the WORLD dollies.")]
+        public float bashFovBump = 8f;
+        [Tooltip("FOV change speed (deg/sec) in and out of the bump.")]
+        public float bashFovSpeed = 60f;
+        [Tooltip("Draw the bash CONE (reach + fan angle) as a gizmo when this component is selected — see exactly what the shove will catch.")]
+        public bool drawBashCone = true;
+
         [Tooltip("Log every swing with its name and hit/whiff.")]
         public bool debugMelee = false;
 
@@ -85,13 +125,19 @@ namespace DungeonGen
         [Tooltip("PLAY-MODE POSE SCRUB: drag off 0 to freeze the previewed swing at that point of its arc, live in the Game view. Set back to 0 to release.")]
         [Range(0f, 1f)] public float previewT = 0f;
 
+        /// <summary>Which kind of attack — lets audio/VFX pick per-attack clips.</summary>
+        public enum AttackKind { Light, Heavy, Bash }
+
         /// <summary>A swing started (windup begins).</summary>
         public event Action OnSwingStarted;
+        /// <summary>The blade/shield LAUNCHES (slash starts / bash fires) — the whoosh moment. Drives swing SFX.</summary>
+        public event Action<AttackKind> OnAttackSwung;
         /// <summary>The impact frame fired; bool = did it damage anything. THE feel-layer hook.</summary>
         public event Action<bool> OnImpact;
 
         public bool IsSwinging => swinging;
         public bool IsCharging => charging;
+        public bool IsBashing => bashing;
 
         MeleeAttack melee;
         PlayerCarry carry;
@@ -99,6 +145,8 @@ namespace DungeonGen
         CameraKick cameraKick;
 
         SwingDefinition active;   // the swing currently playing
+        bool activeIsHeavy;       // the active swing is the heavy (for whoosh SFX)
+        bool whooshFired;         // the slash-launch whoosh has fired this swing
         float t;                  // normalized swing time
         bool swinging;
         bool sweepDone;
@@ -120,6 +168,20 @@ namespace DungeonGen
         bool returning;           // an aborted charge rewinding to rest
         float tension;            // 0..1 tremor ramp once fully wound
 
+        bool bashing;             // a shield bash is playing (owns the shield hand)
+        bool bashCharging;        // holding bashKey, winding the shield back
+        float bashChargeT;        // normalized time reached while winding (ramps to windupEnd, holds)
+        float bt;                 // normalized bash time
+        bool bashSweepDone;
+        float bashFreeze;         // bash-hit local hitstop
+        Vector3 bashRecoilDir;    // shield bounce-back direction on a bash hit
+        Vector3 lastShieldPose, lastShieldEuler;   // last pose the bash wrote, so counter-motion resumes without a pop
+        float lastShieldSuppress;
+
+        Camera fovCam;            // world camera, for the bash FOV kick
+        float baseFov;
+        bool haveBaseFov;
+
         bool carriedLastFrame;
         bool previewReleased;
 
@@ -129,6 +191,12 @@ namespace DungeonGen
         float shieldTargetSuppress;
         Vector3 shieldPos, shieldEuler;
         float shieldSuppress;
+
+        // Sword counter-motion during a bash — the mirror of the above.
+        Vector3 swordTargetPos, swordTargetEuler;
+        float swordTargetSuppress;
+        Vector3 swordPos, swordEuler;
+        float swordSuppress;
 
         void Awake()
         {
@@ -142,6 +210,11 @@ namespace DungeonGen
                 if (controller != null && controller.cam != null) melee.aimSource = controller.cam;
                 else { var c = GetComponentInChildren<Camera>(); if (c != null) melee.aimSource = c.transform; }
             }
+
+            // The WORLD camera for the bash FOV kick (not the viewmodel overlay, which
+            // keeps its own FOV so only the world dollies).
+            if (controller != null && controller.cam != null) fovCam = controller.cam.GetComponent<Camera>();
+            if (fovCam == null && melee.aimSource != null) fovCam = melee.aimSource.GetComponent<Camera>();
 
             if (swordSway == null)
                 Debug.LogWarning("[PlayerMelee] No sword ViewmodelSway assigned — the sweep works but the sword won't visibly swing.", this);
@@ -159,11 +232,20 @@ namespace DungeonGen
 
             if (swinging) { TickSwing(); FinishFrame(); return; }
 
+            // A bash OWNS the shield hand — it writes shieldSway directly, so it must
+            // NOT go through TickShield (which would fight it). FinishFrameBash skips it.
+            if (bashing) { TickBash(); FinishFrameBash(); return; }
+
             // Preview scrub takes over when a swing isn't playing.
             if (previewT > 0f) { ApplyPose(PreviewSwing(), previewT); previewReleased = true; FinishFrame(); return; }
             if (previewReleased) { swordSway?.SetAttackPose(Vector3.zero, Quaternion.identity, 0f); previewReleased = false; }
 
             if (returning) TickChargeReturn();   // a new charge/swing below cancels it
+
+            // Shield bash: HOLD bashKey to wind, RELEASE to lunge-bash. While winding OR
+            // the instant it fires, the bash owns the shield hand — skip the sword's
+            // charge/light input and TickShield (FinishFrameBash) this frame.
+            if (HandleBashCharge()) { FinishFrameBash(); return; }
 
             HandleCharge();
             HandleLightInput();
@@ -177,6 +259,7 @@ namespace DungeonGen
         void FinishFrame()
         {
             TickShield();   // every path ends here, so the shield always eases toward its target
+            TickFov();
             carriedLastFrame = carry != null && carry.IsCarrying;
         }
 
@@ -308,6 +391,8 @@ namespace DungeonGen
         void StartSwing(SwingDefinition swing, bool isHeavy, float startT = 0f)
         {
             active = swing;
+            activeIsHeavy = isHeavy;
+            whooshFired = false;
             swinging = true;
             sweepDone = false;
             returning = false;    // a new swing overrides an aborted charge's rewind
@@ -318,6 +403,9 @@ namespace DungeonGen
             bufferedLight = false;
             cameraKick?.Kick(swing.swingKickEuler);
             OnSwingStarted?.Invoke();
+            // A charged heavy resumes AT the slash launch, so its whoosh fires now;
+            // a normal swing fires it when t crosses windupEnd in TickSwing.
+            if (t >= swing.windupEnd) { whooshFired = true; OnAttackSwung?.Invoke(isHeavy ? AttackKind.Heavy : AttackKind.Light); }
             if (debugMelee) Debug.Log($"[PlayerMelee] swing '{swing.name}'{(isHeavy ? " (HEAVY)" : "")}.", this);
         }
 
@@ -372,6 +460,13 @@ namespace DungeonGen
             }
 
             t += Time.deltaTime / Mathf.Max(0.05f, active.duration);
+
+            // Whoosh at the slash launch — the moment the blade actually accelerates.
+            if (!whooshFired && t >= active.windupEnd)
+            {
+                whooshFired = true;
+                OnAttackSwung?.Invoke(activeIsHeavy ? AttackKind.Heavy : AttackKind.Light);
+            }
 
             if (!sweepDone && t >= active.impactT)
             {
@@ -442,6 +537,198 @@ namespace DungeonGen
             SetHandPoses(pos, euler, suppress);
         }
 
+        // ---------------- Shield bash ----------------
+
+        bool CanBash()
+        {
+            if (Time.time < readyAt) return false;                // shares the swing cooldown gate
+            if (Cursor.lockState != CursorLockMode.Locked) return false;
+            if (swinging || charging) return false;
+            if (carry != null && carry.IsCarrying) return false;
+            if (carriedLastFrame) return false;
+            if (shieldSway == null) return false;                 // nothing to thrust
+            return true;
+        }
+
+        /// <summary>
+        /// HOLD bashKey to wind the shield back (FOV creeps up as a lunge tell), RELEASE
+        /// to fire the lunge-bash from wherever the wind reached. Returns true while it
+        /// owns the shield hand this frame (winding, or the frame it fires). A forgiving
+        /// charge — unlike the heavy, releasing early still bashes (it just wound less);
+        /// the wind-up is a tell and an FOV ramp, not a gate.
+        /// </summary>
+        bool HandleBashCharge()
+        {
+            if (!bashCharging)
+            {
+                // Can't start mid heavy-charge (both hands committing); otherwise clean.
+                if (charging || !Input.GetKeyDown(bashKey) || !CanBash()) return false;
+                bashCharging = true;
+                bashChargeT = 0f;
+                swordSway?.SetAttackPose(Vector3.zero, Quaternion.identity, 0f);   // sword rests; shield does the work
+            }
+
+            if (Input.GetKey(bashKey))
+            {
+                // Wind toward the coiled shield pose and hold there, trembling FOV aside.
+                bashChargeT = Mathf.Min(bashChargeT + Time.deltaTime / Mathf.Max(0.05f, shieldBash.duration),
+                                        shieldBash.windupEnd);
+                shieldBash.ComputePose(bashChargeT, out Vector3 pos, out Vector3 euler, out float sup);
+                ApplyShieldPose(pos, euler, sup);
+                return true;
+            }
+
+            // Released → lunge and bash from the held wind-up.
+            bashCharging = false;
+            StartBash(bashChargeT);
+            ApplyBashDash();
+            TickBash();   // advance one frame immediately so the release reads instant
+            return true;
+        }
+
+        /// <summary>Add the forward lunge — flat player-forward, decayed by the controller into a short step.</summary>
+        void ApplyBashDash()
+        {
+            if (controller == null || bashDashSpeed <= 0f) return;
+            Vector3 forward = transform.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude > 1e-4f)
+                controller.AddImpulse(forward.normalized * bashDashSpeed);
+        }
+
+        /// <summary>Begin the bash play phase from the wound-up time `startT` (the slash continues from there).</summary>
+        void StartBash(float startT)
+        {
+            bashing = true;
+            bt = Mathf.Clamp01(startT);
+            bashSweepDone = false;
+            bashFreeze = 0f;
+            returning = false;
+            cameraKick?.Kick(shieldBash.swingKickEuler);
+            OnAttackSwung?.Invoke(AttackKind.Bash);   // release = the thrust launches
+            if (debugMelee) Debug.Log("[PlayerMelee] shield bash (lunge).", this);
+        }
+
+        void TickBash()
+        {
+            // Caught in a body: hold the thrust with a recoil bounce (unscaled, like the
+            // sword's freeze). A thrust recovers straight back along its own axis, so no
+            // separate retract phase is needed — just resume the arc when the freeze ends.
+            if (bashFreeze > 0f)
+            {
+                bashFreeze -= Time.unscaledDeltaTime;
+                float p = 1f - Mathf.Clamp01(bashFreeze / Mathf.Max(0.01f, shieldBash.localHitstop));
+                float envelope = Mathf.Sin(p * Mathf.PI);
+                shieldBash.ComputePose(bt, out Vector3 fpos, out Vector3 feuler, out float fsup);
+                ApplyShieldPose(fpos + bashRecoilDir * (shieldBash.recoilDistance * envelope), feuler, fsup);
+                return;
+            }
+
+            bt += Time.deltaTime / Mathf.Max(0.05f, shieldBash.duration);
+
+            if (!bashSweepDone && bt >= shieldBash.impactT)
+            {
+                bashSweepDone = true;
+                DoBashImpact();
+            }
+
+            if (bt >= 1f) { EndBash(); return; }
+
+            shieldBash.ComputePose(bt, out Vector3 pos, out Vector3 euler, out float suppress);
+            ApplyShieldPose(pos, euler, suppress);
+        }
+
+        void DoBashImpact()
+        {
+            melee.damage = shieldBash.damage;
+            melee.knockback = shieldBash.knockback;
+            melee.poiseDamage = shieldBash.poiseDamage;
+            melee.range = bashConeRange;   // the cone reaches further than a sweep
+
+            // A CONE shove, not a single blow: everyone in front is flung along their own
+            // bearing (radial) — center enemies straight back, flanks out to the side.
+            bool hit = melee.DoConeSweep(bashConeHalfAngle, bashConeSideBias) > 0;
+            if (debugMelee) Debug.Log($"[PlayerMelee] bash impact — {(hit ? "HIT" : "whiff")}.", this);
+
+            if (hit)
+            {
+                bashFreeze = shieldBash.localHitstop;
+                bashRecoilDir = -(shieldBash.slashPosition - shieldBash.windupPosition).normalized;
+                Hitstop.Request(shieldBash.globalDipDuration, shieldBash.globalDipScale);
+                cameraKick?.Kick(shieldBash.hitKickEuler, new Vector3(0f, 0f, -0.012f));
+            }
+
+            OnImpact?.Invoke(hit);
+        }
+
+        /// <summary>
+        /// Write the shield hand directly (the bash owns it), record the pose so
+        /// TickShield's smoothed counter-motion can resume from it without a pop when
+        /// the bash ends, and DERIVE the sword's counter target from it — the mirror of
+        /// SetHandPoses: the shield thrusts, the sword hand is thrown the opposite way.
+        /// </summary>
+        void ApplyShieldPose(Vector3 pos, Vector3 euler, float suppress)
+        {
+            lastShieldPose = pos;
+            lastShieldEuler = euler;
+            lastShieldSuppress = suppress;
+            shieldSway.SetAttackPose(pos, Quaternion.Euler(euler), suppress);
+
+            swordTargetPos = Vector3.Scale(pos, swordCounterPosition);
+            swordTargetEuler = Vector3.Scale(euler, swordCounterEuler);
+            swordTargetSuppress = suppress * swordSuppressScale;
+        }
+
+        /// <summary>Ease the sword toward its bash-derived counter target (trailing lag), and write it.</summary>
+        void TickSword()
+        {
+            if (swordSway == null) return;
+
+            float k = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.001f, swordLag));
+            swordPos = Vector3.Lerp(swordPos, swordTargetPos, k);
+            swordEuler = Vector3.Lerp(swordEuler, swordTargetEuler, k);
+            swordSuppress = Mathf.Lerp(swordSuppress, swordTargetSuppress, k);
+
+            swordSway.SetAttackPose(swordPos, Quaternion.Euler(swordEuler), swordSuppress);
+        }
+
+        void EndBash()
+        {
+            bashing = false;
+            // Hand the shield back to counter-motion at the pose the bash left it (≈rest
+            // after recovery), so the next sword swing's derived motion eases in cleanly.
+            shieldPos = lastShieldPose;
+            shieldEuler = lastShieldEuler;
+            shieldSuppress = lastShieldSuppress;
+            // Sword returns to rest (its recovery already eased the counter to ≈0).
+            swordSway?.SetAttackPose(Vector3.zero, Quaternion.identity, 0f);
+            swordPos = swordEuler = Vector3.zero;
+            swordSuppress = 0f;
+            readyAt = Time.time + shieldBash.cooldown;
+        }
+
+        /// <summary>Bash owns BOTH hands this frame: the shield is written directly, the sword counters it (TickSword). Skip TickShield; still tick FOV + carry latch.</summary>
+        void FinishFrameBash()
+        {
+            TickSword();
+            TickFov();
+            carriedLastFrame = carry != null && carry.IsCarrying;
+        }
+
+        /// <summary>
+        /// Ease the WORLD FOV toward its target — bumped while winding a bash (the lunge
+        /// tell), back to the captured base otherwise (including the moment of release,
+        /// so the FOV drops as the lunge fires). Lazily captures the base FOV on first
+        /// run (an idle frame), so it always restores whatever the camera was set to.
+        /// </summary>
+        void TickFov()
+        {
+            if (fovCam == null || bashFovBump == 0f) return;
+            if (!haveBaseFov) { baseFov = fovCam.fieldOfView; haveBaseFov = true; }
+            float target = bashCharging ? baseFov + bashFovBump : baseFov;
+            fovCam.fieldOfView = Mathf.MoveTowards(fovCam.fieldOfView, target, bashFovSpeed * Time.deltaTime);
+        }
+
         /// <summary>
         /// Pose the sword, and DERIVE the shield's pose from it rather than authoring
         /// one per swing: the off-hand counter-moves (negative weights) because a
@@ -507,6 +794,11 @@ namespace DungeonGen
             returning = false;
             tension = 0f;
             if (swinging) EndSwing();
+            if (bashing) EndBash();
+
+            // Don't leave a widened FOV or a half-wound shield behind if disabled mid-charge.
+            bashCharging = false;
+            if (fovCam != null && haveBaseFov) fovCam.fieldOfView = baseFov;
         }
 
         // ---------------- Gizmo ----------------
@@ -546,6 +838,41 @@ namespace DungeonGen
             swing.ComputePose(swing.impactT, out Vector3 impactPos, out _, out _);
             Gizmos.color = Color.red;
             Gizmos.DrawWireSphere(parent.TransformPoint(restLocal + impactPos), 0.02f);
+
+            DrawBashConeGizmo();
+        }
+
+        /// <summary>
+        /// The bash CONE on the floor plane: origin, ±halfAngle edge rays, and an arc at
+        /// bashConeRange — matches DoConeSweep (flat aim, flat-distance reach). Uses the
+        /// aimSource (camera) at runtime, the player transform in edit mode.
+        /// </summary>
+        void DrawBashConeGizmo()
+        {
+            if (!drawBashCone) return;
+
+            var m = GetComponent<MeleeAttack>();
+            Transform eye = m != null && m.aimSource != null ? m.aimSource : transform;
+            Vector3 flat = new Vector3(eye.forward.x, 0f, eye.forward.z);
+            if (flat.sqrMagnitude < 1e-4f) flat = new Vector3(transform.forward.x, 0f, transform.forward.z);
+            flat.Normalize();
+
+            float originHeight = m != null ? m.originHeight : 1.1f;
+            Vector3 origin = eye == transform ? transform.position + Vector3.up * originHeight : eye.position;
+            origin.y = transform.position.y + originHeight * 0.4f;   // draw near knee/waist — the shove plane
+
+            Gizmos.color = new Color(0.3f, 0.7f, 1f, 0.9f);
+            const int steps = 20;
+            Vector3 prevEdge = origin;
+            for (int i = 0; i <= steps; i++)
+            {
+                float a = Mathf.Lerp(-bashConeHalfAngle, bashConeHalfAngle, i / (float)steps);
+                Vector3 rayDir = Quaternion.AngleAxis(a, Vector3.up) * flat;
+                Vector3 end = origin + rayDir * bashConeRange;
+                if (i == 0 || i == steps) Gizmos.DrawLine(origin, end);   // the two edges
+                if (i > 0) Gizmos.DrawLine(prevEdge, end);                // the arc
+                prevEdge = end;
+            }
         }
     }
 }

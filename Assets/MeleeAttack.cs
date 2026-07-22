@@ -79,6 +79,11 @@ namespace DungeonGen
         readonly HashSet<Transform> hitThisSwing = new HashSet<Transform>();
         static readonly Collider[] overlapScratch = new Collider[16];
         static readonly RaycastHit[] castScratch = new RaycastHit[16];
+        // The cone sweeps a MUCH larger volume than the sword capsule, and each enemy
+        // brings many colliders (its capsule + all the dormant ragdoll bone colliders),
+        // so a crowd blows past 16 instantly — a too-small buffer silently caps the
+        // OverlapSphere and drops most goblins. Give the cone plenty of room.
+        static readonly Collider[] coneScratch = new Collider[128];
 
         void Awake() => ownFaction = FactionMember.Of(transform);
 
@@ -177,6 +182,86 @@ namespace DungeonGen
             if (debugAttack)
                 Debug.Log($"[Melee] {name}: sweep [{(touchingTarget ? "overlap" : "cast")}] saw {hits} collider(s) → {(landedThisSwing > 0 ? $"{landedThisSwing} HIT" : "whiff")}.", this);
             return landedThisSwing > 0;
+        }
+
+        /// <summary>
+        /// A CONE shove — every valid target in a forward cone is pushed along its OWN
+        /// bearing from the attacker (radial), not one shared direction: an enemy dead
+        /// ahead flies straight back, one on the flank is flung out to the side. That's
+        /// the "part the crowd" shield-bash feel. Reuses the same faction/dedupe/
+        /// OnHitLanded plumbing as DoSweep (so per-enemy hit VFX still fire). Uses the
+        /// component's current damage/knockback/poise/range — the driver pushes those
+        /// first, exactly like a normal swing. Returns victims hit.
+        /// </summary>
+        /// <param name="halfAngleDeg">Half the cone's opening angle (55 ≈ a 110° fan in front).</param>
+        /// <param name="sideBias">0 = everyone shoved straight forward; 1 = everyone flung fully radially away from the attacker (max spread).</param>
+        public int DoConeSweep(float halfAngleDeg, float sideBias)
+        {
+            hitThisSwing.Clear();
+            landedThisSwing = 0;
+
+            Vector3 origin, dir;
+            if (aimSource != null) { dir = aimSource.forward; origin = aimSource.position + dir * aimForwardOffset; }
+            else { dir = transform.forward; origin = transform.position + Vector3.up * originHeight; }
+
+            // Flatten the aim: a crowd shove pushes along the FLOOR (short enemies flung
+            // back, not slammed down through it), and bearings are compared on the plane.
+            Vector3 flatDir = new Vector3(dir.x, 0f, dir.z);
+            flatDir = flatDir.sqrMagnitude > 1e-4f ? flatDir.normalized : dir;
+            float cosHalf = Mathf.Cos(Mathf.Clamp(halfAngleDeg, 1f, 179f) * Mathf.Deg2Rad);
+
+            // Broad-phase sphere padded vertically: the origin is at eye height but enemies
+            // are short, so a floor target at the cone's edge is diagonally further than
+            // `range` — gather generously, then gate the true reach on FLAT distance below.
+            int n = Physics.OverlapSphereNonAlloc(origin, range + 2f, coneScratch, hitMask, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+                ConeHit(coneScratch[i], origin, flatDir, cosHalf, range, Mathf.Clamp01(sideBias));
+
+            if (debugAttack)
+                Debug.Log($"[Melee] {name}: cone sweep saw {n} collider(s){(n >= coneScratch.Length ? " (BUFFER FULL — raise coneScratch)" : "")} → {(landedThisSwing > 0 ? $"{landedThisSwing} HIT" : "whiff")}.", this);
+            return landedThisSwing;
+        }
+
+        void ConeHit(Collider c, Vector3 origin, Vector3 flatDir, float cosHalf, float range, float sideBias)
+        {
+            if (c == null) return;
+
+            var damageable = c.GetComponentInParent<IDamageable>();
+            if (damageable == null) return;
+            Transform root = damageable.Transform;
+            if (root == transform || root.IsChildOf(transform)) return;   // never hit yourself
+            if (!hitThisSwing.Add(root)) return;                          // one hit per victim
+            if (FactionMember.Of(root) == ownFaction) return;
+            if (damageable.IsDead) return;
+
+            // Bearing FROM the attacker, on the floor plane.
+            Vector3 to = root.position - origin;
+            Vector3 toFlat = new Vector3(to.x, 0f, to.z);
+            float dist = toFlat.magnitude;
+            if (dist > range) return;                                 // true reach is the FLAT distance
+            Vector3 toDir = dist > 1e-3f ? toFlat / dist : flatDir;   // right on top of us → straight ahead
+
+            if (Vector3.Dot(toDir, flatDir) < cosHalf) return;        // outside the cone
+
+            // Radial blow: from straight-forward (sideBias 0) toward the target's own
+            // outward bearing (sideBias 1). This is what fans the crowd back AND aside.
+            Vector3 blow = Vector3.Slerp(flatDir, toDir, sideBias).normalized;
+
+            var info = new DamageInfo
+            {
+                amount = damage,
+                point = c.ClosestPoint(origin),
+                direction = blow,
+                instigator = gameObject,
+                type = DamageType.Melee,
+                impulse = knockback,
+                poiseDamage = poiseDamage,
+            };
+            damageable.TakeDamage(info);
+            landedThisSwing++;
+            OnHitLanded?.Invoke(damageable, info);
+
+            if (debugAttack) Debug.Log($"[Melee] {name}: cone hit '{root.name}' for {damage:0.#}.", this);
         }
 
         void TryHit(Collider c, Vector3 origin, Vector3 dir, Vector3 blowDir)

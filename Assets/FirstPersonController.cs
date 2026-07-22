@@ -10,7 +10,7 @@ namespace DungeonGen
     /// set Active Input Handling to "Both" if you're on the new Input System).
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
-    public class FirstPersonController : MonoBehaviour
+    public class FirstPersonController : MonoBehaviour, IMoveIntent
     {
         public Transform cam;
         public float walkSpeed = 4.5f;
@@ -46,8 +46,24 @@ namespace DungeonGen
         [Tooltip("Highest depth PgUp will climb to. A cap because grid size scales with depth — very high depths generate huge, slow dungeons.")]
         public int maxDebugDepth = 20;
 
+        [Header("External impulse (dash / knockback)")]
+        [Tooltip("How fast an AddImpulse velocity (e.g. a shield-bash lunge) decays, per second. Higher = a shorter, snappier burst. ~10 gives a ~0.15s lunge.")]
+        public float externalDamping = 10f;
+
         /// <summary>External move-speed multiplier (1 = normal). Set by e.g. PlayerMelee to slow the player while charging a heavy swing. Reset to 1 when done.</summary>
         public float moveScaleOverride { get; set; } = 1f;
+
+        /// <summary>
+        /// Add a one-shot horizontal velocity that decays over the next moment — a
+        /// dash/lunge/knockback. Folded into the same CharacterController.Move as normal
+        /// movement, so it still collides (you can't lunge through a wall) and composes
+        /// with WASD. Vertical is ignored; use jump/gravity for that.
+        /// </summary>
+        public void AddImpulse(Vector3 velocity)
+        {
+            velocity.y = 0f;
+            externalVelocity += velocity;
+        }
 
         /// <summary>True while crouched. Read by anything that cares how quiet the player is (future NPC alerting).</summary>
         public bool IsCrouching { get; private set; }
@@ -56,7 +72,17 @@ namespace DungeonGen
         /// <summary>Grounded this frame. Head bob reads it so the camera doesn't bob mid-air. Flickers on step descents (see PlayerFootsteps' coyote time), so smooth anything that keys off it.</summary>
         public bool IsGrounded => cc != null && cc.isGrounded;
 
+        /// <summary>
+        /// INTENDED horizontal speed (m/s) this frame — input direction × the current
+        /// speed (walk/sprint/crouch), BEFORE the world blocks it. The push system reads
+        /// this so shouldering a stuck door still delivers a real shove (see IMoveIntent):
+        /// achieved velocity drops to ~0 against a door, but intent stays high while you
+        /// keep walking into it. Crouch lowers it, so sneaking still eases doors gently.
+        /// </summary>
+        public float IntendedSpeed { get; private set; }
+
         CharacterController cc;
+        Vector3 externalVelocity;   // decaying dash/knockback velocity (horizontal), driven by AddImpulse
         float pitch;
         float verticalVelocity;
         float standHeight;
@@ -152,6 +178,11 @@ namespace DungeonGen
             speed *= moveScaleOverride;   // e.g. charging a heavy swing
             Vector3 horizontal = transform.TransformDirection(input) * speed;
 
+            // How hard we're TRYING to move (before the world blocks it) — the push
+            // system scales its shove by this, not achieved velocity, so leaning on a
+            // stuck door still delivers torque. Zero when giving no input.
+            IntendedSpeed = new Vector3(horizontal.x, 0f, horizontal.z).magnitude;
+
             if (OnLadder())
             {
                 // Climb: gravity off, W/S map to up/down, horizontal damped
@@ -173,7 +204,10 @@ namespace DungeonGen
                 verticalVelocity += gravity * Time.deltaTime;
             }
 
-            cc.Move((horizontal + Vector3.up * verticalVelocity) * Time.deltaTime);
+            cc.Move((horizontal + externalVelocity + Vector3.up * verticalVelocity) * Time.deltaTime);
+
+            // The dash/knockback burst bleeds off exponentially (frame-rate independent).
+            externalVelocity *= Mathf.Exp(-externalDamping * Time.deltaTime);
 
             if (Input.GetKeyDown(KeyCode.Escape))
                 Quit();
