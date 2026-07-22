@@ -51,6 +51,48 @@ namespace DungeonGen
         [Tooltip("Scales the raw impulse magnitude BEFORE it drives bone rotation — the single dial for 'real combat hits look rougher/clipped compared to the debug tool.' The per-profile strength values were tuned against a low reference impulse; real combat knockback (light ~5, heavy ~10, bash ~30) is well above that, so the kick math (strength × profile.strength × falloff × 8, uncapped going in) overdrives the spring and slams into maxDeflection — a hard clip that reads as an abrupt, unfinished snap instead of a full arc, instead of the clean motion a lighter impulse produces. Turn this DOWN until a real sword hit looks as fluid as the debug tool at a strength you already like — e.g. if debugStrength 2 looks right and your light swing knocks back at 5, try ~0.4 as a starting point (2/5) and tune from there. Applies to BOTH real hits and the debug tool (same ApplyHit call), so they stay directly comparable.")]
         public float impulseScale = 0.4f;
 
+        [Header("Debug — hit direction arrows")]
+        [Tooltip("Draw an ARROW (not a flat line) for every hit that lands — real combat, thrown props, AND the debug tool below — showing the exact blow direction and point. A plain ray reads ambiguously for a 3D-angled blow (e.g. Heavy Overhead's downward chop); the arrowhead is a flared cross of 4 short lines around the tip so it reads correctly from any camera angle, not just from directly above or beside.")]
+        public bool showHitArrows = true;
+        [Tooltip("Real-hit arrow color (red = something actually landed).")]
+        public Color hitArrowColor = Color.red;
+        [Tooltip("Debug-tool LIVE PREVIEW arrow color (orange = aiming, hasn't fired yet) — deliberately different from hitArrowColor so you can tell 'where it would land' apart from 'a hit that landed'.")]
+        public Color previewArrowColor = new Color(1f, 0.55f, 0f);
+        [Tooltip("Max arrow shaft length (m). A real hit's arrow scales with its actual (post-impulseScale) strength up to this cap, so a light tap and a bash visibly draw as different lengths — not just different colors/angles.")]
+        public float arrowMaxLength = 1f;
+        [Tooltip("Seconds a REAL hit's arrow stays visible. The debug tool's live preview redraws every frame while the tool is on, so this doesn't apply to it.")]
+        public float hitArrowDuration = 1.5f;
+        [Tooltip("Length (m) of the four flared arrowhead lines.")]
+        public float arrowHeadLength = 0.18f;
+        [Tooltip("Spread angle (deg) of the arrowhead lines away from the shaft.")]
+        public float arrowHeadAngle = 22f;
+
+        /// <summary>
+        /// A 3D arrow: a shaft plus a flared cross of 4 short lines at the tip (up/
+        /// down/left/right relative to the shaft's own facing), so the head reads as
+        /// an arrow from ANY viewing angle — a single flat 2-line head can look like a
+        /// plain line when viewed nearly edge-on, exactly the risk for a steeply
+        /// angled blow like Heavy Overhead's.
+        /// </summary>
+        void DrawArrow(Vector3 origin, Vector3 direction, float length, Color color, float duration)
+        {
+            if (direction.sqrMagnitude < 1e-8f || length <= 0f) return;
+            Vector3 dir = direction.normalized;
+            Vector3 tip = origin + dir * length;
+            Debug.DrawLine(origin, tip, color, duration);
+
+            Quaternion look = Quaternion.LookRotation(dir);
+            float headLen = Mathf.Min(arrowHeadLength, length * 0.5f);
+            Vector3 right = look * Quaternion.Euler(0f, 180f - arrowHeadAngle, 0f) * Vector3.forward;
+            Vector3 left  = look * Quaternion.Euler(0f, 180f + arrowHeadAngle, 0f) * Vector3.forward;
+            Vector3 up    = look * Quaternion.Euler(180f - arrowHeadAngle, 0f, 0f) * Vector3.forward;
+            Vector3 down  = look * Quaternion.Euler(180f + arrowHeadAngle, 0f, 0f) * Vector3.forward;
+            Debug.DrawRay(tip, right.normalized * headLen, color, duration);
+            Debug.DrawRay(tip, left.normalized * headLen, color, duration);
+            Debug.DrawRay(tip, up.normalized * headLen, color, duration);
+            Debug.DrawRay(tip, down.normalized * headLen, color, duration);
+        }
+
         [Header("Spring")]
         [Tooltip("How hard bones pull back to the animated pose. Higher = snappier recovery.")]
         public float stiffness = 140f;
@@ -107,6 +149,15 @@ namespace DungeonGen
                 bones[i].rotVel += localAxis * (strength * p.strength * falloff * 8f);
             }
             active = true;
+
+            if (showHitArrows)
+            {
+                // Length scales with the ACTUAL (post-impulseScale) strength driving the
+                // kick, capped at arrowMaxLength — a light tap and a bash read as visibly
+                // different lengths, not just the same-size arrow in a different spot.
+                float len = Mathf.Clamp(strength * 0.1f, 0.25f, arrowMaxLength);
+                DrawArrow(worldPoint, impulse / rawMag, len, hitArrowColor, hitArrowDuration);
+            }
         }
 
         /// <summary>Nearest profile by circular angle. `blowDir` is the push (away from the attacker).</summary>
@@ -182,7 +233,7 @@ namespace DungeonGen
             Vector3 from = DebugFromDir();
             Vector3 at = DebugPoint();
             Debug.DrawLine(at + from * 0.6f, at, Color.yellow);   // incoming, from the attacker
-            Debug.DrawRay(at, -from * 0.4f, Color.red);           // the push
+            if (showHitArrows) DrawArrow(at, -from, arrowMaxLength, previewArrowColor, 0f);   // the push, live preview (orange, redrawn every frame)
 
             if (debugAutoFire && Time.time >= debugNextFire)
             {
