@@ -204,19 +204,25 @@ namespace DungeonGen
             Vector3 beforePos = transform.position;
             Controller.Move(motion);
 
-            // ISOLATED-VARIABLE RETRY: the exact math from commit 919fe8b (snap fully
-            // back to horizontalIntent's magnitude — never intended+tolerance, which
-            // was THE compounding-drift bug) but WITHOUT 1b868da's Controller.enabled
-            // toggle, which is the one variable that changed between "drift" (attempt 2,
-            // no toggle) and "jitter" (attempt 3, with toggle). Testing whether the
-            // toggle itself was the source of the jitter rather than the correction
-            // concept. debugPush logs BOTH the pre-correction spike and the post-
-            // correction result on the same line so this can be verified numerically.
+            // Reject-unwanted-push only engages while NOTHING legitimate is driving the
+            // NPC (impulseTimer <= 0 — no active knockback). That's the one condition
+            // under which "any displacement is unwanted" is actually true. Confirmed via
+            // debugPush why it must exclude active impulses: a melee hit also fires
+            // Hitstop (a brief Time.timeScale dip), which shrinks Time.deltaTime for a
+            // few frames right after impact — horizontalIntent = (want+impulse+sep)*dt,
+            // so a real, large knockback (impulse~9-10) still collapsed to a tiny
+            // "intended" budget purely because dt was tiny that frame, even though the
+            // knockback itself was completely legitimate. The correction then clamped
+            // Move()'s real result down to that artificially tiny budget — knockback got
+            // silently reduced to a fraction of a percent of its real distance. Skipping
+            // correction entirely during an active impulse sidesteps the hitstop/dt
+            // interaction rather than trying to out-guess it.
+            bool rejectPush = impulseTimer <= 0f;
             Vector3 rawAfterPos = transform.position;
             Vector3 rawActualHorizontal = new Vector3(rawAfterPos.x - beforePos.x, 0f, rawAfterPos.z - beforePos.z);
             float intendedMag = horizontalIntent.magnitude;
             float overshoot = rawActualHorizontal.magnitude - intendedMag;
-            bool corrected = overshoot > pushTolerance;
+            bool corrected = rejectPush && overshoot > pushTolerance;
             if (corrected)
             {
                 Vector3 excess = rawActualHorizontal - rawActualHorizontal.normalized * intendedMag;
@@ -232,7 +238,7 @@ namespace DungeonGen
             if (debugPush)
             {
                 Debug.Log($"[NpcPush] {name}: intended={intendedMag:0.0000}m rawActual={rawActualHorizontal.magnitude:0.0000}m " +
-                          $"finalActual={finalHorizontal.magnitude:0.0000}m corrected={corrected} " +
+                          $"finalActual={finalHorizontal.magnitude:0.0000}m corrected={corrected} rejectPush={rejectPush} " +
                           $"(want={want.magnitude:0.00} impulse={impulse.magnitude:0.00} sep={sep.magnitude:0.00}) " +
                           $"grounded={Controller.isGrounded} ccVel={Controller.velocity}", this);
             }
