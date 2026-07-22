@@ -31,6 +31,18 @@ namespace DungeonGen
     /// Collider + CharacterJoint per bone. Put those colliders on the NPC layer
     /// (NPC×NPC collision is already off, so they won't fight the capsule or each
     /// other). Then add this component; it finds the bodies itself.
+    ///
+    /// FIELD LESSON — wild limb whipping on death, isolated to real hits (a manual
+    /// drop-into-gravity test looks fine): the project's default solver iterations
+    /// (6, sized for simple single bodies) badly under-resolve a many-joint ragdoll
+    /// chain under a strong impulse, the same class of instability PhysicsDoor's
+    /// hinge needed raising well above that default to fix. Compounded by DEATH
+    /// reusing the live reaction's forceScale (tuned for a graze-strength flinch) on
+    /// top of NpcHitReactions' flat killing-blow boost — a strong knockback (heavy
+    /// swing, bash) then hit the ragdoll far harder than a flinch ever does, and
+    /// death has no early blend-back to cut the resulting chaos short. Fixed with
+    /// per-bone solverIterations/solverVelocityIterations and a separate, lower
+    /// deathForceScale.
     /// </summary>
     [RequireComponent(typeof(Health))]
     [DisallowMultipleComponent]
@@ -58,6 +70,10 @@ namespace DungeonGen
         [Header("Force")]
         [Tooltip("Multiplies the blow's impulse into ragdoll force. THE strength dial.")]
         public float forceScale = 2.5f;
+        [Tooltip("Solver iterations per ragdoll bone. The Unity PROJECT DEFAULT (6) is sized for simple single bodies, not a many-joint ragdoll chain under a strong impulse — too few iterations under-resolves the CharacterJoint chain, and the symptom is limbs whipping/oscillating wildly right after a hard hit. Most visible on DEATH, where gravity stays on and nothing blends it back early so you watch the instability play out. Same lesson as PhysicsDoor's hinge (also needed well above the project default) — raise this, don't lower the force, to fix jitter without making hits feel weaker.")]
+        public int solverIterations = 20;
+        [Tooltip("Velocity solver iterations per bone. Same reasoning as Solver Iterations.")]
+        public int solverVelocityIterations = 8;
         [Tooltip("Bones within this radius (m) of the impact also react, falling off with distance.")]
         public float spreadRadius = 0.7f;
         [Tooltip("How much neighbouring bones (arms) TRAIL the struck torso vs. staying with the animation. Small: they follow the tipping body rather than punching off on their own. 0 = only the struck bone reacts.")]
@@ -92,6 +108,8 @@ namespace DungeonGen
         public bool debugFullRagdoll = false;
 
         [Header("Death")]
+        [Tooltip("Separate force multiplier for the KILLING blow, decoupled from the live reaction's forceScale. NpcHitReactions already adds a flat +3 boost to the death impulse so even a weak killing tap topples convincingly — multiplying THAT by forceScale (tuned for a graze-strength flinch) compounds into an excessive impulse on an already-strong killing hit (a heavy swing, a bash), which is what sends limbs whipping/oscillating at the joints. Keep this noticeably lower than forceScale — a corpse only needs a modest kick to read as a convincing collapse; gravity does the rest.")]
+        public float deathForceScale = 1.2f;
         [Tooltip("Seconds the ragdoll corpse lies there before sinking away.")]
         public float corpseLinger = 8f;
         [Tooltip("Seconds to sink the corpse through the floor, then destroy.")]
@@ -148,6 +166,10 @@ namespace DungeonGen
                 // Follow the animation until hit.
                 bodies[i].isKinematic = true;
                 bodies[i].interpolation = RigidbodyInterpolation.Interpolate;
+                // See the Solver Iterations tooltip — the project default badly
+                // under-resolves a many-joint ragdoll chain under a strong impulse.
+                bodies[i].solverIterations = solverIterations;
+                bodies[i].solverVelocityIterations = solverVelocityIterations;
             }
 
             ClassifyLowerBody();
@@ -423,7 +445,7 @@ namespace DungeonGen
             blending = false;
 
             EnterPhysics(fullBody: true, gravity: true);   // a corpse collapses whole, under gravity
-            ApplyForce(point, impulse * forceScale);
+            ApplyForce(point, impulse * deathForceScale);  // deathForceScale, NOT forceScale — see its tooltip
             StartCoroutine(DeathRoutine());
         }
 
