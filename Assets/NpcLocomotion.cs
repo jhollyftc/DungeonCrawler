@@ -177,6 +177,16 @@ namespace DungeonGen
             if (Agent == null || Controller == null) return;
 
             float dt = Time.deltaTime;
+            // Knockback deliberately runs on UNSCALED time — see the impulse block and
+            // horizontalIntent below. Confirmed via debugPush: a melee hit also fires
+            // Hitstop (a Time.timeScale dip), and scaled dt during that dip could shrink
+            // to near-zero for the entire ~0.05-0.08s window depending on framerate
+            // timing — sometimes most of the dip's real-time duration landed inside the
+            // logged frames (killing nearly all the knockback distance), sometimes it
+            // didn't (letting it through), a framerate-dependent coin flip. The world
+            // visually freezing during hitstop shouldn't mean the VICTIM stops flying
+            // back; that's what sells the impact.
+            float udt = Time.unscaledDeltaTime;
 
             // desiredVelocity already contains steering + local avoidance. It reads
             // zero while a path is still being computed — don't mistake that for
@@ -185,7 +195,7 @@ namespace DungeonGen
 
             if (impulseTimer > 0f)
             {
-                impulseTimer -= dt;
+                impulseTimer -= udt;
                 impulse = Vector3.Lerp(Vector3.zero, impulse, Mathf.Clamp01(impulseTimer / Mathf.Max(0.01f, impulseDecay)));
                 if (impulseTimer <= 0f) impulse = Vector3.zero;
             }
@@ -198,7 +208,9 @@ namespace DungeonGen
             verticalVelocity = Mathf.Max(verticalVelocity, -maxFallSpeed);
 
             Vector3 sep = Separation();
-            Vector3 horizontalIntent = (want + impulse + sep) * dt;
+            // Pathing/separation pace with SCALED time (pauses with hitstop/slow-mo);
+            // the impulse contribution paces with UNSCALED time (ignores it) — see udt.
+            Vector3 horizontalIntent = (want + sep) * dt + impulse * udt;
             Vector3 motion = horizontalIntent + Vector3.up * verticalVelocity * dt;
 
             Vector3 beforePos = transform.position;
