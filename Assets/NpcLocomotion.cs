@@ -241,7 +241,19 @@ namespace DungeonGen
             if (overshoot <= pushTolerance) return;
 
             Vector3 excess = actualHorizontal - actualHorizontal.normalized * intendedMag;
+
+            // Toggle Controller.enabled around the direct write — same pattern
+            // WarpToNavMesh already uses. CharacterController caches internal
+            // collision state per Move() call; writing transform.position directly
+            // while it's still enabled leaves that cache pointing at the PRE-
+            // correction position, so next frame's Move() resolves from a picture of
+            // the capsule that doesn't match reality — and that mismatch is itself a
+            // fresh source of "overlap", corrected again next frame, and so on. Zero
+            // NET drift (each correction is exact), but a rapid in-place jitter —
+            // exactly what standing pressed against the goblin produced without this.
+            Controller.enabled = false;
             transform.position -= excess;
+            Controller.enabled = true;
         }
 
         /// <summary>
