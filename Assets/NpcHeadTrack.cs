@@ -12,9 +12,18 @@ namespace DungeonGen
     /// feel alive.
     ///
     /// Rig-agnostic on purpose: rather than assuming the head bone's local axes
-    /// (a Blender bone's "forward" is rarely Unity's +Z), it applies a WORLD-space
-    /// rotation delta from the body's forward toward the target, clamped to
-    /// yaw/pitch limits. Works on any armature — assign the head bone, done.
+    /// (a Blender bone's "forward" is rarely Unity's +Z), it applies a rotation
+    /// delta from the body's forward toward the target, clamped to yaw/pitch
+    /// limits. Works on any armature — assign the head bone, done.
+    ///
+    /// Also REST-ORIENTATION-agnostic: the yaw/pitch clamp is measured in the
+    /// body's own local frame (transform.right/up/forward), not world axes — a
+    /// standing NPC's "flat, world-Y-up" plane happens to match its own horizontal
+    /// plane only because it's upright, not because that's a rule. The identical
+    /// component works unmodified on an NPC lying flat (e.g. a skeleton in a
+    /// coffin, its own forward pointing at the ceiling): yaw still means "turns its
+    /// head side to side," pitch still means "tips it up/down," both correct
+    /// relative to however the body actually sits in the world.
     /// </summary>
     [DisallowMultipleComponent]
     public class NpcHeadTrack : MonoBehaviour
@@ -97,11 +106,19 @@ namespace DungeonGen
                 {
                     lookDir = to / dist;
 
-                    // Clamp to the neck's range, measured against BODY forward —
-                    // if the player is behind, the head lets go instead of owling.
-                    Vector3 flat = new Vector3(lookDir.x, 0f, lookDir.z);
-                    float yaw = Vector3.Angle(transform.forward, flat.sqrMagnitude > 0.0001f ? flat.normalized : transform.forward);
-                    float pitch = Mathf.Asin(Mathf.Clamp(lookDir.y, -1f, 1f)) * Mathf.Rad2Deg;
+                    // Clamp to the neck's range, measured in the BODY'S OWN local
+                    // frame (right/up/forward) rather than world axes — a standing
+                    // goblin's "flat, world-Y-up" plane happens to match its own
+                    // horizontal plane, but that's a coincidence of being upright, not
+                    // a rule. A skeleton lying flat on its back in a coffin has its
+                    // OWN forward pointing at the ceiling and its OWN up pointing at
+                    // its feet; measuring yaw/pitch against world axes there would be
+                    // nonsense. Projecting into local space makes "yaw = turns its
+                    // head side to side" and "pitch = tips it up/down" correct for
+                    // ANY rest orientation, upright or lying down, with no new fields.
+                    Vector3 localLook = transform.InverseTransformDirection(lookDir);
+                    float yaw = Mathf.Atan2(localLook.x, localLook.z) * Mathf.Rad2Deg;
+                    float pitch = Mathf.Atan2(localLook.y, new Vector2(localLook.x, localLook.z).magnitude) * Mathf.Rad2Deg;
 
                     if (yaw <= maxYaw && Mathf.Abs(pitch) <= maxPitch)
                     {
