@@ -120,11 +120,20 @@ namespace DungeonGen
                     // measuring against world axes there would be nonsense — and if
                     // that lying-flat pose comes from ANIMATION rather than a rotated
                     // root, even the ROOT's own axes are wrong (see bodyReference).
+                    // Atan2 is SIGNED (-180..180), unlike the old Vector3.Angle it
+                    // replaced (always unsigned, 0..180) — MUST compare its Abs(),
+                    // exactly like pitch already does. Missing this was a real bug:
+                    // any time the player was behind-and-to-ONE-side (a negative yaw),
+                    // "yaw <= maxYaw" passed trivially (any negative number is <= a
+                    // positive maxYaw), completely bypassing the clamp on that side —
+                    // the head could track all the way around behind, but only from
+                    // one direction, which is exactly the asymmetric symptom this
+                    // produced.
                     Vector3 localLook = Body.InverseTransformDirection(lookDir);
                     float yaw = Mathf.Atan2(localLook.x, localLook.z) * Mathf.Rad2Deg;
                     float pitch = Mathf.Atan2(localLook.y, new Vector2(localLook.x, localLook.z).magnitude) * Mathf.Rad2Deg;
 
-                    if (yaw <= maxYaw && Mathf.Abs(pitch) <= maxPitch)
+                    if (Mathf.Abs(yaw) <= maxYaw && Mathf.Abs(pitch) <= maxPitch)
                     {
                         // Full strength up close, fading out toward the radius edge.
                         float fadeFrom = trackRadius * falloffStart;
