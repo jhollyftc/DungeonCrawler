@@ -30,6 +30,11 @@ namespace DungeonGen
     {
         [Tooltip("The head bone from the armature hierarchy. Left empty, the first skinned bone whose name contains 'head' is used (and a warning names the pick so you can verify).")]
         public Transform headBone;
+        [Tooltip("Which transform's forward/up/right defines the neck's rest frame for the yaw/pitch clamp. Left empty, uses this NPC's own root — correct for a standing NPC, whose root rotation IS its visual orientation. But if the rest pose comes from ANIMATION instead of a rotated root — e.g. a skeleton lying flat in a coffin via a 'lying down' clip, its root left completely unrotated at the standing default — the root's forward/up no longer means anything relative to what's actually on screen. Assign a bone that DOES track the current animated pose (its hips or spine/chest bone) so the clamp measures against the character's real current orientation instead of an un-posed root.")]
+        public Transform bodyReference;
+
+        /// <summary>The transform whose forward/up/right defines "body orientation" for the clamp and the final rotation — bodyReference if assigned, else this NPC's own root.</summary>
+        Transform Body => bodyReference != null ? bodyReference : transform;
 
         [Header("When to track")]
         [Tooltip("Track the player when they're within this range (m).")]
@@ -106,17 +111,16 @@ namespace DungeonGen
                 {
                     lookDir = to / dist;
 
-                    // Clamp to the neck's range, measured in the BODY'S OWN local
-                    // frame (right/up/forward) rather than world axes — a standing
-                    // goblin's "flat, world-Y-up" plane happens to match its own
-                    // horizontal plane, but that's a coincidence of being upright, not
-                    // a rule. A skeleton lying flat on its back in a coffin has its
-                    // OWN forward pointing at the ceiling and its OWN up pointing at
-                    // its feet; measuring yaw/pitch against world axes there would be
-                    // nonsense. Projecting into local space makes "yaw = turns its
-                    // head side to side" and "pitch = tips it up/down" correct for
-                    // ANY rest orientation, upright or lying down, with no new fields.
-                    Vector3 localLook = transform.InverseTransformDirection(lookDir);
+                    // Clamp to the neck's range, measured in Body's OWN local frame
+                    // (right/up/forward) rather than world axes — a standing goblin's
+                    // "flat, world-Y-up" plane happens to match its own horizontal
+                    // plane, but that's a coincidence of being upright, not a rule. A
+                    // skeleton lying flat on its back in a coffin has its OWN forward
+                    // pointing at the ceiling and its OWN up pointing at its feet;
+                    // measuring against world axes there would be nonsense — and if
+                    // that lying-flat pose comes from ANIMATION rather than a rotated
+                    // root, even the ROOT's own axes are wrong (see bodyReference).
+                    Vector3 localLook = Body.InverseTransformDirection(lookDir);
                     float yaw = Mathf.Atan2(localLook.x, localLook.z) * Mathf.Rad2Deg;
                     float pitch = Mathf.Atan2(localLook.y, new Vector2(localLook.x, localLook.z).magnitude) * Mathf.Rad2Deg;
 
@@ -137,7 +141,8 @@ namespace DungeonGen
             // World-space delta from "where the body faces" to "where the player
             // is" (or was, while fading out), applied on top of the animated pose.
             // No assumptions about the head bone's local axes — works on any rig.
-            Quaternion delta = Quaternion.FromToRotation(transform.forward, lastLookDir);
+            // Same Body reference as the clamp above — never mix the two.
+            Quaternion delta = Quaternion.FromToRotation(Body.forward, lastLookDir);
             headBone.rotation = Quaternion.Slerp(Quaternion.identity, delta, weight) * headBone.rotation;
         }
 
