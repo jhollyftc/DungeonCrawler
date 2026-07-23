@@ -183,6 +183,15 @@ namespace DungeonGen
         bool haveBaseFov;
 
         bool carriedLastFrame;
+        // Latches the moment a throw consumes an LMB press, cleared only on full
+        // release — NOT a one-frame flag like carriedLastFrame. Now that light
+        // attacks respond to a HELD button (not just a fresh press), a one-frame
+        // guard isn't enough: if the player is still physically holding LMB even a
+        // moment after the throw-click, the hold gets picked up as a fresh light-
+        // attack signal the very next frame, and the sword swings from the same
+        // click that threw the prop. This lasts as long as that SAME continuous
+        // hold does; a genuinely new press-after-release is unaffected.
+        bool suppressLightUntilRelease;
         bool previewReleased;
 
         // Shield counter-motion: a target set by whatever pose the sword took this
@@ -224,6 +233,10 @@ namespace DungeonGen
 
         void Update()
         {
+            // A genuinely NEW press (after a full release) always clears the throw
+            // guard, checked once here so every path below sees the same answer.
+            if (Input.GetMouseButtonUp(lightMouseButton)) suppressLightUntilRelease = false;
+
             // Default the shield to rest each frame; whichever pose runs below sets
             // its target. Idle frames therefore ease it home on their own.
             shieldTargetPos = Vector3.zero;
@@ -261,6 +274,7 @@ namespace DungeonGen
             TickShield();   // every path ends here, so the shield always eases toward its target
             TickFov();
             carriedLastFrame = carry != null && carry.IsCarrying;
+            if (carriedLastFrame) suppressLightUntilRelease = true;
         }
 
         // ---------------- Input ----------------
@@ -273,7 +287,7 @@ namespace DungeonGen
             // if a chain ever isn't caught by the buffer below (e.g. a longer cooldown
             // than inputBuffer). The buffer is what makes the common case seamless —
             // this is what guarantees holding LMB never just stops.
-            if (Input.GetMouseButton(lightMouseButton) && CanSwing())
+            if (Input.GetMouseButton(lightMouseButton) && !suppressLightUntilRelease && CanSwing())
                 StartSwing(NextLight(), isHeavy: false);
         }
 
@@ -531,7 +545,7 @@ namespace DungeonGen
             // for a held button (NOT latched — a stale "was held sometime during the
             // window" flag would keep firing one swing after release, sneaking in an
             // extra attack the instant you let go).
-            bool continueChain = bufferedLight || Input.GetMouseButton(lightMouseButton);
+            bool continueChain = bufferedLight || (Input.GetMouseButton(lightMouseButton) && !suppressLightUntilRelease);
             if (continueChain && lightCombo.Count > 0 && CanSwing(ignoreCooldown: true))
             {
                 bufferedLight = false;
@@ -750,7 +764,7 @@ namespace DungeonGen
             // early (bufferedLight) fires regardless of current hold state; a held
             // button is checked fresh right now, not latched, so releasing before the
             // bash finishes doesn't sneak in an extra attack.
-            bool continueChain = bufferedLight || Input.GetMouseButton(lightMouseButton);
+            bool continueChain = bufferedLight || (Input.GetMouseButton(lightMouseButton) && !suppressLightUntilRelease);
             if (continueChain && lightCombo.Count > 0 && CanSwing(ignoreCooldown: true))
             {
                 bufferedLight = false;
@@ -774,6 +788,7 @@ namespace DungeonGen
             TickSword();
             TickFov();
             carriedLastFrame = carry != null && carry.IsCarrying;
+            if (carriedLastFrame) suppressLightUntilRelease = true;
         }
 
         /// <summary>
