@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -93,6 +94,8 @@ namespace DungeonGen
         private DungeonVisualizer dungeon;
         private PlayerCarry carry;
         private Health health;
+        static readonly RoomType[] warpRoomTypes = (RoomType[])Enum.GetValues(typeof(RoomType));
+        int warpTypeIndex;
 
         void Awake()
         {
@@ -138,6 +141,13 @@ namespace DungeonGen
             // comparison meaningful rather than just a different random dungeon.
             if (Input.GetKeyDown(KeyCode.PageUp)) ChangeDepth(+1);
             if (Input.GetKeyDown(KeyCode.PageDown)) ChangeDepth(-1);
+
+            // Home / End: cycle the warp-target RoomType; F2: teleport there. Lets
+            // you jump straight to a Throne/Shrine/etc. to check its props/lighting
+            // without walking the whole generated layout to find one.
+            if (Input.GetKeyDown(KeyCode.Home)) warpTypeIndex = (warpTypeIndex - 1 + warpRoomTypes.Length) % warpRoomTypes.Length;
+            if (Input.GetKeyDown(KeyCode.End)) warpTypeIndex = (warpTypeIndex + 1) % warpRoomTypes.Length;
+            if (Input.GetKeyDown(KeyCode.F2)) WarpToRoomType(warpRoomTypes[warpTypeIndex]);
 
             // Cursor capture.
             if (Input.GetKeyDown(KeyCode.Escape))
@@ -228,6 +238,58 @@ namespace DungeonGen
             ReloadScene();
         }
 
+        /// <summary>
+        /// Teleport the player into the first room of the given type this seed —
+        /// jump straight to a Throne/Shrine/etc. to check its props/lighting
+        /// without walking the generated layout to find one. Same ground-snap
+        /// approach as DungeonPlayerSpawner (RaycastAll + nearest-to-nominal-floor),
+        /// so a warp lands exactly where a fresh spawn there would have.
+        /// </summary>
+        void WarpToRoomType(RoomType type)
+        {
+            if (dungeon == null || dungeon.Generator == null) return;
+
+            Room room = null;
+            foreach (var r in dungeon.Generator.Rooms)
+                if (r.Type == type) { room = r; break; }
+
+            if (room == null)
+            {
+                Debug.LogWarning($"[Warp] No {type} room this seed.");
+                return;
+            }
+
+            Vector3Int fc = room.InteriorFloorCell;
+            Vector3 floorWorld = dungeon.transform.position + new Vector3(fc.x + 0.5f, fc.y, fc.z + 0.5f) * dungeon.cellSize;
+            Vector3 dest = floorWorld + Vector3.up * (cc.height * 0.5f + 0.1f);
+
+            Vector3 rayStart = floorWorld + Vector3.up * (dungeon.cellSize * 0.9f);
+            var hits = Physics.RaycastAll(rayStart, Vector3.down, dungeon.cellSize * 3f);
+            if (hits.Length > 0)
+            {
+                RaycastHit best = hits[0];
+                float bestDelta = Mathf.Abs(best.point.y - floorWorld.y);
+                for (int i = 1; i < hits.Length; i++)
+                {
+                    float delta = Mathf.Abs(hits[i].point.y - floorWorld.y);
+                    if (delta < bestDelta) { best = hits[i]; bestDelta = delta; }
+                }
+                dest = best.point + Vector3.up * (cc.height * 0.5f + 0.05f);
+            }
+
+            // Toggling the CharacterController off/on around the position write is
+            // the safe way to teleport it — writing transform.position on an enabled
+            // CC still lets its next Move() re-resolve overlap against the OLD
+            // position's residual state.
+            cc.enabled = false;
+            transform.position = dest;
+            cc.enabled = true;
+            externalVelocity = Vector3.zero;
+            verticalVelocity = 0f;
+
+            Debug.Log($"[Warp] Warped to {type} room at {dest}");
+        }
+
         /// <summary>Which room (by type) the player's feet are standing in right now, for
         /// the dev overlay — same world-to-cell + RoomAt lookup DungeonFogController uses
         /// to pick a room's color, so this can never disagree with what the fog shows.</summary>
@@ -252,7 +314,8 @@ namespace DungeonGen
             // exact (seed, depth) that produced it straight off the screen — the
             // dungeon is a pure function of those two, so that pair reproduces it.
             string header = dungeon != null
-                ? $"Seed: {dungeon.seed}\nDepth: {dungeon.config.depth}\nRoom: {CurrentRoomLabel()}\n"
+                ? $"Seed: {dungeon.seed}\nDepth: {dungeon.config.depth}\nRoom: {CurrentRoomLabel()}\n" +
+                  $"Warp Target: {warpRoomTypes[warpTypeIndex]}\n"
                 : "";
             if (health != null)
                 header += $"HP: {health.Current:0}/{health.max:0}\n";
@@ -272,9 +335,11 @@ namespace DungeonGen
                 "Q (hold, release) - Shield Bash\n" +
                 "F1 - New Dungeon (same depth)\n" +
                 "PgUp/PgDn - Depth +/- (same seed)\n" +
+                "Home/End - Warp Target Room +/-\n" +
+                "F2 - Warp to Target Room\n" +
                 "Esc - Quit";
 
-            GUI.Label(new Rect(Screen.width - 260f, 10f, 250f, 300f), text, style);
+            GUI.Label(new Rect(Screen.width - 260f, 10f, 250f, 330f), text, style);
         }
 
         /// <summary>
