@@ -522,13 +522,19 @@ Formula-driven with authored override points (the user's explicit choice).
   are public — crouch is the seed of future NPC alerting (quiet = unseen). Also
   hosts the **dev overlay** (`OnGUI`, `showControls`) showing live **seed +
   depth** (read from the visualizer each frame, never cached — seed re-randomizes
-  on F1) and the **debug keys**: F1 = new dungeon at the same depth, **PgUp/PgDn =
+  on F1), **current room** (`CurrentRoomLabel`, by `RoomType`, or "Hallway") — the
+  same world-to-cell + `RoomAt` lookup `DungeonFogController` uses to pick a room's
+  fog color, so the readout can never disagree with what the fog shows — and the
+  **debug keys**: F1 = new dungeon at the same depth, **PgUp/PgDn =
   depth ±1 with the seed PINNED** (watch one seed grow/shrink with depth). Depth
   keys survive the scene reload via `DungeonVisualizer.PendingSeed`/`PendingDepth`
   statics, consumed in `Generate()` before the generator is built (depth drives
   room count + grid size); runtime-only, serialized inspector values untouched.
   NB: `OnGUI` must be a CLASS method — nested inside `Update()` as a local
-  function it compiles clean and silently never runs (real bug).
+  function it compiles clean and silently never runs (real bug). **Keep the
+  overlay's printed control list in sync with actual bindings** — it drifted
+  behind real melee input (LMB/RMB/Q) for a while before being refreshed; it's
+  authored text, not derived from the input code, so nothing catches it going stale.
 - **FlyCamera**, **PlayerInteractor** (SphereCast, E key, `IInteractable`; stands
   down while PlayerCarry holds something so E is unambiguous).
 - **HingedDoor** — the ORIGINAL scripted door (E to open, world-up swing axis;
@@ -661,7 +667,25 @@ Formula-driven with authored override points (the user's explicit choice).
   track live swing speed + one-shot thunk/slam (`OnClosed`/`OnSlamOpen`, carrying
   impact speed → volume). Impacts and creak use SEPARATE reference speeds (the door
   hits the closed stop far slower than it peaks). Kinematic toggle = a locked door
-  (future).
+  (future). **Self-closing spring vs. an active push — competing solver terms are
+  the real enemy:** the spring, push torque, and depenetration correction fighting
+  simultaneously under a limited solver iteration count is what actually pops/tunnels
+  a hinge, so `Push()` suppresses `hinge.useSpring` for `pushSpringSuppressTime`
+  after every push (spring resumes once the suppression window elapses with no new
+  push) — confirmed by the user's own test that disabling the spring entirely made
+  doors far more stable. Two more hardening passes worth knowing the REASON for, not
+  just the values: an unconditional per-`FixedUpdate` clamp on both
+  `doorBody.angularVelocity` (`maxSwingSpeed`) and `.linearVelocity` (`maxLinearSpeed`)
+  — the existing in-`Push()` check only prevented ADDING more torque, it never
+  clamped velocity arriving from elsewhere (e.g. depenetration); and
+  `limitContactDistance` (a soft cushion before the joint's hard limit, was
+  hardcoded 0). Both came from reviewing an external AI-written troubleshooting
+  doc against the actual code — most of its "core stability" advice was already
+  implemented (often exceeding its suggested values), these two were the genuinely
+  new low-risk items; its `Enable Preprocessing: On` suggestion was deliberately
+  NOT taken (disagrees with our tested `false`, and community consensus on that
+  flag is split) — a lesson in verifying AI-sourced advice against ground truth
+  instead of applying it wholesale.
 - **Carrying / throwing (`PlayerCarry` + `Carryable`)** — pick up (via
   `IInteractable`/E), carry, drop (E), throw (LMB). The carry is **VELOCITY-DRIVEN,
   not a kinematic parent**: the prop stays a fully dynamic Rigidbody pulled toward
@@ -691,6 +715,17 @@ Formula-driven with authored override points (the user's explicit choice).
   carrying into a distraction mechanic. Nothing listens yet. Together with
   `IsCrouching` and the door's quiet-swing threshold, the SENSING side of NPC
   alerting is largely built ahead of any consumer.
+- **HangingCageAudio** — the squeak/creak counterpart to `PhysicsDoorAudio` for a
+  hanging, chain-hinged prop (cage, chandelier): a LOOPING creak whose volume/pitch
+  track live swing speed, silent at rest. Unlike a `PhysicsDoor` there's no existing
+  component authoring a `SwingSpeed`, so it reads the Rigidbody's own
+  `angularVelocity` directly — put it on the OUTERMOST body of the chain (the cage,
+  not a link): a hinge-chained Rigidbody's angular velocity is measured in WORLD
+  space, so each link's swing adds onto the one above it, and the cage's own
+  angularVelocity already reflects the combined motion of every link between it and
+  the ceiling anchor with no need to sample the chain. Pairs with the existing
+  `ImpactAudio` on the same body for a metallic clang on player contact — same
+  continuous-vs-one-shot split `PhysicsDoorAudio` makes between its creak and thunk.
 - **Ladder climbing** — `LadderClimbZone` (trigger marker authored on the
   ladder prefab; extend the trigger ~0.5m above the top opening so cresting
   feels right). FirstPersonController POLLS an overlap sphere each frame
@@ -769,25 +804,72 @@ Formula-driven with authored override points (the user's explicit choice).
   double-hit, casual shoving never hurts). Damage shares the `ImpactForce` curve with
   audio so they can't drift; knockback is MOMENTUM-derived (mass × speed), no per-prop
   tuning.
-- **NPC reactions (`NpcHitReactions`, `NpcBoneReaction`, `NpcCombatAudio`,
-  `NpcAnimatorDriver`, `NpcHeadTrack`)** — how an NPC suffers, all as LateUpdate bone
-  layers stacked on the Animator's pose so they blend with whatever's playing:
-  - `NpcHitReactions`: knockback via the locomotion capability (thrown hits redirect
-    part upward onto a real ballistic arc), stagger scaling with the shove, `ForceAlert`
-    at the attacker, and death — animation if the controller has a `Die` trigger, code
-    topple as fallback, then an **eased sink through the floor** (the despawn a player
-    never catches happening).
-  - `NpcBoneReaction`: per-bone hit flinch — angular impulses into bones near impact
-    (distance falloff), spring-return to pose. Chosen over TRUE ragdoll-blending
-    deliberately (Unity's ragdoll wizard is humanoid-only; this is a generic tripo
-    rig). Rig-agnostic (bones from the skinned mesh), zero cost while settled, same
-    momentum input as knockback so skeleton and body agree how hard the hit was.
+- **NPC reactions (`NpcHitReactions`, `NpcFlinch`, `NpcRagdollReaction`,
+  `NpcCombatAudio`, `NpcAnimatorDriver`, `NpcHeadTrack`)** — how an NPC suffers, all
+  as LateUpdate bone layers stacked on the Animator's pose so they blend with
+  whatever's playing:
+  - `NpcHitReactions`: the router. Knockback via the locomotion capability (thrown
+    hits redirect part upward onto a real ballistic arc), stagger scaling with the
+    shove, `Flinch(...)`/`ForceAlert` at the attacker. `applyCapsuleKnockback` (bool)
+    gates ONLY the capsule-slide impulse — stagger and the bone flinch stay
+    unconditional — so the slide can be isolated from the bone reaction while tuning
+    either in isolation. Death: animation if the controller has a `Die` trigger, code
+    topple as fallback, an **eased sink through the floor** (the despawn a player
+    never catches happening) — and, critically, **disables `flinch`/`boneReaction`
+    BEFORE calling `ragdoll.Die(...)`**. Skipping that order was a real bug: `NpcFlinch`
+    runs in LateUpdate and kept overwriting bone rotations after death, fighting the
+    ragdoll's own physics for the same bones (animation and physics must never drive
+    one bone at once — see `NpcRagdollReaction` below for the deliberate reverse case).
+  - `NpcFlinch`: per-bone hit flinch — angular impulses into bones near impact
+    (distance falloff), spring-return to pose, chosen over true ragdoll-blending for
+    LIVING hits deliberately (cheap while settled, works on a generic tripo rig).
+    Authored **directional profiles** (`ProfileForBlow`, picked by the swing's blow
+    direction — see roadmap #22's directional light combo, the reason varied swing
+    directions actually matter). `impulseScale` scales the kick separately from the
+    direction/profile pick, so knockback strength and flinch intensity can be tuned
+    independently. **Debug tooling**: `showHitArrows` draws a proper 3D arrowhead
+    (not a flat ray) at each real/debug hit showing blow direction, plus a **height
+    ruler** (hips→head reference line with a tick at the hit's projected height) so a
+    sword hit's actual height can be compared against the orbiting debug-preview tool
+    that exercises the same code path. **Real hits were silently no-oping** even at
+    high `impulseScale` — the nearest bone was outside `hitRadius` because real hits
+    land at the collider SURFACE (`MeleeAttack`'s hit point) while the debug tool's
+    test point is built directly from bone positions, so it never exposed the gap.
+    Fixed by guaranteeing the nearest bone always gets at least a floor-strength kick,
+    independent of `hitRadius`.
+  - `NpcRagdollReaction`: full blended ragdoll (Unity Ragdoll Wizard, CharacterJoint
+    chains) — gravity-OFF flinch for a "big hit" tier (opt-in, unused by default; see
+    roadmap #22's poise-break note), gravity-ON for death. High solver iterations +
+    a separate `deathForceScale` for stability. `playerWalksThroughCorpse` lets the
+    player pass through a settled body rather than being blocked by dead-weight
+    collision. This is the ONE place animation and physics are meant to fight over
+    the same bones in sequence (ragdoll takes over completely) — contrast
+    `NpcHitReactions`' death-disable fix above, which exists because `NpcFlinch`
+    was NOT supposed to still be driving bones once this takes over.
   - `NpcAnimatorDriver`: one-way bridge from `NpcLocomotion.CurrentSpeed` to Animator
     `Speed`/`MotionSpeed`, and `TriggerDeath()`. AI never knows the Animator exists —
     a rigged model is a drop-in. **NEVER root motion** (the CharacterController drives).
-  - `NpcHeadTrack`: head bone watches the player up close, WORLD-space delta rotation
-    (no Blender bone-axis assumptions), gated by awareness so it's an honest detection
-    tell. `NpcCombatAudio`: hurt grunts scaled by impulse, death cry + delayed body-fall
+    Reads `NpcLocomotion.CurrentSpeed`, which is `trueVelocity` (see `NpcLocomotion`
+    below), never raw `Controller.velocity` — the latter spikes during a push
+    correction and drove a "running in place" animation artifact that was never a
+    real position bug.
+  - `NpcHeadTrack`: head bone watches the player up close. Rig-agnostic (a rotation
+    DELTA from body-forward toward the target, not an assumption about the head
+    bone's own local axes) and **rest-orientation-agnostic**: the yaw/pitch clamp is
+    measured in `Body`'s own local frame (`InverseTransformDirection` + signed
+    `Atan2`, wrapped in `Mathf.Abs()` for BOTH yaw and pitch — `Atan2` is signed
+    unlike the `Vector3.Angle` it replaced; missing `Abs()` on just one axis let the
+    head track all the way around behind the NPC from one side only, a real shipped
+    bug). `Body` defaults to the NPC's own root (correct for a standing NPC, whose
+    root rotation IS its visual orientation) but takes an optional `bodyReference`
+    override for a pose that comes from ANIMATION rather than a rotated root — e.g. a
+    skeleton lying flat in a coffin via a "lying down" clip, whose root never
+    rotates. Empirically, for a fully-animated pose the bone that works best as
+    `bodyReference` is the **head bone itself**: being the last link in the animated
+    chain, its accumulated world rotation reflects the whole posed hierarchy (hips
+    tipped, spine bent, neck posed) in a way an earlier bone like hips/spine alone
+    doesn't capture. Gated by awareness so it's an honest detection tell.
+    `NpcCombatAudio`: hurt grunts scaled by impulse, death cry + delayed body-fall
     thud (house audio pattern, § PhysicsDoorAudio).
 - **NPC crowd spacing** — three separate mechanisms, learned the hard way:
   (1) an **NPC layer with NPC×NPC collision OFF** in the matrix — capsule
@@ -953,6 +1035,24 @@ Cosmetic-first; combat is far off ("get the world together first").
     colliders, so a crowd overflows a 16-slot NonAlloc buffer and drops most targets.
     ⏳ still open: shield BLOCK (`IDamageMitigator`) — needs a binding since RMB is now
     heavy; non-damageable surface hits (wall/prop swing sparks).
+    **Field lessons from tuning the light combo's HOLD-to-attack** (`GetMouseButton`
+    instead of `GetMouseButtonDown`, so mashing isn't required to keep chaining):
+    a buffered continuation must be **re-checked live at the moment of consumption**
+    (`Input.GetMouseButton(...)` fresh, right then), never trusted from a stale
+    per-frame latch — a latch captured from a HELD button (not just a fresh press)
+    fires almost as soon as the ending window opens and doesn't know the button was
+    released a moment later, so one extra swing snuck in after releasing LMB. The
+    buffer CAPTURE itself stayed `GetMouseButtonDown` (tap-only) — buffering a tap is
+    supposed to fire regardless of later button state (that's the point of a buffer);
+    it's only the hold-continuation that needs the live re-check. The same overlap
+    surfaced between throwing a carried prop and swinging: LMB throws, and if it's
+    still held that same press also read as a swing input — fixed with
+    `suppressLightUntilRelease`, latched on throw, cleared only on a full
+    `GetMouseButtonUp`. **Equipped shield collider**: goblins could climb onto its
+    solid `BoxCollider` (a `CharacterController` treats any solid collider as
+    step-able geometry), worst after bash. Fixed by making it a TRIGGER rather than
+    removing it — preserves `Physics.Overlap`/raycast queries for the still-open
+    shield-block system above, while a trigger can't be climbed or block movement.
 23. ✅ **NPC hit reactions v2** — directional spring flinch (`NpcFlinch`, authored
     per-angle profiles, orbit debug tool) for living hits; full blended ragdoll
     (`NpcRagdollReaction`, gravity-off flinch / gravity-on death) for death, opt-in
