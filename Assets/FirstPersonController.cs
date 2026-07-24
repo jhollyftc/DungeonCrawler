@@ -228,6 +228,17 @@ namespace DungeonGen
             ReloadScene();
         }
 
+        /// <summary>Which room (by type) the player's feet are standing in right now, for
+        /// the dev overlay — same world-to-cell + RoomAt lookup DungeonFogController uses
+        /// to pick a room's color, so this can never disagree with what the fog shows.</summary>
+        string CurrentRoomLabel()
+        {
+            if (dungeon.Generator == null) return "-";
+            Vector3Int cell = Vector3Int.FloorToInt((transform.position - dungeon.transform.position) / dungeon.cellSize);
+            Room room = dungeon.Generator.RoomAt(cell);
+            return room != null ? room.Type.ToString() : "Hallway";
+        }
+
         /// <summary>
         /// Developer control list. Unity finds OnGUI by reflecting over the CLASS,
         /// so this has to live at class scope — nested inside Update() it's just an
@@ -241,7 +252,7 @@ namespace DungeonGen
             // exact (seed, depth) that produced it straight off the screen — the
             // dungeon is a pure function of those two, so that pair reproduces it.
             string header = dungeon != null
-                ? $"Seed: {dungeon.seed}\nDepth: {dungeon.config.depth}\n"
+                ? $"Seed: {dungeon.seed}\nDepth: {dungeon.config.depth}\nRoom: {CurrentRoomLabel()}\n"
                 : "";
             if (health != null)
                 header += $"HP: {health.Current:0}/{health.max:0}\n";
@@ -256,7 +267,9 @@ namespace DungeonGen
                 "Shift - Sprint\n" +
                 "Ctrl / Mouse4 - Crouch\n" +
                 "E - Interact / Pick up / Drop\n" +
-                "LMB - Throw\n" +
+                "LMB (hold) - Light Attack / Throw\n" +
+                "RMB (hold, release) - Heavy Attack\n" +
+                "Q (hold, release) - Shield Bash\n" +
                 "F1 - New Dungeon (same depth)\n" +
                 "PgUp/PgDn - Depth +/- (same seed)\n" +
                 "Esc - Quit";
