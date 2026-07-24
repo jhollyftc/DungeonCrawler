@@ -76,6 +76,9 @@ MonoBehaviour:
   m_OverrideGlobalSceneList: 1
   m_Scenes:
   - m_enabled: 1
+    m_path: Assets/MainMenu.unity
+    m_guid: 4d6e895c01efeb944a4260a6d3ac4ea1
+  - m_enabled: 1
     m_path: Assets/DungeonProc.unity
     m_guid: d45b0f76396e66045abe5f94c07cfa2d
   - m_enabled: 0
