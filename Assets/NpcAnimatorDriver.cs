@@ -39,6 +39,12 @@ namespace DungeonGen
         [Tooltip("Smoothing time (s) for the Speed parameter so the blend doesn't snap when the agent starts/stops.")]
         public float speedDampTime = 0.12f;
 
+        [Tooltip("Ground speed (m/s) at which the directional blend reaches a FULL walk clip. The blend tree's poles are unit vectors, so feeding it raw m/s means a slow NPC sits PARTWAY between idle and walk — at 0.4 m/s that's ~60% idle, so the feet barely cycle while the body slides. Normalizing to this speed instead makes any real movement play a full-strength walk, and MotionSpeed (wired to the blend state's Speed Multiplier) slows the CYCLE to match ground speed — which is what actually keeps feet planted. Keep it low; it only sets how quickly the idle→walk blend saturates.")]
+        public float fullBlendSpeed = 0.75f;
+
+        [Tooltip("Movement below this speed (m/s) is reported as a dead stop. A settled crowd never sits at exactly zero — boids separation and agent repathing nudge an NPC a few cm/s indefinitely — and in a 2D blend tree (idle at 0,0, walk clips at the poles) that hovering velocity flickers the pose between idle and a walk direction every frame. It reads as the NPC jittering in place even though its POSITION is barely moving; the cause is the blend, not the movement. This deadzone snaps that micro-motion to a clean idle. Raise it if a standing crowd still shimmers, lower it if NPCs look frozen while genuinely creeping.")]
+        public float movementDeadzone = 0.15f;
+
         static readonly int SpeedParam = Animator.StringToHash("Speed");
         static readonly int MotionSpeedParam = Animator.StringToHash("MotionSpeed");
         static readonly int VelocityXParam = Animator.StringToHash("VelocityX");
@@ -111,6 +117,13 @@ namespace DungeonGen
         {
             float speed = body.CurrentSpeed;
 
+            // Below the deadzone the NPC is standing, as far as the Animator is
+            // concerned — see movementDeadzone. Applied to the RAW speed before any
+            // damping so the damping eases cleanly to a true zero instead of
+            // asymptotically approaching a small nonzero hover.
+            bool moving = speed >= movementDeadzone;
+            if (!moving) speed = 0f;
+
             if (hasSpeed)
                 animator.SetFloat(SpeedParam, speed, speedDampTime, Time.deltaTime);
 
@@ -124,7 +137,18 @@ namespace DungeonGen
 
             if (hasVelocityX || hasVelocityZ)
             {
-                Vector2 local = body.LocalVelocity;
+                // Zeroed as a PAIR when under the deadzone: killing each axis on its own
+                // threshold would let a diagonal creep collapse onto one axis first and
+                // swing the 2D blend toward a pure strafe on the way to idle.
+                Vector2 local = moving ? body.LocalVelocity : Vector2.zero;
+
+                // Rescale so the blend reaches a full walk clip at fullBlendSpeed rather
+                // than at 1 m/s (the poles' literal coordinates). DIRECTION is preserved
+                // exactly — only the magnitude is remapped — so a diagonal still blends
+                // between the right two clips. See fullBlendSpeed.
+                float mag = local.magnitude;
+                if (mag > 0.0001f)
+                    local *= Mathf.Clamp01(mag / Mathf.Max(0.01f, fullBlendSpeed)) / mag;
                 if (hasVelocityX) animator.SetFloat(VelocityXParam, local.x, speedDampTime, Time.deltaTime);
                 if (hasVelocityZ) animator.SetFloat(VelocityZParam, local.y, speedDampTime, Time.deltaTime);
             }
