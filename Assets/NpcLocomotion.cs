@@ -135,6 +135,7 @@ namespace DungeonGen
         float impulseTimer;
         float lastGroundedY;
         bool haveGroundedY;
+        int facingLockedFrame = -1;   // last frame a brain called FaceTowards — see FaceMovement
 
         // Actual achieved horizontal velocity, measured AFTER RejectUnwantedPush —
         // see CurrentSpeed's doc for why this exists instead of reading
@@ -464,6 +465,20 @@ namespace DungeonGen
 
         void FaceMovement(Vector3 want, float dt)
         {
+            // A brain that explicitly aimed us owns the facing this frame — don't also
+            // steer toward the travel direction. Retreating makes the two OPPOSITE
+            // (FaceTowards turns to the player, travel points away), so both running
+            // rotates the body back and forth every frame. That spin flips the sign of
+            // InverseTransformDirection, so the Animator's VelocityZ swings between +/-
+            // and the 2D blend tree flickers walk-forward / walk-back / idle — read as
+            // an NPC "jittering in place" even though its POSITION is fine. Same rule as
+            // ViewmodelCollision: one system owns a transform at a time.
+            //
+            // Frame-STAMPED, not a plain bool, because script execution order between
+            // NpcBrain and NpcLocomotion is undefined — checking the previous frame too
+            // means the lock holds whichever component ran first.
+            if (facingLockedFrame >= Time.frameCount - 1) return;
+
             Vector3 flat = new Vector3(want.x, 0f, want.z);
             if (flat.sqrMagnitude < 0.0004f) return;
 
@@ -488,9 +503,13 @@ namespace DungeonGen
             IsBlocked = false;
         }
 
-        /// <summary>Turn to look at a point, ignoring pitch. For idling, talking, aiming a throw.</summary>
+        /// <summary>Turn to look at a point, ignoring pitch. For idling, talking, aiming a throw.
+        /// Takes ownership of the facing for this frame — FaceMovement stands down so the
+        /// two can't rotate the body against each other (see FaceMovement).</summary>
         public void FaceTowards(Vector3 world)
         {
+            facingLockedFrame = Time.frameCount;
+
             Vector3 flat = world - transform.position;
             flat.y = 0f;
             if (flat.sqrMagnitude < 0.0004f) return;
