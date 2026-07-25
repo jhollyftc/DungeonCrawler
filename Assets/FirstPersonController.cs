@@ -51,6 +51,20 @@ namespace DungeonGen
         [Tooltip("How fast an AddImpulse velocity (e.g. a shield-bash lunge) decays, per second. Higher = a shorter, snappier burst. ~10 gives a ~0.15s lunge.")]
         public float externalDamping = 10f;
 
+        [Header("Push resistance (don't let a crowd shove the player through walls)")]
+        [Tooltip("A microscopic NUMERICAL-NOISE guard only (m) — not a physical allowance. Same fix as NpcLocomotion.RejectUnwantedPush, mirrored: CharacterController.Move() always resolves whatever overlap it finds itself in, regardless of requested motion. A crowd of NPCs converging on the player each run their OWN Move() every frame, and that overlap resolution against the player's capsule accumulates displacement with nothing to do with player input — enough simultaneous pushers in one frame can exceed wall thickness and tunnel the player through. Whenever actual horizontal displacement exceeds intended (input + external impulse) by more than this tolerance, the excess is corrected out.")]
+        public float pushTolerance = 0.0005f;
+        [Tooltip("Log per-frame intended vs actual horizontal displacement when it gets corrected — diagnostic for crowd-push investigations.")]
+        public bool debugPush = false;
+
+        [Header("Anti-pile-up (crowd shouldn't lift the player onto NPC capsules)")]
+        [Tooltip("What counts as REAL ground for the anti-pile-up check below. MUST exclude the NPC layer — the whole point is telling 'resting on real floor/stairs' apart from 'resting on a pile of NPC capsules', which the horizontal push guard above can't catch (it only rejects horizontal excess; stepOffset-driven lift is vertical).")]
+        public LayerMask groundTruthMask = ~0;
+        [Tooltip("Ease the player back down whenever their capsule bottom sits higher than the REAL floor beneath by more than this (m). Small enough not to fight real stairs/ramps (stepOffset itself), large enough not to fight normal floor noise.")]
+        public float pileUpTolerance = 0.15f;
+        [Tooltip("How fast (m/s) the player eases back down onto real ground when caught above it. A smooth correction, not a snap, so it doesn't read as a teleport while still standing in a crowd.")]
+        public float pileUpCorrectionSpeed = 6f;
+
         /// <summary>External move-speed multiplier (1 = normal). Set by e.g. PlayerMelee to slow the player while charging a heavy swing. Reset to 1 when done.</summary>
         public float moveScaleOverride { get; set; } = 1f;
 
@@ -214,13 +228,57 @@ namespace DungeonGen
                 verticalVelocity += gravity * Time.deltaTime;
             }
 
-            cc.Move((horizontal + externalVelocity + Vector3.up * verticalVelocity) * Time.deltaTime);
+            Vector3 horizontalIntent = (horizontal + externalVelocity) * Time.deltaTime;
+            Vector3 beforePos = transform.position;
+            cc.Move(horizontalIntent + Vector3.up * verticalVelocity * Time.deltaTime);
+
+            // Reject any horizontal displacement beyond what input/impulse actually
+            // asked for this frame — see the pushTolerance tooltip for why. Vertical
+            // is left alone (gravity/jump/ladder resolution is legitimate).
+            Vector3 afterPos = transform.position;
+            Vector3 rawHorizontal = new Vector3(afterPos.x - beforePos.x, 0f, afterPos.z - beforePos.z);
+            float intendedMag = horizontalIntent.magnitude;
+            float overshoot = rawHorizontal.magnitude - intendedMag;
+            if (overshoot > pushTolerance)
+            {
+                Vector3 excess = rawHorizontal - rawHorizontal.normalized * intendedMag;
+                transform.position -= excess;
+                if (debugPush)
+                    Debug.Log($"[PlayerPush] intended={intendedMag:0.0000}m rawActual={rawHorizontal.magnitude:0.0000}m corrected excess={excess.magnitude:0.0000}m", this);
+            }
 
             // The dash/knockback burst bleeds off exponentially (frame-rate independent).
             externalVelocity *= Mathf.Exp(-externalDamping * Time.deltaTime);
 
+            EaseOffPileUp();
+
             if (Input.GetKeyDown(KeyCode.Escape))
                 Quit();
+        }
+
+        /// <summary>
+        /// Counters the CharacterController stepOffset climbing a crowd of NPC capsules
+        /// like a staircase (see the field tooltips above for the mechanism). Casts
+        /// straight down from the capsule center against groundTruthMask (which must
+        /// exclude the NPC layer) to find the REAL floor, and if the capsule bottom is
+        /// sitting well above it while grounded, eases back down. Only engages while
+        /// isGrounded, so falling/jumping/ladder-climbing are untouched.
+        /// </summary>
+        void EaseOffPileUp()
+        {
+            if (!cc.isGrounded) return;
+
+            Vector3 origin = transform.position + cc.center;
+            if (!Physics.Raycast(origin, Vector3.down, out RaycastHit groundHit, cc.height,
+                                  groundTruthMask, QueryTriggerInteraction.Ignore))
+                return;
+
+            float capsuleBottomY = transform.position.y + cc.center.y - cc.height * 0.5f;
+            float lift = capsuleBottomY - groundHit.point.y;
+            if (lift <= pileUpTolerance) return;
+
+            float correction = Mathf.Min(lift - pileUpTolerance, pileUpCorrectionSpeed * Time.deltaTime);
+            transform.position += Vector3.down * correction;
         }
 
         /// <summary>Reload the active scene — the dungeon rebuilds from the (possibly overridden) seed/depth.</summary>
