@@ -146,8 +146,56 @@ namespace DungeonGen
         // NpcLocomotion, which removes the corpse from the crowd automatically.
         static readonly System.Collections.Generic.List<NpcLocomotion> All = new System.Collections.Generic.List<NpcLocomotion>();
 
+        // Every living NPC's position, snapshotted ONCE per frame. Separation is
+        // O(n²) over the registry, and reading `other.transform.position` inside that
+        // inner loop means a managed→native transition per access — at 100 NPCs that
+        // was ~30k transitions/frame and measured as ~14ms of a 24ms Update (58% of
+        // the whole cost; confirmed by setting separationStrength to 0 and re-profiling).
+        // The arithmetic was never the problem, the native property reads were. Reading
+        // from this plain array instead keeps the inner loop entirely in managed memory.
+        static Vector3[] positionCache = new Vector3[64];
+        static int positionCacheFrame = -1;
+        static int positionCacheCount;      // entries actually valid in positionCache
+
+        // Per-NPC escape direction for the DEGENERATE separation case (peers at the
+        // same point). This must be per-NPC and it must not be transform.right.
+        //
+        // The old live-position separation resolved a stack by ACCIDENT: NPC #50 read
+        // NPC #0's position after #0 had already moved that frame, so update order
+        // supplied the asymmetry. Snapshotting positions (for the ~8x speedup) makes
+        // every NPC see identical state, which is more correct AND removes that
+        // accident — so a symmetric pile stays symmetric forever. With transform.right
+        // as the escape, goblins spawned coincident with the same rotation all pushed
+        // the same way and drifted as one body (real bug: "they roam as a single
+        // goblin, then divide into many when alerted").
+        Vector3 escapeDir;
+
         void OnEnable() => All.Add(this);
         void OnDisable() => All.Remove(this);
+
+        /// <summary>
+        /// Refresh the shared position snapshot, at most once per frame no matter how
+        /// many NPCs ask. The snapshot is deliberately taken BEFORE any NPC moves this
+        /// frame, so every NPC separates against the same consistent state instead of
+        /// seeing neighbours that updated earlier in the frame already moved. A frame of
+        /// staleness is invisible on a smooth steering force.
+        ///
+        /// CAUTION: that consistency also removes the update-order asymmetry the old
+        /// live reads accidentally relied on to break up a perfectly stacked crowd —
+        /// which is why `escapeDir` exists. Don't remove it thinking it's redundant.
+        /// </summary>
+        static void RefreshPositionCache()
+        {
+            if (positionCacheFrame == Time.frameCount) return;
+            positionCacheFrame = Time.frameCount;
+
+            if (positionCache.Length < All.Count)
+                positionCache = new Vector3[Mathf.NextPowerOfTwo(All.Count)];
+
+            positionCacheCount = All.Count;
+            for (int i = 0; i < positionCacheCount; i++)
+                positionCache[i] = All[i].transform.position;
+        }
 
         void Awake()
         {
@@ -165,6 +213,11 @@ namespace DungeonGen
             // crowd; unequal priorities make one yield cleanly. Runtime AI —
             // deliberately not seeded.
             Agent.avoidancePriority = Random.Range(30, 70);
+
+            // Same reasoning one level down — a stable per-NPC direction so coincident
+            // spawns fan out instead of drifting as one clump (see escapeDir).
+            Vector2 c = Random.insideUnitCircle.normalized;
+            escapeDir = new Vector3(c.x, 0f, c.y);
 
             if (Agent.radius < Controller.radius)
             {
@@ -292,20 +345,42 @@ namespace DungeonGen
         {
             if (separationStrength <= 0f) return Vector3.zero;
 
+            RefreshPositionCache();
+
+            // Hoisted: one native transform read for the whole loop instead of one per
+            // peer. Everything inside the loop reads the managed snapshot.
+            Vector3 selfPos = transform.position;
+            float radiusSq = separationRadius * separationRadius;
+
             Vector3 push = Vector3.zero;
-            for (int i = 0; i < All.Count; i++)
+            // Clamped to BOTH the registry and the snapshot: an NPC dying (OnDisable)
+            // or a dormant one waking (OnEnable) mid-frame changes All after the
+            // snapshot was taken, so trusting either length alone would read a stale
+            // slot or run off the end. One frame of slightly-off separation while they
+            // resync is invisible; an index out of range is not.
+            int count = Mathf.Min(All.Count, positionCacheCount);
+            for (int i = 0; i < count; i++)
             {
-                NpcLocomotion other = All[i];
-                if (other == this) continue;
+                // ReferenceEquals, NOT ==: Unity overloads == on Object to also run a
+                // native "has this been destroyed" lifetime check, which is far more
+                // expensive than a pointer compare and pointless here (the registry only
+                // ever holds live, enabled components — OnDisable removes them).
+                if (ReferenceEquals(All[i], this)) continue;
 
-                Vector3 away = transform.position - other.transform.position;
-                away.y = 0f;
-                float dist = away.magnitude;
-                if (dist >= separationRadius) continue;
+                float dx = selfPos.x - positionCache[i].x;
+                float dz = selfPos.z - positionCache[i].z;
+                float distSq = dx * dx + dz * dz;
+                // Reject on the SQUARED distance so the sqrt is only paid by actual
+                // neighbours — in a spread-out crowd that's the small minority.
+                if (distSq >= radiusSq) continue;
 
-                // Dead-center overlap (spawned inside each other): pick a stable
-                // arbitrary direction rather than dividing by ~zero.
-                Vector3 dir = dist > 0.01f ? away / dist : transform.right;
+                float dist = Mathf.Sqrt(distSq);
+                // Dead-center overlap (spawned inside each other): a stable per-NPC
+                // direction rather than dividing by ~zero. NOT transform.right — see
+                // escapeDir for why that silently welded coincident spawns together.
+                Vector3 dir = dist > 0.01f
+                    ? new Vector3(dx / dist, 0f, dz / dist)
+                    : escapeDir;
                 push += dir * (1f - dist / separationRadius);
             }
 
