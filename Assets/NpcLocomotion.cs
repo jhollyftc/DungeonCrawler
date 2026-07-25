@@ -90,6 +90,24 @@ namespace DungeonGen
         /// </summary>
         public float CurrentSpeed => new Vector3(trueVelocity.x, 0f, trueVelocity.z).magnitude;
 
+        /// <summary>
+        /// trueVelocity expressed in the NPC's own local space (x = right, y = forward).
+        /// Feeds a directional (strafe) blend tree: when crowd separation shoves an NPC
+        /// sideways while it's still facing/pathing forward, CurrentSpeed alone only
+        /// blends toward the forward-walk clip, so the feet visually slide through the
+        /// lateral motion. Blending on local velocity instead lets a strafe clip take
+        /// over for that component. Same trueVelocity (post push-correction) as
+        /// CurrentSpeed — see its doc for why not Controller.velocity.
+        /// </summary>
+        public Vector2 LocalVelocity
+        {
+            get
+            {
+                Vector3 local = transform.InverseTransformDirection(trueVelocity);
+                return new Vector2(local.x, local.z);
+            }
+        }
+
         /// <summary>Reached the current destination (or has none).</summary>
         public bool HasArrived
         {

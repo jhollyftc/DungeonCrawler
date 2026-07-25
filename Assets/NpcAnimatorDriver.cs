@@ -17,6 +17,11 @@ namespace DungeonGen
     ///                 state's Speed Multiplier to kill foot-sliding, especially when
     ///                 SpeedMultiplier (carry/injury) slows an NPC below its authored
     ///                 walk pace.
+    ///   VelocityX/VelocityZ (float) — NpcLocomotion.LocalVelocity (right/forward, m/s),
+    ///                 damped. Drive a 2D directional blend tree (forward/back/strafe
+    ///                 clips) so a crowd shove that pushes an NPC sideways plays a strafe
+    ///                 clip instead of sliding the feet through a forward-walk pose that
+    ///                 doesn't match the actual direction of travel.
     ///
     /// NEVER use root motion — NpcLocomotion's CharacterController drives all
     /// movement. The Animator is a puppet, not a pilot.
@@ -36,10 +41,12 @@ namespace DungeonGen
 
         static readonly int SpeedParam = Animator.StringToHash("Speed");
         static readonly int MotionSpeedParam = Animator.StringToHash("MotionSpeed");
+        static readonly int VelocityXParam = Animator.StringToHash("VelocityX");
+        static readonly int VelocityZParam = Animator.StringToHash("VelocityZ");
         static readonly int DieParam = Animator.StringToHash("Die");
 
         NpcLocomotion body;
-        bool hasSpeed, hasMotionSpeed, hasDie;
+        bool hasSpeed, hasMotionSpeed, hasVelocityX, hasVelocityZ, hasDie;
 
         void Awake()
         {
@@ -73,6 +80,8 @@ namespace DungeonGen
             {
                 if (p.nameHash == SpeedParam) hasSpeed = true;
                 if (p.nameHash == MotionSpeedParam) hasMotionSpeed = true;
+                if (p.nameHash == VelocityXParam) hasVelocityX = true;
+                if (p.nameHash == VelocityZParam) hasVelocityZ = true;
                 if (p.nameHash == DieParam) hasDie = true;
             }
             if (!hasSpeed)
@@ -91,6 +100,8 @@ namespace DungeonGen
             if (animator == null || !hasDie) return false;
             if (hasSpeed) animator.SetFloat(SpeedParam, 0f);
             if (hasMotionSpeed) animator.SetFloat(MotionSpeedParam, 1f);
+            if (hasVelocityX) animator.SetFloat(VelocityXParam, 0f);
+            if (hasVelocityZ) animator.SetFloat(VelocityZParam, 0f);
             animator.SetTrigger(DieParam);
             enabled = false;   // corpse: nothing left to drive
             return true;
@@ -109,6 +120,13 @@ namespace DungeonGen
                 // proportion to how fast the body is actually moving.
                 float rate = speed > 0.05f ? speed / Mathf.Max(0.1f, walkAnimationSpeed) : 1f;
                 animator.SetFloat(MotionSpeedParam, rate);
+            }
+
+            if (hasVelocityX || hasVelocityZ)
+            {
+                Vector2 local = body.LocalVelocity;
+                if (hasVelocityX) animator.SetFloat(VelocityXParam, local.x, speedDampTime, Time.deltaTime);
+                if (hasVelocityZ) animator.SetFloat(VelocityZParam, local.y, speedDampTime, Time.deltaTime);
             }
         }
     }
