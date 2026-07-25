@@ -41,6 +41,10 @@ namespace DungeonGen
         public float tooCloseDistance = 0.8f;
         [Tooltip("How far (m) a retreat step aims to open back up when too close.")]
         public float retreatStepDistance = 1f;
+        [Tooltip("HYSTERESIS. Once holding position, don't resume approaching until the target is engageDistance x THIS away. Without a gap, an NPC that boids-separation nudges a centimetre past engageDistance instantly repaths inward, gets pushed out again, and jitters forever — a ring of attackers can't all sit at engageDistance anyway (circumference / separationRadius caps how many fit), so the surplus oscillates. Must be > 1; raise it if a packed crowd still shuffles.")]
+        [Min(1f)] public float approachHysteresis = 1.35f;
+        [Tooltip("Don't recompute the path to a moving target until it has moved at least this far (m) from the last point we pathed to. A fresh SetDestination every frame is both a full path recalculation and a source of micro-jitter.")]
+        public float repathThreshold = 0.5f;
 
         [Tooltip("Log state transitions and destination picks. Great while proving out perception.")]
         public bool debugBrain = true;
@@ -49,6 +53,15 @@ namespace DungeonGen
         State state = State.WanderIdle;
         float timer;
         Vector3 investigatePoint;
+
+        // Alerted-state latches. holdingGround is the hysteresis memory (see
+        // approachHysteresis); stoppedAgent keeps us from calling Agent.ResetPath every
+        // frame while parked, and lastRepathTarget throttles path recomputation.
+        bool holdingGround;
+        bool stoppedAgent;
+        bool retreating;        // latched: backing off until comfortably clear (see approachHysteresis)
+        bool retreatPathIssued; // the retreat destination is already set — don't repath every frame
+        Vector3 lastRepathTarget;
 
         NpcLocomotion body;
         NpcPerception senses;
@@ -189,28 +202,85 @@ namespace DungeonGen
             body.FaceTowards(t.position);
 
             float dist = Vector3.Distance(transform.position, t.position);
-            if (dist > engageDistance)
+
+            // Hysteresis band. Entering engage range LATCHES holdingGround, and only a
+            // meaningfully larger gap releases it — so separation nudging an NPC a few
+            // centimetres past engageDistance no longer triggers an immediate repath
+            // inward (which separation then undoes, forever). A crowd physically cannot
+            // all sit at engageDistance, so without this the surplus jitters in place.
+            if (holdingGround)
+            {
+                if (dist > engageDistance * approachHysteresis) holdingGround = false;
+            }
+            else if (dist <= engageDistance)
+            {
+                holdingGround = true;
+            }
+
+            // Same deadband on the INNER boundary: latch on crossing tooCloseDistance,
+            // release only once comfortably clear, so the crowd nudging an NPC across
+            // that line doesn't start/stop a retreat every frame.
+            if (retreating)
+            {
+                if (dist >= tooCloseDistance * approachHysteresis) retreating = false;
+            }
+            else if (dist < tooCloseDistance)
+            {
+                retreating = true;
+                retreatPathIssued = false;
+            }
+
+            if (!holdingGround)
             {
                 // Don't repath mid-swing — a goblin that walks while its hit is
                 // landing looks (and plays) like it's skating.
                 if (melee == null || !melee.IsSwinging)
-                    body.SetDestination(t.position);
+                    Approach(t.position);
             }
-            else if (dist < tooCloseDistance)
+            else if (retreating)
             {
                 // Crowded in past the personal-space floor — step back out to
                 // engage range instead of standing there while the pile compresses
                 // onto the target. Still attacks; a real fighter keeps swinging
                 // while giving ground, it doesn't just idle at point-blank.
+                //
+                // Latched with the same deadband as the approach side, and the path is
+                // issued ONCE (re-issued only on arrival). Re-pathing every frame at the
+                // tooCloseDistance boundary made NPCs flap between backing off and
+                // parking, which is real forward/back motion — it drove the Animator's
+                // VelocityZ across zero and flickered the walk-forward/back blend.
                 if (melee == null || !melee.IsSwinging)
-                    RetreatFrom(t.position);
+                {
+                    if (!retreatPathIssued || body.HasArrived)
+                    {
+                        RetreatFrom(t.position);
+                        retreatPathIssued = true;
+                        stoppedAgent = false;
+                    }
+                }
                 melee?.TryAttack();   // no-op while recovering/suppressed/absent
             }
             else
             {
-                body.Stop();
+                // Park. Stop() resets the agent's path, so calling it every frame both
+                // churns the agent and re-triggers its braking each frame — latch it.
+                if (!stoppedAgent)
+                {
+                    body.Stop();
+                    stoppedAgent = true;
+                }
                 melee?.TryAttack();   // no-op while recovering/suppressed/absent
             }
+        }
+
+        /// <summary>Path toward a moving target, recomputing only once it has drifted
+        /// repathThreshold from the point we last pathed to — a SetDestination every
+        /// frame is a full path recalculation and adds its own micro-jitter.</summary>
+        void Approach(Vector3 target)
+        {
+            stoppedAgent = false;
+            if ((target - lastRepathTarget).sqrMagnitude < repathThreshold * repathThreshold) return;
+            if (body.SetDestination(target)) lastRepathTarget = target;
         }
 
         /// <summary>Step directly away from a point, sampled back onto the navmesh. Used
@@ -244,6 +314,14 @@ namespace DungeonGen
                     GoToInvestigatePoint();
                     break;
                 case State.Alerted:
+                    // Fresh latches: a re-alert must not inherit a stale hold or a
+                    // lastRepathTarget from a previous engagement (which would suppress
+                    // the first approach until the target happened to move far enough).
+                    holdingGround = false;
+                    stoppedAgent = false;
+                    retreating = false;
+                    retreatPathIssued = false;
+                    lastRepathTarget = new Vector3(float.MinValue, 0f, float.MinValue);
                     break;
             }
         }
