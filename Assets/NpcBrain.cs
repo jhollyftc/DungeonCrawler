@@ -37,6 +37,10 @@ namespace DungeonGen
         [Header("Alerted")]
         [Tooltip("Close to within this distance of a seen target before attacking. Should be a touch under MeleeAttack.range so swings connect.")]
         public float engageDistance = 1.4f;
+        [Tooltip("Back off if crowded closer than this to the target (e.g. shoved in by other NPCs). Keeps a personal-space floor instead of letting the crowd compress directly onto the player. Should be meaningfully less than engageDistance or the NPC oscillates between the two states.")]
+        public float tooCloseDistance = 0.8f;
+        [Tooltip("How far (m) a retreat step aims to open back up when too close.")]
+        public float retreatStepDistance = 1f;
 
         [Tooltip("Log state transitions and destination picks. Great while proving out perception.")]
         public bool debugBrain = true;
@@ -192,11 +196,34 @@ namespace DungeonGen
                 if (melee == null || !melee.IsSwinging)
                     body.SetDestination(t.position);
             }
+            else if (dist < tooCloseDistance)
+            {
+                // Crowded in past the personal-space floor — step back out to
+                // engage range instead of standing there while the pile compresses
+                // onto the target. Still attacks; a real fighter keeps swinging
+                // while giving ground, it doesn't just idle at point-blank.
+                if (melee == null || !melee.IsSwinging)
+                    RetreatFrom(t.position);
+                melee?.TryAttack();   // no-op while recovering/suppressed/absent
+            }
             else
             {
                 body.Stop();
                 melee?.TryAttack();   // no-op while recovering/suppressed/absent
             }
+        }
+
+        /// <summary>Step directly away from a point, sampled back onto the navmesh. Used
+        /// to reopen personal space when the crowd shoves an NPC past tooCloseDistance.</summary>
+        void RetreatFrom(Vector3 from)
+        {
+            Vector3 away = transform.position - from;
+            away.y = 0f;
+            if (away.sqrMagnitude < 0.0001f) away = -transform.forward; // degenerate: stacked exactly on the target
+
+            Vector3 desired = transform.position + away.normalized * retreatStepDistance;
+            if (NavMesh.SamplePosition(desired, out NavMeshHit hit, retreatStepDistance + 0.5f, NavMesh.AllAreas))
+                body.SetDestination(hit.position);
         }
 
         // ---------------- Transitions ----------------
