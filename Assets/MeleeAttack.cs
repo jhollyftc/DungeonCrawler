@@ -228,9 +228,18 @@ namespace DungeonGen
         /// </summary>
         /// <param name="halfAngleDeg">Half the cone's opening angle (55 ≈ a 110° fan in front).</param>
         /// <param name="sideBias">0 = everyone shoved straight forward; 1 = everyone flung fully radially away from the attacker (max spread).</param>
-        public int DoConeSweep(float halfAngleDeg, float sideBias)
+        /// <param name="continueSweep">
+        /// Keep the previous call's dedupe set instead of starting fresh. This is what
+        /// makes a CHARGE-THROUGH bash work: the caller sweeps every frame while the
+        /// lunge carries the player forward, so each enemy is caught at the moment the
+        /// player actually reaches them (a rolling shove down the charge path) rather
+        /// than everyone in a single snapshot cone at one instant — while the shared
+        /// dedupe still guarantees one hit each across the whole window. Returns victims
+        /// hit BY THIS CALL, so a per-frame caller can tell when someone new was caught.
+        /// </param>
+        public int DoConeSweep(float halfAngleDeg, float sideBias, bool continueSweep = false)
         {
-            hitThisSwing.Clear();
+            if (!continueSweep) hitThisSwing.Clear();
             landedThisSwing = 0;
 
             Vector3 origin, dir;

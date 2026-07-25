@@ -109,6 +109,8 @@ namespace DungeonGen
         [Range(10f, 150f)] public float bashConeHalfAngle = 55f;
         [Tooltip("How radial the shove is. 0 = everyone straight back; 1 = everyone flung fully away along their own bearing (max fan-out). ~0.8 reads as 'back and to the side'.")]
         [Range(0f, 1f)] public float bashConeSideBias = 0.8f;
+        [Tooltip("Seconds the bash cone stays LIVE after it fires, sweeping every frame as the lunge carries you forward. This is what makes it a CHARGE-THROUGH: enemies are caught (and react) at the moment you actually reach them, one after another down the charge path, instead of everyone popping at once from a single snapshot cone. Dedupe runs across the whole window, so nobody is hit twice. Match it roughly to how long the lunge actually travels (~the decay of bashDashSpeed under FirstPersonController.externalDamping); 0 = the old single-instant cone.")]
+        public float bashSweepDuration = 0.35f;
         [Tooltip("Degrees the world FOV widens while winding the bash (the lunge tell), easing back on release. 0 = no FOV kick. The viewmodel overlay keeps its own FOV, so only the WORLD dollies.")]
         public float bashFovBump = 8f;
         [Tooltip("FOV change speed (deg/sec) in and out of the bump.")]
@@ -172,7 +174,9 @@ namespace DungeonGen
         bool bashCharging;        // holding bashKey, winding the shield back
         float bashChargeT;        // normalized time reached while winding (ramps to windupEnd, holds)
         float bt;                 // normalized bash time
-        bool bashSweepDone;
+        bool bashSweepDone;       // the charge-through sweep window has opened
+        float bashSweepTimer;     // seconds left in that live window
+        bool bashHitAnyone;       // someone was caught this bash (gates the once-per-bash feel beats)
         float bashFreeze;         // bash-hit local hitstop
         Vector3 bashRecoilDir;    // shield bounce-back direction on a bash hit
         Vector3 lastShieldPose, lastShieldEuler;   // last pose the bash wrote, so counter-motion resumes without a pop
@@ -645,6 +649,8 @@ namespace DungeonGen
             bashing = true;
             bt = Mathf.Clamp01(startT);
             bashSweepDone = false;
+            bashSweepTimer = 0f;
+            bashHitAnyone = false;
             bashFreeze = 0f;
             returning = false;
             bufferedLight = false;
@@ -684,7 +690,16 @@ namespace DungeonGen
             if (!bashSweepDone && bt >= shieldBash.impactT)
             {
                 bashSweepDone = true;
-                DoBashImpact();
+                bashSweepTimer = bashSweepDuration;
+                DoBashImpact(firstFrame: true);
+            }
+            else if (bashSweepTimer > 0f)
+            {
+                // The cone rides along with the lunge: swept again every frame from the
+                // player's CURRENT position, so each enemy is caught as the charge
+                // actually reaches them. Dedupe carries across the window (continueSweep).
+                bashSweepTimer -= Time.deltaTime;
+                DoBashImpact(firstFrame: false);
             }
 
             if (bt >= 1f) { EndBash(); return; }
@@ -693,7 +708,14 @@ namespace DungeonGen
             ApplyShieldPose(pos, euler, suppress);
         }
 
-        void DoBashImpact()
+        /// <summary>
+        /// One frame of the bash cone. Called at the impact instant and then every frame
+        /// for bashSweepDuration while the lunge carries the player forward, so the shove
+        /// rolls down the charge path instead of firing once from a standing snapshot.
+        /// `firstFrame` opens a fresh dedupe set; later frames continue it, so each
+        /// enemy is caught exactly once — whenever the charge actually reaches them.
+        /// </summary>
+        void DoBashImpact(bool firstFrame)
         {
             melee.damage = shieldBash.damage;
             melee.knockback = shieldBash.knockback;
@@ -702,18 +724,29 @@ namespace DungeonGen
 
             // A CONE shove, not a single blow: everyone in front is flung along their own
             // bearing (radial) — center enemies straight back, flanks out to the side.
-            bool hit = melee.DoConeSweep(bashConeHalfAngle, bashConeSideBias) > 0;
-            if (debugMelee) Debug.Log($"[PlayerMelee] bash impact — {(hit ? "HIT" : "whiff")}.", this);
+            bool hit = melee.DoConeSweep(bashConeHalfAngle, bashConeSideBias, continueSweep: !firstFrame) > 0;
+            if (debugMelee && hit) Debug.Log($"[PlayerMelee] bash {(firstFrame ? "impact" : "charge-through")} — HIT.", this);
 
             if (hit)
             {
-                bashFreeze = shieldBash.localHitstop;
-                bashRecoilDir = -(shieldBash.slashPosition - shieldBash.windupPosition).normalized;
-                Hitstop.Request(shieldBash.globalDipDuration, shieldBash.globalDipScale);
+                // Per-victim feedback: fires each time the charge catches someone new,
+                // which is what makes a run through a crowd read as a series of impacts.
                 cameraKick?.Kick(shieldBash.hitKickEuler, new Vector3(0f, 0f, -0.012f));
+
+                // Once-per-bash feel beats. The freeze and the global time dip STALL the
+                // lunge, so firing them per victim would stutter the charge to a halt in
+                // a crowd — exactly what a charge-through shouldn't do. First contact
+                // only; after that the player ploughs on through.
+                if (!bashHitAnyone)
+                {
+                    bashHitAnyone = true;
+                    bashFreeze = shieldBash.localHitstop;
+                    bashRecoilDir = -(shieldBash.slashPosition - shieldBash.windupPosition).normalized;
+                    Hitstop.Request(shieldBash.globalDipDuration, shieldBash.globalDipScale);
+                }
             }
 
-            OnImpact?.Invoke(hit);
+            if (firstFrame || hit) OnImpact?.Invoke(hit);
         }
 
         /// <summary>
@@ -750,6 +783,7 @@ namespace DungeonGen
         void EndBash()
         {
             bashing = false;
+            bashSweepTimer = 0f;
             // Hand the shield back to counter-motion at the pose the bash left it (≈rest
             // after recovery), so the next sword swing's derived motion eases in cleanly.
             shieldPos = lastShieldPose;
