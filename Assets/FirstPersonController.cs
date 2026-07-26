@@ -57,14 +57,6 @@ namespace DungeonGen
         [Tooltip("Log per-frame intended vs actual horizontal displacement when it gets corrected — diagnostic for crowd-push investigations.")]
         public bool debugPush = false;
 
-        [Header("Anti-pile-up (crowd shouldn't lift the player onto NPC capsules)")]
-        [Tooltip("What counts as REAL ground for the anti-pile-up check below. MUST exclude the NPC layer — the whole point is telling 'resting on real floor/stairs' apart from 'resting on a pile of NPC capsules', which the horizontal push guard above can't catch (it only rejects horizontal excess; stepOffset-driven lift is vertical).")]
-        public LayerMask groundTruthMask = ~0;
-        [Tooltip("Ease the player back down whenever their capsule bottom sits higher than the REAL floor beneath by more than this (m). Small enough not to fight real stairs/ramps (stepOffset itself), large enough not to fight normal floor noise.")]
-        public float pileUpTolerance = 0.15f;
-        [Tooltip("How fast (m/s) the player eases back down onto real ground when caught above it. A smooth correction, not a snap, so it doesn't read as a teleport while still standing in a crowd.")]
-        public float pileUpCorrectionSpeed = 6f;
-
         /// <summary>External move-speed multiplier (1 = normal). Set by e.g. PlayerMelee to slow the player while charging a heavy swing. Reset to 1 when done.</summary>
         public float moveScaleOverride { get; set; } = 1f;
 
@@ -250,35 +242,8 @@ namespace DungeonGen
             // The dash/knockback burst bleeds off exponentially (frame-rate independent).
             externalVelocity *= Mathf.Exp(-externalDamping * Time.deltaTime);
 
-            EaseOffPileUp();
-
             if (Input.GetKeyDown(KeyCode.Escape))
                 Quit();
-        }
-
-        /// <summary>
-        /// Counters the CharacterController stepOffset climbing a crowd of NPC capsules
-        /// like a staircase (see the field tooltips above for the mechanism). Casts
-        /// straight down from the capsule center against groundTruthMask (which must
-        /// exclude the NPC layer) to find the REAL floor, and if the capsule bottom is
-        /// sitting well above it while grounded, eases back down. Only engages while
-        /// isGrounded, so falling/jumping/ladder-climbing are untouched.
-        /// </summary>
-        void EaseOffPileUp()
-        {
-            if (!cc.isGrounded) return;
-
-            Vector3 origin = transform.position + cc.center;
-            if (!Physics.Raycast(origin, Vector3.down, out RaycastHit groundHit, cc.height,
-                                  groundTruthMask, QueryTriggerInteraction.Ignore))
-                return;
-
-            float capsuleBottomY = transform.position.y + cc.center.y - cc.height * 0.5f;
-            float lift = capsuleBottomY - groundHit.point.y;
-            if (lift <= pileUpTolerance) return;
-
-            float correction = Mathf.Min(lift - pileUpTolerance, pileUpCorrectionSpeed * Time.deltaTime);
-            transform.position += Vector3.down * correction;
         }
 
         /// <summary>Reload the active scene — the dungeon rebuilds from the (possibly overridden) seed/depth.</summary>
