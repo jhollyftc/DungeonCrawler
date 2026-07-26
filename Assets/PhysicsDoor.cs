@@ -34,6 +34,14 @@ namespace DungeonGen
         [Tooltip("Log every push (world axis, lever, torque, constraints). Turn on when a door won't move — it pinpoints a bad hinge axis, a zero lever, or a blocking constraint immediately.")]
         [SerializeField] private bool debugPush = false;
 
+        [Header("Standoff jam (shoving match from BOTH sides)")]
+        [Tooltip("When pushes arrive from OPPOSITE sides at once (player one side, NPCs the other), go briefly kinematic instead of being squeezed.\n\nTHE BUG THIS FIXES: maxDepenetrationVelocity is deliberately tiny (0.1) so the door can't launch — but that also means a door pinned between two CharacterControllers cannot separate itself. Penetration then accumulates past half the door's thin collider, and CharacterController.Move resolves the overlap to the NEAREST exit, which by that point is the FAR SIDE — the player pops through the door. Wedged between door and frame, the only free direction is UP, so instead they climb into the frame/ceiling.\n\nGoing kinematic makes the door immovable world geometry for the duration, so no penetration accumulates and there is nothing to tunnel through. It is also just physically true: two people shoving a door from opposite sides don't move it.")]
+        [SerializeField] private bool jamOnOpposingPush = true;
+        [Tooltip("Pushes from both sides within this many seconds count as a standoff. Wide enough to catch alternating per-frame contacts from several pushers, short enough that walking through a door someone ELSE opened a moment ago doesn't read as opposition.")]
+        [SerializeField] private float opposingPushWindow = 0.25f;
+        [Tooltip("How long the jam holds after the last opposing push. Covers the gap when contact flickers for a frame, and releases promptly once one side gives up (an NPC dies or backs off) so the winner's push takes effect.")]
+        [SerializeField] private float jamHoldTime = 0.35f;
+
         [Header("Swing (one-way-per-swing)")]
         [Tooltip("Degrees the door must open before the OPPOSITE limit snaps shut at 0. From then on the door cannot swing THROUGH closed — it stops dead there and thunks, like a real door meeting its frame. Once it settles, the full range is restored so the next push can go either way. Keep SMALL — this is the physical stop, not the sound.")]
         [SerializeField] private float commitAngle = 3f;
@@ -215,6 +223,15 @@ namespace DungeonGen
         /// </summary>
         private void FixedUpdate()
         {
+            // A jammed door is kinematic — it has no velocity to clamp and takes no
+            // torque, so skip the rest of the physics housekeeping entirely until the
+            // standoff ends (see jamOnOpposingPush).
+            if (jammed)
+            {
+                if (Time.time >= jammedUntil) Unjam();
+                else return;
+            }
+
             // Resume self-closing once nothing has pushed for a moment — see
             // pushSpringSuppressTime. While suppressed the push torque (and the
             // gentle depenetration correction) is the ONLY major torque acting on
@@ -363,6 +380,56 @@ namespace DungeonGen
         // want the opposite; they keep the default false and resist.)
         public bool PreferIntentPush => true;
 
+        // Standoff detection — last time a push tried to swing the door each way, by
+        // torque sign about the hinge axis. See jamOnOpposingPush.
+        private float lastPushTimeOpening = -99f;
+        private float lastPushTimeClosing = -99f;
+        private float jammedUntil = -99f;
+        private bool jammed;
+
+        /// <summary>
+        /// Freeze the door as immovable world geometry for jamHoldTime. Kinematic rather
+        /// than just zeroing velocity: a CharacterController treats a kinematic body as
+        /// static, so it stops sinking into it at all — which is the whole point, since
+        /// accumulated penetration is what lets the capsule resolve out the far side.
+        /// Re-arms the timer on every opposing push, so a sustained shoving match holds.
+        /// </summary>
+        private void Jam()
+        {
+            // An already-kinematic door is a LOCKED door (the intended lock mechanism) —
+            // it is immovable anyway, and jamming it would mean Unjam() later turns a
+            // locked door dynamic. Never take ownership of a kinematic flag we didn't set.
+            if (doorBody.isKinematic) return;
+
+            jammedUntil = Time.time + jamHoldTime;
+            if (jammed) return;
+
+            jammed = true;
+            doorBody.angularVelocity = Vector3.zero;
+            doorBody.linearVelocity = Vector3.zero;
+            doorBody.isKinematic = true;
+            if (debugPush) Debug.Log("[PhysicsDoor] JAMMED — opposing pushes from both sides.", this);
+        }
+
+        /// <summary>Don't leave a door welded shut if this is disabled mid-standoff —
+        /// the jam is a transient physics state, not a property of the door.</summary>
+        private void OnDisable()
+        {
+            if (jammed) Unjam();
+        }
+
+        /// <summary>Release the jam and hand the door back to physics.</summary>
+        private void Unjam()
+        {
+            jammed = false;
+            doorBody.isKinematic = false;
+            // Start from rest: whatever the solver had queued belongs to a standoff that
+            // is over, and letting it apply would fling the door as the jam releases.
+            doorBody.angularVelocity = Vector3.zero;
+            doorBody.linearVelocity = Vector3.zero;
+            if (debugPush) Debug.Log("[PhysicsDoor] jam released.", this);
+        }
+
         public void Push(Vector3 contactPoint, Vector3 pushDirection, float strength)
         {
             // Let the push win uncontested — see pushSpringSuppressTime's tooltip.
@@ -388,6 +455,21 @@ namespace DungeonGen
             Vector3 force = Vector3.ProjectOnPlane(pushDirection.normalized, axis) * strength;
 
             float torque = Vector3.Dot(Vector3.Cross(lever, force), axis);
+
+            // Which SIDE this push came from, for free: torque sign about the hinge axis.
+            // Opposite signs within opposingPushWindow means the door is being squeezed —
+            // see jamOnOpposingPush for why that has to be prevented rather than absorbed.
+            if (torque > 0f) lastPushTimeOpening = Time.time;
+            else if (torque < 0f) lastPushTimeClosing = Time.time;
+
+            if (jamOnOpposingPush
+                && Time.time - lastPushTimeOpening <= opposingPushWindow
+                && Time.time - lastPushTimeClosing <= opposingPushWindow)
+            {
+                Jam();
+                return;   // a jammed door takes no torque from either side
+            }
+
             doorBody.AddTorque(axis * torque, ForceMode.Impulse);
 
             if (debugPush)
