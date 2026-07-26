@@ -102,6 +102,18 @@ namespace DungeonGen
         [Tooltip("How fast the face eases between expressions (per second). A furrow shouldn't snap on.")]
         public float blendRate = 4f;
 
+        [Header("Injury (sustained, by health %)")]
+        [Tooltip("The face of a BADLY WOUNDED goblin — sagging brow, hanging jaw, dull unfocused eyes. Unlike the hit reaction (a momentary shock on each blow) this is a sustained STATE: it blends in continuously as health drops and stays for as long as the NPC is hurt, so a worn-down enemy is readable at a glance without a health bar.\n\nIt does NOT replace the mood — it blends WITH it, so a wounded goblin that spots you still reads angry, just haggard. Author it as the fully-spent extreme (the look at 0 health); partial injury is an interpolation toward it.")]
+        public Expression woundedExpression = new Expression
+        {
+            name = "Wounded", eyebrowRange = new Vector2(58f, 78f), jawRange = new Vector2(115f, 145f),
+            eyebrowSpeed = 0.35f, jawSpeed = 1.1f,
+            pupilColor = new Color(0.10f, 0.06f, 0.06f), pupilSize = 0.30f,
+            scleraColor = new Color(0.44f, 0.34f, 0.34f), scleraBrightness = 0.42f,
+        };
+        [Tooltip("Health fraction at or below which the NPC reads as wounded (1 = from the first scratch, 0.6 = only once properly hurt). This is a THRESHOLD, not a ramp: the wounded face blends in fully once health crosses it (at blendRate, so it eases rather than pops) and does not deepen further as health keeps falling. For a face that degrades gradually across the whole fight instead, make InjuryWeight return a proportional value rather than 1.")]
+        [Range(0f, 1f)] public float woundedBelowHealth01 = 0.6f;
+
         [Header("Hit reaction (brief shock)")]
         [Tooltip("The face when struck — a flash of shock: raise/widen the brow, drop the jaw open, and blow the pupils WIDE (physiological surprise) with a brief bloodshot-white flash. Overrides the mood for a moment on every hit.")]
         public Expression hurtExpression = new Expression
@@ -149,6 +161,8 @@ namespace DungeonGen
 
         NpcPerception perception;
         Health health;
+        // Reused target for the mood+injury blend — see LerpInto.
+        readonly Expression blendScratch = new Expression();
         float hurtUntil;
         bool dead;   // permanent once set — see deathExpression
         readonly float[] sampleBuf = new float[256];
@@ -198,7 +212,7 @@ namespace DungeonGen
             // passes it eases back to the mood. Shared by jaw/eyebrow AND eyes, so both
             // a hit and death read as one coherent reaction, not disjoint systems.
             bool hurt = Application.isPlaying && Time.time < hurtUntil;
-            Expression target = dead ? deathExpression : hurt ? hurtExpression : TargetExpression();
+            Expression target = dead ? deathExpression : hurt ? hurtExpression : MoodWithInjury();
             float rate = dead ? deathBlendRate : hurt ? hitBlendRate : blendRate;
             float k = Application.isPlaying ? 1f - Mathf.Exp(-rate * Time.deltaTime) : 1f;
 
@@ -316,6 +330,59 @@ namespace DungeonGen
             for (int i = 0; i < sampleBuf.Length; i++) sum += sampleBuf[i] * sampleBuf[i];
             float rms = Mathf.Sqrt(sum / sampleBuf.Length);
             return Mathf.Clamp01(rms * voiceJawGain);
+        }
+
+        /// <summary>
+        /// The awareness mood, degraded toward woundedExpression by how hurt the NPC is.
+        /// Kept as a BLEND rather than another priority tier (like hurt/dead) on purpose:
+        /// injury and alertness are independent axes, so a wounded goblin that spots you
+        /// must still read angry — just haggard with it. Collapsing them into a priority
+        /// chain would make a badly hurt NPC stop reacting to you at all, which is the
+        /// exact moment its face matters most.
+        ///
+        /// Returns the mood itself when unhurt, so the common case costs nothing and the
+        /// edit-mode preview is unchanged.
+        /// </summary>
+        Expression MoodWithInjury()
+        {
+            Expression mood = TargetExpression();
+            float injury = InjuryWeight();
+            if (injury <= 0f) return mood;
+
+            LerpInto(mood, woundedExpression, injury, blendScratch);
+            return blendScratch;
+        }
+
+        /// <summary>
+        /// 0 while healthier than woundedBelowHealth01, ramping to 1 at zero health.
+        /// Health drives it continuously rather than in steps, so the face sags a little
+        /// further with every blow instead of flipping at a threshold.
+        /// </summary>
+        float InjuryWeight()
+        {
+            if (!Application.isPlaying || health == null || woundedBelowHealth01 <= 0f) return 0f;
+            float h = health.Health01;
+            if (h >= woundedBelowHealth01) return 0f;
+            return 1f;
+            //return Mathf.Clamp01(1f - h / woundedBelowHealth01);
+        }
+
+        /// <summary>
+        /// Blend every field of two expressions into `dest`. Writes into a caller-owned
+        /// instance instead of returning a new one — this runs every frame in LateUpdate
+        /// on every visible NPC, and allocating an Expression per NPC per frame would be
+        /// steady GC churn for a purely cosmetic system.
+        /// </summary>
+        static void LerpInto(Expression a, Expression b, float t, Expression dest)
+        {
+            dest.eyebrowRange = Vector2.Lerp(a.eyebrowRange, b.eyebrowRange, t);
+            dest.jawRange = Vector2.Lerp(a.jawRange, b.jawRange, t);
+            dest.eyebrowSpeed = Mathf.Lerp(a.eyebrowSpeed, b.eyebrowSpeed, t);
+            dest.jawSpeed = Mathf.Lerp(a.jawSpeed, b.jawSpeed, t);
+            dest.pupilColor = Color.Lerp(a.pupilColor, b.pupilColor, t);
+            dest.pupilSize = Mathf.Lerp(a.pupilSize, b.pupilSize, t);
+            dest.scleraColor = Color.Lerp(a.scleraColor, b.scleraColor, t);
+            dest.scleraBrightness = Mathf.Lerp(a.scleraBrightness, b.scleraBrightness, t);
         }
 
         /// <summary>Highest expression whose awareness threshold the NPC has reached. Edit mode / no perception → the first.</summary>
