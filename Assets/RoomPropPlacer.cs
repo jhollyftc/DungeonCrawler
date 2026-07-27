@@ -480,6 +480,11 @@ namespace DungeonGen
                     if (prefab == null) return false;
                     if (Blocking(e.tier))
                     {
+                        // Keep the stair approach clear. ThresholdsConnected() below is a
+                        // CELL flood-fill and happily passes a prop at a stair foot, but
+                        // the navmesh doesn't — see PropSnap.NearStair.
+                        if (PropSnap.NearStair(grid, cell)) return false;
+
                         blocked.Add(cell);
                         if (!ThresholdsConnected())
                         {

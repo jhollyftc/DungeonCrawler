@@ -63,5 +63,40 @@ namespace DungeonGen
         /// <summary>Facing direction for a corner prop: diagonally out of the
         /// corner into the open space.</summary>
         public static Vector3 CornerFacing(Vector3Int a, Vector3Int b) => -((Vector3)a + (Vector3)b);
+
+        /// <summary>
+        /// Is this cell touching a staircase (itself or any of its 8 same-level
+        /// neighbours)? BLOCKING props must stay off these cells.
+        ///
+        /// Both placers already refuse to put props ON stair cells, and both run a
+        /// connectivity check after each blocking placement — but those checks are
+        /// CELL-level (a flood-fill / BFS over grid cells), and the navmesh is not. A
+        /// collider on the ordinary floor cell at the foot of a flight leaves cell
+        /// connectivity perfectly intact while narrowing the real gap below the agent
+        /// radius, so NavMeshAgents can no longer use the stairs at all. The player
+        /// doesn't notice — a CharacterController has stepOffset and squeezes past —
+        /// which is exactly why it shows up as "the debug path is red but I walked it".
+        ///
+        /// Stairs are the worst place for this: their navmesh is already the most
+        /// fragile in the project (voxel size has to drop to ~0.07 or stepped mesh
+        /// colliders bake as narrow ragged strips), so a prop that would merely pinch a
+        /// corridor can sever a staircase outright.
+        ///
+        /// Same level only: a flight's lower cells sit at y and its upper cells at y+1,
+        /// so the same-Y ring covers the approach at the bottom AND the landing at the
+        /// top. Shared here so the room and hallway placers can't drift apart.
+        /// </summary>
+        public static bool NearStair(Grid3D<CellType> grid, Vector3Int cell)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                var p = new Vector3Int(cell.x + dx, cell.y, cell.z + dz);
+                if (!grid.InBounds(p)) continue;
+                CellType t = grid[p];
+                if (t == CellType.StairLower || t == CellType.StairUpper) return true;
+            }
+            return false;
+        }
     }
 }

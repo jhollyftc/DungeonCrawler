@@ -313,6 +313,10 @@ namespace DungeonGen
                         // Blocking décor must not sever the corridor.
                         if (Blocking(e.tier))
                         {
+                            // Connected() is a CELL-level BFS and passes a prop sitting at
+                            // a stair mouth; the navmesh doesn't — see PropSnap.NearStair.
+                            if (PropSnap.NearStair(grid, c)) continue;
+
                             blocked.Add(c);
                             if (!Connected()) { blocked.Remove(c); continue; }
                         }
