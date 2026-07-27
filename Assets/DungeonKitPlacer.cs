@@ -407,12 +407,28 @@ namespace DungeonGen
                     beyondDoorCells.Add(grid.InBounds(a) && grid[a] == CellType.Hallway ? a : b);
                 }
 
+                // MUST match BuildArchways' definition of an opening, or the classifier
+                // and the arches disagree: an arch appears while the corner posts still
+                // think the face is a plain wall, so posts land through the arch frame.
+                // Room MEMBERSHIP, not CellType — an interior staircase keeps its cells
+                // in Room.Cells and only changes their CellType (§7), so a CellType test
+                // misses every doorway with a stair through it.
+                bool RoomMember(Vector3Int p)
+                {
+                    if (!grid.InBounds(p) || grid[p] == CellType.Empty) return false;
+                    return gen.RoomAt(p) != null;
+                }
+                bool CorridorMember(Vector3Int p)
+                {
+                    if (!grid.InBounds(p) || grid[p] == CellType.Empty) return false;
+                    return grid[p] != CellType.Prison && gen.RoomAt(p) == null;
+                }
+
                 bool FrameFace(Vector3Int pa, Vector3Int pb)
                 {
                     if (!grid.InBounds(pa) || !grid.InBounds(pb)) return false;
-                    CellType ta = grid[pa], tb = grid[pb];
-                    return (ta == CellType.Hallway && tb == CellType.Room) ||
-                           (ta == CellType.Room && tb == CellType.Hallway);
+                    return (CorridorMember(pa) && RoomMember(pb)) ||
+                           (RoomMember(pa) && CorridorMember(pb));
                 }
 
                 // Any face whose opening carries its own frame (arch or door).
@@ -840,14 +856,33 @@ namespace DungeonGen
             };
             int count = 0;
 
+            // An opening is corridor-side ↔ ROOM-MEMBER, tested by room MEMBERSHIP, not
+            // by CellType. This used to require `Hallway → Room` literally, which misses
+            // real doorways: an interior staircase carved inside a room keeps its cells
+            // in Room.Cells and only changes their CellType to StairLower/StairUpper (§7),
+            // so a doorway with a stair through it read as "not a Room" and got NO ARCH
+            // (real bug — an upper-level hallway opening with a staircase below it). The
+            // generator itself defines doorways this way: RecordDoor tests
+            // room.Contains(hallwayCell + d), never a CellType. Prisons are excluded —
+            // they frame their own openings with bars.
+            var inRoom = new bool[grid.Length];
+            foreach (var room in gen.Rooms)
+                foreach (var p in room.Bounds.allPositionsWithin)
+                    if (grid.InBounds(p) && room.Contains(p))
+                        inRoom[grid.Index(p)] = true;
+
             for (int i = 0; i < grid.Length; i++)
             {
-                if (grid[i] != CellType.Hallway) continue;
+                CellType here = grid[i];
+                if (here == CellType.Empty || here == CellType.Prison) continue;
+                if (inRoom[i]) continue;                       // corridor side only
+
                 Vector3Int c = grid.Position(i);
                 foreach (var d in hDirs)
                 {
                     Vector3Int nb = c + d;
-                    if (!grid.InBounds(nb) || grid[nb] != CellType.Room) continue;
+                    if (!grid.InBounds(nb) || grid[nb] == CellType.Empty) continue;
+                    if (!inRoom[grid.Index(nb)]) continue;     // must open INTO a room
                     if (doorFaceKeys.Contains(FaceKey(i, d))) continue;
 
                     // Slot: the room this opening leads into decides the style
