@@ -49,12 +49,16 @@ namespace DungeonGen
         public bool visible = true;
         [Tooltip("Texture pixels per dungeon cell. Needs to be at least ~8 now that cells draw wall edges, or the walls eat the whole cell. A 40x40 grid at 12 is a 480x480 texture — nothing, and it only rebuilds when something changes.")]
         [Range(4, 24)] public int pixelsPerCell = 12;
-        [Tooltip("Optional UI RawImage to render into. Left empty, the map draws through OnGUI at overlayRect — enough to evaluate the look with no canvas setup, same dev-overlay approach FirstPersonController uses.")]
+        [Tooltip("Optional UI RawImage COMPONENT in the scene (GameObject > UI > Raw Image) — NOT an image asset. The mapper generates the texture and assigns it here every redraw, so leave the RawImage's own Texture field empty. Assign this to put the map in real UI (anchored, scalable, layered with the rest of the HUD); leave it empty to use the OnGUI overlay at overlayRect instead, which needs no canvas setup.")]
         public RawImage target;
+        [Tooltip("Optional UI Text for the floor readout when rendering into a RawImage (the OnGUI label only draws in overlay mode). Using TextMeshPro instead? Leave this empty and drive your own field from the public CurrentFloorNumber / FloorCount.")]
+        public Text floorLabel;
         [Tooltip("Screen rect (pixels) for the OnGUI fallback: x, y, width, height. Ignored when a RawImage is assigned.")]
         public Rect overlayRect = new Rect(12f, 12f, 260f, 260f);
         [Tooltip("Draw the floor number under the OnGUI map. A one-floor-at-a-time map is confusing without it.")]
         public bool showFloorLabel = true;
+        [Tooltip("Also show the TOTAL floor count ('Floor 3 / 10' vs just 'Floor 3'). Useful as a dev readout, but note it leaks unexplored structure: a fog-of-war map that tells you how tall the dungeon is before you've been there is giving away layout you haven't earned. Turn off for a player-facing HUD.")]
+        public bool showFloorTotal = true;
 
         [Header("Ghosted neighbour floors (presentation 'B' — toggle to compare)")]
         [Tooltip("Draw the floor BELOW underneath the current one, dimmed. Restores the vertical relationship a one-floor map throws away — you can see a corridor runs over a room you already cleared. The risk is clutter: this generator packs rooms in 3D, so floors overlap in X/Z often. Turn off to get plain presentation 'A' back.")]
@@ -139,6 +143,12 @@ namespace DungeonGen
         {
             if (!Application.isPlaying) return;
             if (Input.GetKeyDown(toggleKey)) visible = !visible;
+
+            // The toggle has to reach the RawImage too — OnGUI checks `visible` itself,
+            // but a RawImage just keeps rendering whatever texture it holds, so without
+            // this the M key would silently do nothing in UI mode.
+            if (target != null && target.enabled != visible) target.enabled = visible;
+            if (floorLabel != null && floorLabel.enabled != visible) floorLabel.enabled = visible;
 
             if (vis == null || vis.Generator == null) return;
 
@@ -235,7 +245,15 @@ namespace DungeonGen
                 for (int x = 0; x < grid.Width && !occupied; x++)
                 for (int z = 0; z < grid.Depth; z++)
                 {
-                    if (grid[new Vector3Int(x, y, z)] == CellType.Empty) continue;
+                    Vector3Int c = new Vector3Int(x, y, z);
+                    if (grid[c] == CellType.Empty) continue;
+                    // A level only counts as a FLOOR if you can stand on it — i.e. a slab
+                    // is emitted beneath. Counting any occupied cell instead made a tall
+                    // room's upper air read as extra floors: a 3-tall Exit room whose
+                    // floor is level 10 reported "Floor 10 / 12", implying two more
+                    // floors the player can never reach. Same walkable-surface-not-
+                    // occupied-volume rule the drawing already follows.
+                    if (!cachedGen.NeedsSlabBetween(c + Vector3Int.down, c)) continue;
                     occupied = true;
                     break;
                 }
@@ -325,6 +343,7 @@ namespace DungeonGen
             tex.SetPixels32(pixels);
             tex.Apply(false);
             if (target != null) target.texture = tex;
+            if (floorLabel != null) floorLabel.text = FloorLabelText();
 
             drawnFloor = floor;
             dirty = false;
@@ -680,10 +699,18 @@ namespace DungeonGen
             if (!showFloorLabel) return;
             if (labelStyle == null)
                 labelStyle = new GUIStyle { fontSize = 14, normal = { textColor = Color.white } };
-            string label = $"Floor {CurrentFloorNumber} / {FloorCount}";
-            if (revealAll) label += "   [REVEALED]";
             GUI.Label(new Rect(overlayRect.x, overlayRect.yMax + 2f, overlayRect.width, 20f),
-                      label, labelStyle);
+                      FloorLabelText(), labelStyle);
+        }
+
+        /// <summary>Shared by the OnGUI overlay and the optional UI Text so the two can't drift.</summary>
+        string FloorLabelText()
+        {
+            string label = showFloorTotal
+                ? $"Floor {CurrentFloorNumber} / {FloorCount}"
+                : $"Floor {CurrentFloorNumber}";
+            if (revealAll) label += "   [REVEALED]";
+            return label;
         }
     }
 }
