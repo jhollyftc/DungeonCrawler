@@ -1203,7 +1203,34 @@ namespace DungeonGen
                     if (b.Contains(nb)) continue;
                     if (!Grid.InBounds(nb)) continue;
                     CellType t = Grid[nb];
-                    if (t == CellType.Room) roomAdjacencies++;
+                    if (t == CellType.Room)
+                    {
+                        // This shared face IS the closet's doorway — so it must not
+                        // already be spoken for by a wall-mounted LADDER.
+                        //
+                        // ORDERING: AllocateLadders runs at stage 6, satellites at
+                        // stage 9. The ladder pass does verify its mount wall is solid,
+                        // but at stage 6 this cell is still Empty, so it passes — and
+                        // three stages later a closet is carved into that exact face,
+                        // putting a ladder across the closet's only door (reported from
+                        // play testing: an elevated corner door laddered above a closet).
+                        //
+                        // The satellite yields rather than the ladder: a ladder is what
+                        // keeps an elevated entrance TWO-WAY, and losing it would demote
+                        // that room to a one-way drop. Satellites are chanced decoration,
+                        // so skipping one costs far less than the connectivity does.
+                        // (Prisons need no equivalent guard — their one-opening rule
+                        // already rejects any footprint touching a Room, and their
+                        // solid-above rule rejects the column under a hallway.)
+                        foreach (var lad in Ladders)
+                        {
+                            bool inClimbColumn = lad.BaseCell.x == nb.x && lad.BaseCell.z == nb.z
+                                              && nb.y >= lad.BaseCell.y
+                                              && nb.y <= lad.BaseCell.y + lad.HeightCells;
+                            if (inClimbColumn && nb + lad.WallDir == p) return false;
+                        }
+                        roomAdjacencies++;
+                    }
                     else if (t != CellType.Empty) return false; // touches hallway/stair/prison -> reject
                 }
             // Exactly one shared cell with the host (our 1-wide door edge).
