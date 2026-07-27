@@ -39,6 +39,7 @@ namespace DungeonGen
         public Vector3 interiorColumnOffset;
         [Tooltip("Wall-mounted ladder for drop-in elevated entrances (no room for a staircase). Author BASE-ORIGIN (globalVisualOffset is NOT applied), one cell (3m) tall — segments stack per story. Thin, back at the wall plane; give it a solid collider plus a trigger box with a LadderClimbZone covering the climbable front (extend the trigger ~0.5m above the opening so the player keeps climb control while cresting). Optional — skipped if empty (the entrance stays a one-way drop).")]
         public GameObject[] ladderPrefabs; // optional — skipped if empty
+        [Tooltip("Nudge applied in the LADDER'S OWN frame, not world space: Z = away from the mounting wall, X = along it, Y = up. Wall-relative because that's the only way one value can be correct on all four wall directions — a world-space offset embeds the ladder in the masonry on the opposite wall.")]
         public Vector3 ladderOffset;
         [Tooltip("Place corner posts on edges that touch a doorway/arch face (jamb corners and meeting-arch corners). Off = arches stand alone.")]
         public bool pillarsAtDoorways = false;
@@ -1014,7 +1015,16 @@ namespace DungeonGen
 
                 for (int seg = 0; seg < lad.HeightCells; seg++)
                 {
-                    Vector3 pos = face + Vector3.up * (seg * cellSize) + kit.ladderOffset + parent.position;
+                    // ladderOffset is applied in the LADDER'S OWN frame (rot * offset),
+                    // not world space. A ladder's offset is inherently directional — its
+                    // whole job is "how far off the wall" — so a world-space nudge only
+                    // worked on walls that happened to face that world axis: the opposite
+                    // wall got the ladder pushed INTO the masonry and perpendicular walls
+                    // got it slid sideways along the face (real bug). rot is yaw-only, so
+                    // Y still means straight up; X now means along the wall and Z away
+                    // from it, which is what the field reads as.
+                    Vector3 pos = face + Vector3.up * (seg * cellSize)
+                                + rot * kit.ladderOffset + parent.position;
                     if (instancer != null)
                     {
                         PropInstancer.PlaceProps(instancer, prefab,
