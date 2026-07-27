@@ -25,6 +25,10 @@ namespace DungeonGen
         public float rotationSpeed = 180f;
         public bool startOpen;
 
+        [Header("Source (auto-added 3D if empty)")]
+        [Tooltip("One-shot source. Left empty, a 3D source (linear rolloff, 15m) is added at Awake.")]
+        [SerializeField] private AudioSource audioSource;
+
         [Header("Audio (optional)")]
         public AudioClip openClip;
         public AudioClip closeClip;
@@ -34,7 +38,6 @@ namespace DungeonGen
         float targetAngle;
 
         Quaternion lidRestRotation;
-        AudioSource audioSource;
 
         public string Prompt => isOpen ? "Close" : "Open";
 
