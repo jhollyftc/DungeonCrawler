@@ -128,8 +128,23 @@ Merchant, Barracks, Kitchen, Library, Shrine, and satellite types ChestVault,
 Treasury, Armory, Pantry, Study, Reliquary.
 
 **Typing (AssignRoomTypes)** — decisions locked with the user:
-- **Start/Exit** = the two ends of the MST diameter (double-BFS on hop distance).
-  Exit is a distinct portal-out room, NOT the boss room.
+- **Start/Exit** = a CLIMB. Start sits on the **lowest occupied floor**, Exit on the
+  **highest** — the player is dropped in at the bottom and works their way out. Exit
+  is a distinct portal-out room, NOT the boss room.
+  **Chosen as a PAIR, never independently by height** (`ChooseStartAndExit`): the old
+  MST-diameter choice silently guaranteed a LONG critical path, and Merchant placement
+  depends on it (it scores rooms by distance to the MIDDLE of the start→exit path, so
+  a two-room path has no middle and the merchant lands beside Start or Exit). Nothing
+  stops the deepest and topmost rooms being MST-adjacent — room Y is random and the
+  graph is Delaunay over room centres. So among the extreme floors the pair maximizing
+  hop distance wins: the vertical narrative AND a path worth walking, with Merchant and
+  Throne needing no changes. Falls back to the graph diameter when every room shares a
+  floor. **Room floor = `Bounds.yMin`** (a tall room spans several Y but you walk one).
+  **`gridHeight` 12** is the tested value for this: it gives a real climb while keeping
+  the maximum stair chain inside what the pathfinder handles. 20 made the required
+  route stair-dominated and stressed the A* hard — the critical path is now the full
+  vertical span on EVERY seed, which is the worst case for stair-aware pathing
+  (~one staircase per level, each needing its 13-cell sealed envelope).
 - **Merchant** — ON the critical path (start→exit), mid-path, so it's reliably
   found. Hard cap 1. Gated by depth.
 - **Throne** — largest room OFF the critical path (optional reward). Hard cap 1.
@@ -192,6 +207,17 @@ convention), **stairs and corner pillars** (the latter two route through
 approximate sloped ramp is skipped (`includeStairRamps=false`) so the prefab's
 authored stepped collider is the sole walking surface — two colliders that
 disagree about the floor was the original stair-collision bug.
+
+**Directional kit offsets must be applied in the PIECE'S OWN frame** (real bug):
+`ladderOffset` was added in world space while the ladder is rotated by
+`LookRotation(-WallDir)`, so an offset meaning "push away from the wall" only worked
+where the wall happened to face that world axis — the opposite wall drove the ladder
+INTO the masonry and perpendicular walls slid it sideways along the face. Now
+`rot * offset` (Z = away from wall, X = along it, Y = up; `rot` is yaw-only so
+vertical tuning is unaffected). **`archwayOffset` has the same world-space shape and
+is deliberately left alone** — arches sit centred in their opening so it's only ever
+used for Y, which is rotation-invariant; same one-line fix if a non-zero X/Z is ever
+wanted there.
 
 **`wallMargin`** (DungeonVisualizer, meters): insets the greybox's wall faces
 toward the room so the invisible collider sits flush with the kit's decorative
@@ -366,6 +392,16 @@ One RoomStyle asset defines a room type's whole look. What it holds:
 - **Openings** (`OpeningSet` per type): archway + door prefabs. Chosen by the
   room the opening leads INTO (a throne entrance gets the throne arch; a treasury
   closet door styles the treasury). Empty = kit generic.
+  **An opening is defined by ROOM MEMBERSHIP, not CellType** (real bug): `BuildArchways`
+  and `FrameFace` once required `Hallway → Room` by cell type, which misses every
+  doorway with an interior staircase through it — those cells stay in `Room.Cells` and
+  only their CellType changes to StairLower/StairUpper, so they read as "not a Room"
+  and got NO ARCH. The generator itself never had this problem: `RecordDoor` tests
+  `room.Contains(hallwayCell + d)`. **`BuildArchways` and `FrameFace` must agree** —
+  `FrameFace` feeds `FramedOpening`, which tells the corner-post classifier a face
+  already carries its own frame, so fixing only the arch side is WORSE than the bug
+  (arches appear while posts still land through them). Prisons stay excluded; they
+  frame their openings with bars.
 - **Pillars** (outer/inner per type in OpeningSet). Resolved **priority-by-
   specialness** at edges touching multiple rooms: `RoomStyle.Specialness()`
   ladder (Start/Exit/Throne 5 > Treasury 4 > Merchant 3 > satellites 2 >
@@ -1070,6 +1106,52 @@ Formula-driven with authored override points (the user's explicit choice).
   import setting even in-editor. It also overrides **voxel size** (~0.07): the default
   (agentRadius/3) is too coarse for stepped mesh colliders, baking stairs as narrow
   ragged strips with a lip where the stair prefab overlaps the greybox landing.
+- **LADDERS ARE INVISIBLE TO THE NAVMESH — a live gameplay limitation, not a quirk.**
+  Climbing is scripted (`LadderClimbZone` + the controller's overlap poll), so no
+  `NavMeshAgent` has any route across a ladder. On a seed whose only way up is a
+  ladder, **NPCs simply cannot follow the player** — and `AllocateLadders` produces
+  exactly that whenever an elevated door can't get an interior stair. Fixing it needs
+  BOTH halves: `NavMeshLink`s spanning each ladder (foot→head) at bake time in
+  `DungeonNavBaker`, AND off-mesh-link handling in `NpcLocomotion`
+  (`agent.isOnOffMeshLink` → drive the capsule up → `CompleteOffMeshLink()`). Adding
+  the links alone is WORSE than nothing: an agent paths onto a link it can't traverse
+  and gets stuck at the bottom. A ladder's walkable top is the HALLWAY cell through
+  the doorway (`BaseCell + up*HeightCells + WallDir`) — the room-side threshold sits
+  in the room's open vertical volume with no floor under it.
+- **CELL-LEVEL CONNECTIVITY ≠ NAVMESH CONNECTIVITY (generalizes — remember this
+  shape).** The prop system's safety net is a flood-fill/BFS over grid CELLS, and it
+  can pass while the navmesh is severed: a collider prop on an ordinary floor cell
+  leaves cell connectivity intact but narrows the real gap below the agent radius. The
+  player never notices — a `CharacterController` has `stepOffset` and squeezes past —
+  so the tell is **"the debug path is red along a route I just walked"**. First seen at
+  a staircase foot (stairs are the most fragile navmesh in the project, see the voxel
+  note above), fixed by keeping BLOCKING tiers off any cell touching a stair
+  (`PropSnap.NearStair`, shared so the room and hallway placers can't drift; décor is
+  unaffected — no collider, no bake impact). **Doorways are the same shape with more
+  margin** — that's where to look next if a red-but-walkable path shows up away from
+  stairs.
+- **DungeonPathDebug** (on DungeonVisualizer) — draws the walkable route to the Exit
+  (Start→Exit, or player→Exit), **P** toggles. Pathed with `NavMesh.CalculatePath`
+  rather than the room graph on purpose: the graph only says which rooms CONNECT, this
+  says whether you can WALK there. Three states — **green** direct, **amber** only via
+  a ladder (so NPCs can't follow, warned once per dungeon), **red** genuinely
+  unreachable, warned once with seed+depth. It BFS-hops navmesh islands using the
+  generator's `Ladders` list. The line is built in code (no prefab/material to author)
+  with **Sprites/Default**, because URP/Unlit ignores VERTEX colour and `startColor`/
+  `endColor` silently did nothing — the line rendered white and all three states looked
+  identical. Given the vertical Start/Exit rule this doubles as the connectivity check
+  for the hardest routes the generator can produce.
+- **DungeonExitPortal** — the interactable in the Exit room that advances a run to the
+  next depth (placeholder for a ladder/hatch). No new machinery: `PendingDepth`/
+  `PendingSeed` are statics consumed inside `Generate()` before the generator is built,
+  so they survive the scene reload, and `DungeonPlayerSpawner` then puts the player in
+  Start. **It always sets a seed explicitly** — `randomizeSeedOnGenerate` defaults to
+  FALSE, so leaving it alone regenerates the SAME layout one depth deeper. The default
+  DERIVES the next seed from the current one (a proper bit-mixer, not `seed + depth`,
+  which leaves consecutive runs sharing most of their bits), so a whole multi-depth run
+  replays from its first seed — rule 4 staying useful across a run, not just one floor.
+  Author it as a Feature, guaranteed ×1, **`PropTier.FullGameObject`** (§8 — an
+  instanced tier would bake the mesh and spawn only a collider).
 - **Animator-controller clobber — process rule:** Unity re-serialized
   `Goblin_Animator.controller` during an asset move and **DROPPED** the added
   parameter/state/transition while keeping the orphaned objects in the file (graph
@@ -1292,6 +1374,14 @@ Cosmetic-first; combat is far off ("get the world together first").
   github.com/jhollyftc/DungeonCrawler — commit per feature, push after).
 - **Review every diff** — the copy-paste workflow that preceded VS Code was a de
   facto review gate; keep reviewing when edits get frictionless.
+- **Commit a new script's `.meta` WITH it.** `DungeonMapper.cs` went in without its
+  `.meta` and would have picked up a different guid on another machine, breaking every
+  prefab reference — the same class of failure as the `EmissiveController`/
+  `EmissionController` rename (rule 3). `git status` shows untracked `.meta` files
+  right beside the script; they're easy to skip when staging by name.
+- **Two unrelated fixes in one file still get two commits.** Stage one, commit,
+  restore the other, commit again — the history is what makes a field lesson findable
+  later, and a combined commit buries one of them.
 - Design conversations (new systems, tradeoffs, "what's wrong with this
   screenshot") happen in the Claude chat interface; implementation and debugging
   happen here in the editor. Bring decisions in, take implementation out.
