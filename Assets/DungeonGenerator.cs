@@ -903,11 +903,21 @@ namespace DungeonGen
             for (int i = 0; i < n; i++) adj[i] = new List<int>();
             foreach (var e in MstEdges) { adj[e.A].Add(e.B); adj[e.B].Add(e.A); }
 
-            // --- Start & Exit: the two ends of the longest shortest-path in the
-            // MST (graph diameter), via double-BFS. Hop distance is the right
-            // metric — "rooms to traverse", not euclidean.
-            int start = BfsFarthest(adj, 0, out _);
-            int exit = BfsFarthest(adj, start, out int[] distFromStart);
+            // --- Start & Exit: a CLIMB. The player is dropped in at the bottom and
+            // works their way out, so Start sits on the lowest occupied floor and Exit
+            // on the highest.
+            //
+            // But choosing them by height ALONE would throw away what the old
+            // graph-diameter choice silently guaranteed: a LONG critical path. Nothing
+            // stops the deepest and topmost rooms being MST-adjacent (room Y is random
+            // and the graph is built from Delaunay over room centres), and Merchant
+            // placement scores rooms by how close they are to the MIDDLE of the
+            // start→exit path — a two-room path has no middle, so the merchant would
+            // land next to Start or Exit on those seeds. So among the extreme floors we
+            // still maximize hop distance: the vertical narrative AND a path worth
+            // walking. Throne ("largest room OFF the critical path") benefits for the
+            // same reason.
+            ChooseStartAndExit(adj, out int start, out int exit, out int[] distFromStart);
             Rooms[start].Type = RoomType.Start;
             Rooms[exit].Type = RoomType.Exit;
 
@@ -993,6 +1003,65 @@ namespace DungeonGen
                     Rooms[freeRooms[fr]].Type = type;
             }
             // Remaining free rooms stay Generic.
+        }
+
+        /// <summary>
+        /// Picks Start on the lowest occupied floor and Exit on the highest, choosing the
+        /// PAIR that maximizes MST hop distance so the critical path stays long (see the
+        /// call site for why that matters to Merchant/Throne). Also returns hop distances
+        /// from Start, which the merchant's mid-path scoring needs.
+        ///
+        /// Room floor = `Bounds.yMin`: a tall room occupies several Y levels but you only
+        /// walk its floor, so that's the level it belongs to.
+        /// </summary>
+        void ChooseStartAndExit(List<int>[] adj, out int start, out int exit, out int[] distFromStart)
+        {
+            int n = Rooms.Count;
+            int lowY = int.MaxValue, highY = int.MinValue;
+            for (int i = 0; i < n; i++)
+            {
+                int y = Rooms[i].Bounds.yMin;
+                if (y < lowY) lowY = y;
+                if (y > highY) highY = y;
+            }
+
+            // Every room on one floor (possible at low depth / a short gridHeight):
+            // there's no climb to express, so fall back to the graph diameter — exactly
+            // the original behaviour.
+            if (lowY == highY)
+            {
+                start = BfsFarthest(adj, 0, out _);
+                exit = BfsFarthest(adj, start, out distFromStart);
+                return;
+            }
+
+            start = -1; exit = -1; distFromStart = null;
+            int bestDist = -1;
+            for (int a = 0; a < n; a++)
+            {
+                if (Rooms[a].Bounds.yMin != lowY) continue;
+
+                // One BFS per bottom-floor candidate. Rooms cap at 40 (DepthProfile
+                // maxRoomCount) and only the bottom floor's rooms qualify, so this stays
+                // trivially small — no need for anything cleverer.
+                BfsFarthest(adj, a, out int[] dist);
+                for (int b = 0; b < n; b++)
+                {
+                    if (b == a || Rooms[b].Bounds.yMin != highY) continue;
+                    if (dist[b] <= bestDist) continue;
+                    bestDist = dist[b];
+                    start = a; exit = b; distFromStart = dist;
+                }
+            }
+
+            // Safety net: no reachable bottom→top pair. The MST spans every room so this
+            // shouldn't happen, but Start/Exit must never come back unassigned — the
+            // spawner and the exit portal both key off them.
+            if (start == -1 || exit == -1)
+            {
+                start = BfsFarthest(adj, 0, out _);
+                exit = BfsFarthest(adj, start, out distFromStart);
+            }
         }
 
         static int BfsFarthest(List<int>[] adj, int source, out int[] dist)
