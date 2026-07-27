@@ -45,7 +45,11 @@ feature; push after commit.
 
 3. **File name = class name for any MonoBehaviour/ScriptableObject that is
    serialized onto a prefab or asset.** Unity binds by file name. This bit us
-   twice (PlayerInteractor, TorchFlicker). Split multi-class files accordingly.
+   THREE times (PlayerInteractor, TorchFlicker, and `EmissiveController.cs`
+   holding `class EmissionController` — already referenced by four candle
+   prefabs). Fix by renaming the **FILE**, not the class: the `.meta` travels
+   with the rename so the guid is preserved and existing prefab references stay
+   intact. Split multi-class files accordingly.
 
 4. **Determinism: same (seed, depth) → same dungeon.** All procedural choices
    draw from the seeded `System.Random` (generator) or the position-hash
@@ -144,6 +148,17 @@ Treasury, Armory, Pantry, Study, Reliquary.
   clean single doorway. `SatelliteFits` requires exactly one Room adjacency and
   zero hallway/stair/prison adjacency.
 - Start/Exit/Merchant never host. One satellite per host.
+- **Must not steal a LADDER's wall face** (real bug): `AllocateLadders` is stage 6,
+  satellites stage 9. The ladder pass *does* verify its mount wall is solid, but at
+  stage 6 that cell is still Empty so it passes — then a closet is carved into that
+  exact face three stages later, putting a ladder across the closet's only door.
+  `SatelliteFits` now rejects it, tested across the ladder's whole climb column (not
+  just its foot). **The SATELLITE yields, not the ladder** — a ladder is what keeps
+  an elevated entrance two-way, and dropping it demotes the room to a one-way drop;
+  satellites are chanced decoration, so on affected seeds a closet relocates or is
+  simply absent. Prisons need no equivalent guard (verified): their one-opening rule
+  already rejects any footprint touching a Room, and their solid-above rule rejects
+  the column beneath a hallway — exactly where a ladder's mount wall lives.
 
 **Interior columns (PlanInteriorColumns)** — free-standing columns for grand
 rooms:
@@ -230,6 +245,39 @@ torches cast shadows; the rest are shadowless fill. **Point-light shadows are a
 half of this fix. The stats overlay counts submissions (incl. shadow passes),
 not objects; the generator's `Instanced: N pieces` log is the true count. When
 a metric is implausible, interrogate the metric before optimizing against it.
+
+**SHADER WARMUP MUST BE SYNCHRONOUS (real field bug — cost several sessions):**
+NPCs were physically present (their CharacterController blocked movement) but
+INVISIBLE, then "popped" into view one at a time; worse with more NPCs, and it
+reproduced in a Player build. The cause was `m_WarmupAsync: 1` in
+GraphicsSettings: preloaded shader variants compile in the BACKGROUND, so the app
+starts rendering before warmup finishes and variants stream in over the first
+frames. Fix = `m_WarmupAsync: 0` (Project Settings > Graphics > Shader Loading),
+so warmup blocks until done. **Two capture attempts (14 then 25 variants) failed
+before this** — the collections were fine all along and the variant count was a
+red herring; the asynchrony was the whole bug. Preloaded collections live in
+`Assets/SharedVariantcollection*.shadervariants` and must stay listed in
+Graphics' Preloaded Shaders. NB: in-EDITOR the preload is tied to Editor process
+startup (adding a collection mid-session needs a full restart), but a Player
+build honors it immediately — which is what made "still broken in a build"
+the clue that pointed away from the capture and at the async flag.
+
+**Floors/ceilings between STACKED SPACES — `DungeonGenerator.NeedsSlabBetween`:**
+both the mesher and the kit placer once decided on a floor by asking "is the cell
+below solid?". That conflates a **multi-story room** (stacked cells, ONE open
+volume, must NOT have a slab through the middle — the reason the rule existed)
+with **two unrelated spaces that merely happen to be stacked** — a real generated
+layout, e.g. a satellite closet with a hallway routed above it. Both cells read
+open, so neither got a slab and a hole opened between them. **Room identity is the
+discriminator** (`BuildFootprint` writes a room's cells at every Y in its bounds,
+so both levels of a tall room resolve to the same `Room`; a closet and the
+corridor above it never do). The predicate lives on the generator and is called by
+BOTH the mesher and the kit placer so collision and visuals can't drift. It
+carries an explicit **stair-pair** case that the old code got implicitly: upper
+stair cells are written directly atop lower ones (`Grid[t1 + up] = StairUpper`)
+and the kit placer's floor rule has NO cell-type guard — it relied entirely on
+the solid-below test to skip them, so without it every corridor staircase gains a
+floor tile through its middle.
 
 **Material/atlasing note:** each distinct material = a separate instanced batch.
 Multi-material assets multiply batches (a 3-material arch = 3 instances/batches
@@ -686,6 +734,27 @@ Formula-driven with authored override points (the user's explicit choice).
   NOT taken (disagrees with our tested `false`, and community consensus on that
   flag is split) — a lesson in verifying AI-sourced advice against ground truth
   instead of applying it wholesale.
+  **STANDOFF JAM — a door shoved from BOTH sides goes briefly kinematic** (real
+  field bug): with a player one side and NPCs the other, the pusher could WARP
+  THROUGH to the far side, or wedge between door and frame and get driven UP into
+  the ceiling. `maxDepenetrationVelocity` is deliberately 0.1 m/s so the door can't
+  launch — but capsules press in at 3.5–8 m/s (NPC agent → player sprint), so the
+  door loses that race by 35–80× and penetration accumulates without bound;
+  `CharacterController.Move` then resolves the overlap to the NEAREST exit, which by
+  that point is the FAR SIDE. Wedged against the frame the only free direction is up,
+  hence the climb. **Collider thickness only buys time here, it cannot win the race**
+  — the deciding number is the velocity ratio, not the thickness. `Push()` already
+  computed a SIGNED torque about the hinge axis, so which side a push came from was
+  free: opposite signs inside `opposingPushWindow` → `Jam()` → kinematic for
+  `jamHoldTime`, which sidesteps depenetration entirely (a CharacterController treats
+  a kinematic body as world geometry). It's also just physically true. Two guards,
+  both silent failures otherwise: **never jam an already-kinematic door** (that's the
+  planned LOCKED state — `Unjam()` would turn a locked door dynamic), and `OnDisable`
+  releases so a door can't be left welded shut.
+  **`maxDepenetrationVelocity` 0.1 is CONFIRMED GOOD** and should stay: it was
+  originally chosen for a thin collider, and it was re-examined once the collider got
+  thicker (the reasoning above suggested raising it toward 0.5–1.0) — but 0.1 tested
+  better in play. Don't "fix" it upward on the thickness argument alone.
 - **Carrying / throwing (`PlayerCarry` + `Carryable`)** — pick up (via
   `IInteractable`/E), carry, drop (E), throw (LMB). The carry is **VELOCITY-DRIVEN,
   not a kinematic parent**: the prop stays a fully dynamic Rigidbody pulled toward
@@ -765,6 +834,32 @@ Formula-driven with authored override points (the user's explicit choice).
   checking `agent.isOnNavMesh` alone does NOT catch it, because `nextPosition` is
   force-synced to the falling body so the agent believes it's on the mesh all the
   way down.
+  **PERF — separation was 58% of the whole component** (profiled at 100 NPCs:
+  `Update()` 24.11ms, of which ~14ms was `Separation()`). The cost was NOT the O(n²)
+  arithmetic — it was reading `other.transform.position` inside the inner loop, a
+  managed→native transition per access, ~30k per frame. Fixed by snapshotting every
+  NPC position into a plain array once per frame, hoisting the self read, comparing
+  SQUARED distances (sqrt only for real neighbours), and using `ReferenceEquals`
+  instead of Unity's overloaded `==` (which runs a native destroyed-check). 24.11ms
+  → 11.91ms; separation ~14ms → ~1.7ms. Confirmed by zeroing `separationStrength`
+  and re-profiling before optimizing — interrogate the metric first.
+  **The snapshot REQUIRED `escapeDir`** (don't remove it as redundant): the old live
+  reads broke up a stacked crowd by ACCIDENT, because NPC #50 read #0's position
+  after #0 had already moved that frame — update order supplied the asymmetry. A
+  consistent snapshot removes that accident, so a symmetric pile stays symmetric
+  forever, and `transform.right` as the degenerate-overlap escape sent every
+  coincident goblin the same way: they roamed as ONE body and appeared to "divide
+  into many" when alerted. A stable per-NPC random bearing breaks the tie explicitly.
+  **`FaceTowards` OWNS the facing for its frame** (`facingLockedFrame`), and
+  `FaceMovement` stands down. `NpcBrain` calls `FaceTowards(target)` every frame while
+  alerted while locomotion steered toward travel direction — two systems rotating one
+  transform, pulling 180° apart while RETREATING, with the winner decided by undefined
+  script execution order. Because `LocalVelocity` is measured in the body's own frame,
+  that spin alone flipped the Animator's `VelocityZ` sign and flickered the blend tree
+  (see `NpcAnimatorDriver`). Frame-STAMPED, not a bool, so the lock holds whichever
+  component runs first. Same rule as `ViewmodelCollision`: one system owns a transform.
+  Remaining cost at 100 NPCs (~10ms) is `Controller.Move()` plus agent syncs — native,
+  and ~2.5ms at the real target of ~25 active NPCs, so left alone deliberately.
 - **NPC brain (`NpcBrain`)** — decisions only. Wander → Investigate → Alerted FSM
   as a **priority interrupt** (sight beats sound beats wandering, re-evaluated each
   frame). Every state delegates to capability components and never touches the agent
@@ -774,6 +869,16 @@ Formula-driven with authored override points (the user's explicit choice).
   "fix"):** generation is deterministic, runtime AI is NOT — where an NPC spawns
   reproduces from (seed, depth), but what it decides once alive uses `UnityEngine.Random`,
   because reproducing a fight would need deterministic physics and input replay.
+  **HYSTERESIS on every distance band, or a crowd flaps** (`approachHysteresis`, a
+  MULTIPLIER so it scales if `engageDistance` is retuned). Bare thresholds meant boids
+  separation nudging an NPC a centimetre past `engageDistance` repathed it inward, which
+  separation undid, forever. A ring of attackers physically CANNOT all sit at
+  `engageDistance` (circumference ÷ `separationRadius` caps how many fit), so the surplus
+  oscillates continuously. Both boundaries now latch and release wider: at
+  `engageDistance` 3 the bands are retreat < 2.0 until 2.5, hold 2.5–3.0, approach > 3.75.
+  Also stop churning the agent — `Stop()` was calling `ResetPath()` EVERY frame while
+  parked, approach recomputed a full path every frame, and retreat re-issued a destination
+  every frame at the `tooCloseDistance` line.
 - **NPC perception (`NoiseBus` + `NpcPerception`)** — the SENSING half, finally
   consumed. A static `NoiseBus` carries `NoiseEvent`s (position, 0..1 loudness,
   `Faction`); emitters and listeners are mutually ignorant, which matters because
@@ -846,13 +951,35 @@ Formula-driven with authored override points (the user's explicit choice).
     the same bones in sequence (ragdoll takes over completely) — contrast
     `NpcHitReactions`' death-disable fix above, which exists because `NpcFlinch`
     was NOT supposed to still be driving bones once this takes over.
-  - `NpcAnimatorDriver`: one-way bridge from `NpcLocomotion.CurrentSpeed` to Animator
-    `Speed`/`MotionSpeed`, and `TriggerDeath()`. AI never knows the Animator exists —
-    a rigged model is a drop-in. **NEVER root motion** (the CharacterController drives).
-    Reads `NpcLocomotion.CurrentSpeed`, which is `trueVelocity` (see `NpcLocomotion`
-    below), never raw `Controller.velocity` — the latter spikes during a push
+  - `NpcAnimatorDriver`: one-way bridge from `NpcLocomotion` to Animator
+    `Speed`/`MotionSpeed`/`VelocityX`/`VelocityZ`, and `TriggerDeath()`. AI never knows
+    the Animator exists — a rigged model is a drop-in. **NEVER root motion** (the
+    CharacterController drives). Reads `NpcLocomotion.CurrentSpeed`, which is
+    `trueVelocity`, never raw `Controller.velocity` — the latter spikes during a push
     correction and drove a "running in place" animation artifact that was never a
-    real position bug.
+    real position bug. **2D directional blend**: `LocalVelocity` (velocity in the NPC's
+    OWN frame) drives a Freeform Directional tree with forward/back/strafe clips, so a
+    crowd shove sideways plays a strafe instead of sliding the feet through a
+    forward-walk pose. Two calibration fields, both non-obvious:
+    `movementDeadzone` — a settled crowd never sits at exactly zero (separation and
+    repathing nudge a few cm/s indefinitely), and with idle at (0,0) the pose flickered
+    between idle and a walk direction EVERY FRAME. Applied to raw speed BEFORE damping
+    (so the damped value eases to a true zero) and zeroing both axes as a PAIR (else a
+    diagonal creep collapses onto one axis and swings the blend to a pure strafe on its
+    way to idle). `fullBlendSpeed` — the tree's poles are unit vectors, so feeding raw
+    m/s put an NPC at 0.4 m/s ~60% toward IDLE, feet barely cycling while the body slid.
+    The magnitude is remapped to reach a full walk clip at `fullBlendSpeed` (direction
+    preserved), leaving `MotionSpeed` to scale the CYCLE RATE to ground speed — which is
+    what actually keeps feet planted. **Requires the blend state's Speed Multiplier bound
+    to `MotionSpeed`, per state** (a second locomotion state e.g. Walk_Combat needs its
+    own binding; missing it silently reintroduces sliding).
+    **DIAGNOSTIC LESSON — the "jitter" was the POSE, not the POSITION.** A settled crowd
+    visibly shivered; every physics-side theory (Jacobi overshoot from the position
+    snapshot, damping the separation force) was WRONG, and was disproved decisively by
+    setting separation smoothing to 0.99 and seeing NO change. The real causes were the
+    facing fight (see `NpcLocomotion`) plus these two blend-tree calibrations. When
+    something *looks* like it's vibrating, check whether the transform is actually
+    moving before optimizing the physics.
   - `NpcHeadTrack`: head bone watches the player up close. Rig-agnostic (a rotation
     DELTA from body-forward toward the target, not an assumption about the head
     bone's own local axes) and **rest-orientation-agnostic**: the yaw/pitch clamp is
@@ -909,19 +1036,30 @@ Formula-driven with authored override points (the user's explicit choice).
   the target comes from the ground raycast, an EXTERNAL stable reference — not the
   previous pose. `groundMask` must exclude the NPC layer (don't plant a foot on a
   neighbour). v1 has no pelvis drop, so a steep descent is limited by leg length.
-- **NPC facial expression (`JawSineAnimation` → planned `NpcFace`)** — a cheap,
-  high-charm life signal: jaw + eyebrow bones driven by THREE layered sines each
-  (fBm-style, so it never visibly loops), normalized 0..1 and lerped between a
-  min/max angle. **The min/max RANGE is the emotion** — narrow/raise the eyebrow
-  range for surprise, lower/narrow it for anger; widen the jaw for a teeth-grind.
-  Runs in LateUpdate (composes on top of any body animation), `[ExecuteAlways]` so
-  you tune the look in edit mode. Planned expansion: (1) **state-driven expression
-  presets** — the range sets become named moods (Calm/Suspicious/Angry) blended by
-  `NpcPerception.Awareness01` / brain state, one-way like `NpcAnimatorDriver`, so a
-  goblin's face hardens as it detects you; (2) **jaw ↔ vocalization sync** — the jaw
-  opens on / amplitude-follows `NpcCombatAudio` grunts, so it looks like it's making
-  the sound. (Class was `JawSineAnimation` in `FacePoseTester.cs` — renamed to match,
-  golden rule 3.)
+- **NPC facial expression (`NpcFace`)** — BUILT. A cheap, high-charm life signal:
+  jaw + eyebrow bones driven by THREE layered sines each (fBm-style, so it never
+  visibly loops), normalized 0..1 and lerped between a min/max angle. **The min/max
+  RANGE is the emotion** — narrow/raise the eyebrow range for surprise, lower/narrow
+  it for anger; widen the jaw for a teeth-grind. LateUpdate (composes on top of any
+  body animation), `[ExecuteAlways]` for edit-mode tuning. What's in it now:
+  - **Awareness moods** — an `Expression` list picked by `NpcPerception.Awareness01`
+    (Calm/Suspicious/Angry), one-way like `NpcAnimatorDriver`, so the face hardens
+    as it detects you. A diegetic detection tell, same role as head-tracking.
+  - **EYES with no extra bones** — the eye material is the ToonLit rim-light turned
+    into an iris: `_BaseColor` = pupil, `_RimColor`/`_RimAmount` = sclera
+    color/brightness, `_RimThreshold` = pupil SIZE (higher = BIGGER pupil, verified
+    against the shader's rim math). Driven per material SLOT via the **INDEXED**
+    `SetPropertyBlock` overload — the non-indexed one applies to the WHOLE renderer,
+    so with eyes as one slot on the goblin's body mesh it tints the entire goblin.
+  - **Hit shock** (momentary, per blow) vs **wounded** (sustained, by `Health01`) —
+    deliberately different: injury BLENDS with the awareness mood rather than being
+    another priority tier, so a badly hurt goblin that spots you still reads angry,
+    just haggard. A priority chain would mute its reaction exactly when its face
+    matters most. Death outranks both, permanently.
+  - **Voice sync** — jaw opens to live `NpcCombatAudio` amplitude, toward
+    `jawOpenAngle` BEYOND the mood's idle range (blending toward the mood's `jawMax`
+    instead caps an angry clamped jaw shut — real bug).
+  (Class was `JawSineAnimation` in `FacePoseTester.cs` — renamed to match, rule 3.)
 - **NavMesh from stairs — BUILD-ONLY TRAP (real, cost hours):** runtime navmesh baking
   reads triangles off MeshColliders, which **in a player build requires the mesh's
   Read/Write Enabled import setting**. Non-readable meshes are skipped from the bake
@@ -957,6 +1095,44 @@ Formula-driven with authored override points (the user's explicit choice).
   controller holds a runtime generator reference, so regenerate in play mode
   to arm it. Fog itself must be enabled in Lighting > Environment — the
   controller only steers color.
+- **DungeonMapper** (on DungeonVisualizer) — fog-of-war automap. **The dungeon is
+  ALREADY the map**: it's a typed integer grid, so this is a FILTER over the
+  generator's output (a set of explored rooms/cells) painted into one `Texture2D`,
+  a pixel-block per cell. Renders to an optional `RawImage`, else an OnGUI overlay
+  (the same dev-overlay approach FirstPersonController uses); **M** toggles.
+  - **Reveal is deliberately NOT a uniform radius.** Rooms reveal WHOLESALE on entry
+    — honest (you can see the room) and free, since `Room.Cells` is the exact
+    footprint, which also gets L-shapes right instead of their bounding box.
+    Corridors reveal cell by cell as walked (1-wide and winding, so the drip-feed is
+    what makes the map feel earned). A radius would dribble a room in as you cross it
+    AND leak through walls into rooms you never entered; the corridor radius
+    explicitly refuses to bleed into an unentered room.
+  - **Walls are masked from the GRID, never from the explored set.** Masking on
+    exploration draws a solid wall across the far end of a half-walked corridor — the
+    map asserting a dead end where the tunnel continues. On solidity, a FRONTIER
+    (neighbour open but unexplored) gets no wall and reads as "continues, unknown".
+    Biggest readability win in the whole system.
+  - **ONE FLOOR AT A TIME**, with THREE distinct connector glyphs, because the
+    generator really does produce one-way links (an elevated door takes an interior
+    stair → falls back to a ladder → failing both, "leaves a one-way drop"). Drawing
+    that like a staircase would lie to a player planning a route back. Ghosted
+    neighbour floors are an optional toggle, drawn FLAT (no walls, no connector
+    colors) and darkened as well as faded — alpha alone still reads as "current
+    floor", which is the exact ambiguity a ghost must avoid.
+  - **Floor NUMBERS count from the lowest OCCUPIED grid level**, not raw Y:
+    `gridHeight` is a budget, so a dungeon whose content starts at y=5 would announce
+    "Floor 5" — a number that means nothing and changes between seeds for no visible
+    reason.
+  - Glyphs are hand-authored pixel art (`string[]`, `#` = filled), not text — a
+    `Texture2D` has no font rasterizer and scaled-down text mushes at ~7px. Room-type
+    glyphs mark only Start/Exit/Merchant/Throne/Treasury; glyph everything and nothing
+    stands out. Placed at `InteriorFloorCell`, NOT `Bounds.center` (an L-room's bbox
+    centre can be in the bite).
+  - Uses the **same world→cell + `RoomAt` path** as `FirstPersonController.CurrentRoomLabel`
+    and `DungeonFogController`, so the map can't disagree with the room readout or the
+    fog color. Watches the **generator instance** to wipe on regenerate (F1/PgUp).
+    `revealAll` is a debug view that never marks anything explored, so toggling it off
+    restores the genuine fog state.
 
 ---
 
@@ -1057,24 +1233,54 @@ Cosmetic-first; combat is far off ("get the world together first").
     per-angle profiles, orbit debug tool) for living hits; full blended ragdoll
     (`NpcRagdollReaction`, gravity-off flinch / gravity-on death) for death, opt-in
     for reactions. Routed by `NpcHitReactions`.
-24. ⏳ **Emotive NPC face** — evolve `JawSineAnimation` into `NpcFace`: state-driven
-    expression presets (the min/max ranges ARE the mood) blended by awareness, +
+24. ✅ **Emotive NPC face** (`NpcFace`) — awareness-driven expression presets (the
+    min/max ranges ARE the mood), eyes via the ToonLit rim-light trick, momentary
+    hit shock vs sustained health-driven wounded face, permanent death face, and
     jaw ↔ vocalization sync. See §10.
-25. ⏳ NPC AI remaining phases: **call for help** (shout = a loud `NoiseEvent`; the
+25. ✅ **Fog-of-war automap** (`DungeonMapper`) — room-wholesale / corridor-drip
+    reveal, grid-masked walls, door marks, one floor at a time with distinct
+    stair/ladder/one-way-drop glyphs, room-type glyphs. See §10. Next passes if
+    wanted: an authored tileset blitted per cell (the bitmask logic is unchanged —
+    only the per-cell paint step swaps), and wiring it to a real UI `RawImage`.
+26. ⏳ NPC AI remaining phases: **call for help** (shout = a loud `NoiseEvent`; the
     `NpcRegistry` and death cry already exist — rate-limit or it alert-loops);
-    **equipment/disarm/rearm** (`WeaponDefinition` SO + `PropSocket`-style hand
-    socket; a dropped weapon is NOT a `Carryable`, whose `Interact()` hard-codes
-    `PlayerCarry`); **NPC carry/throw** (extract `PlayerCarry`'s FixedUpdate drive
+    **disarm/rearm** (a dropped weapon is NOT a `Carryable`, whose `Interact()`
+    hard-codes `PlayerCarry`) — the equipment system itself is now item 27;
+    **NPC carry/throw** (extract `PlayerCarry`'s FixedUpdate drive
     into a shared `CarryDriver` — beware moving serialized fields, it silently
     resets the player prefab's tuning); **spawning** (depth-scaled `EnemyBudget` in
     DepthProfile, per-room-type `EnemySet` in RoomStyle, own placer on free hash
     stream 11007); optional **Unity Behavior** tree swap (install via Package
     Manager UI — never hand-pin a version).
-26. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material) —
+    **POPULATION TARGET (decided, drives the perf work):** ~**25 active roamers**
+    in hallways, with all other NPCs **stationary and DORMANT in rooms**, awakened
+    when the player arrives. The 100-simultaneously-active stress tests are NOT the
+    shipping target — dormancy is the real optimization, and it caps the active
+    population by construction. **Dormancy must actually DISABLE `NpcLocomotion`**:
+    that's what removes an NPC from the separation registry (`OnEnable`/`OnDisable`)
+    as well as its `Controller.Move()` and agent sync. Dormancy that only stops
+    pathing would leave the whole per-NPC cost in place.
+27. ⏳ **NPC equipment / weapons** — `WeaponDefinition` SO + a hand-socket Transform
+    (NOT `PropSocket`, which is the dungeon prop system) + `NpcEquipment` that picks
+    one at spawn and pushes stats into `MeleeAttack`. Split the SO three ways: a
+    shared COMBAT payload (damage/range/sweep/knockback/poise/`SurfaceType`), PLAYER
+    presentation (`SwingDefinition` arcs — procedural), and NPC presentation
+    (`AnimatorOverrideController` + grip offset). **NPC swing timing must come from
+    an Animation Event, not `MeleeAttack.windup`** — a fixed delay can't match a
+    per-weapon clip's impact frame, and `DoSweep()` is ALREADY decoupled from
+    `TryAttack()`'s timer precisely so a driver can fire it on the exact frame (the
+    player is the first consumer of that seam; animated NPCs are the second). Pick
+    the weapon from a HASH STREAM, not `UnityEngine.Random` — loadout is part of
+    spawning, which is deterministic (rule 4). No collider on the weapon (the sweep
+    is its own cast). NOTE: `MeleeAttack` is not yet on the goblin prefab, so NPCs
+    currently never swing; `engageDistance` (3) will need to sit under the equipped
+    weapon's `range` (default 1.6) once it is. `RandomMeshSelector` is a temporary
+    visual stand-in this supersedes.
+28. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material) —
     mostly Blender/texture work; toon shader packed-mask already ready.
-27. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit → home
+29. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit → home
     base → depth increment → sell/replenish). Design chat first.
-28. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
+30. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
     doored rooms = lockable set), difficulty gradient by graph depth, equipment
     + SwayProfiles.
 
