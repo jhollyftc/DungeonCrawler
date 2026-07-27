@@ -66,13 +66,18 @@ namespace DungeonGen
                         : 2;
 
                 // Floor — skip stair cells: StairLower gets a ramp, StairUpper is open air.
-                if ((t == CellType.Room || t == CellType.Hallway || t == CellType.Prison) && !Open(c + Vector3Int.down))
+                // NeedsSlabBetween, not a bare "is below solid": an open cell below is
+                // only a reason to skip the floor when it's the SAME space (a tall room).
+                // A closet with a hallway routed above it is two different spaces, and
+                // treating that as one volume punched a hole between them.
+                if ((t == CellType.Room || t == CellType.Hallway || t == CellType.Prison)
+                    && gen.NeedsSlabBetween(c + Vector3Int.down, c))
                     AddQuad(sub,
                         o, o + new Vector3(1, 0, 0), o + new Vector3(1, 0, 1), o + new Vector3(0, 0, 1),
                         Vector3.up);
 
                 // Ceiling — StairLower's "above" is its own StairUpper cell, always open.
-                if (t != CellType.StairLower && !Open(c + Vector3Int.up))
+                if (t != CellType.StairLower && gen.NeedsSlabBetween(c, c + Vector3Int.up))
                     AddQuad(sub,
                         o + new Vector3(0, 1, 0), o + new Vector3(1, 1, 0),
                         o + new Vector3(1, 1, 1), o + new Vector3(0, 1, 1),

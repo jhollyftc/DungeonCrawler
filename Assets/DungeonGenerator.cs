@@ -1074,6 +1074,47 @@ namespace DungeonGen
             return null;
         }
 
+        /// <summary>
+        /// Does a horizontal slab belong between these two vertically-adjacent cells —
+        /// i.e. a FLOOR for `upper` and a CEILING for `lower`?
+        ///
+        /// Both the greybox mesher and the kit placer used to answer this with "is the
+        /// cell below solid?", which conflates two different situations:
+        ///   - a MULTI-STORY ROOM, whose stacked cells are one open volume and must NOT
+        ///     have a slab through the middle (why the rule existed), and
+        ///   - two DIFFERENT spaces that merely happen to be stacked.
+        /// The second case is a real generated layout: a satellite closet with a hallway
+        /// routed directly above it. Both cells are open, so neither got a slab — the
+        /// hallway lost its floor and the closet its ceiling, leaving a hole between two
+        /// unrelated spaces (reported from play testing).
+        ///
+        /// Room identity is the discriminator: BuildFootprint writes a room's cells at
+        /// every Y in its bounds, so both levels of a tall room resolve to the same Room
+        /// instance, while a closet and the corridor above it never do. Interior stairs
+        /// come along for free — their cells stay in Room.Cells (only the CellType
+        /// changes), so a staircase's own levels still correctly get no slab.
+        ///
+        /// Callers keep their own cell-type guards (StairUpper takes no floor, StairLower
+        /// no ceiling); this answers only the "same space or not" half.
+        /// </summary>
+        public bool NeedsSlabBetween(Vector3Int lower, Vector3Int upper)
+        {
+            if (!Grid.InBounds(lower) || Grid[lower] == CellType.Empty) return true;
+            if (!Grid.InBounds(upper) || Grid[upper] == CellType.Empty) return true;
+
+            // A staircase's two levels are ONE continuous flight: the upper cells are
+            // written directly on top of the lower ones (Grid[t1 + up] = StairUpper), so
+            // no slab belongs between them. This has to be explicit — a CORRIDOR stair's
+            // cells aren't in any room, so the room test below wouldn't catch it, and the
+            // kit placer's floor rule carries no cell-type guard at all: it relied purely
+            // on the old "is below solid?" test to skip StairUpper cells. Without this,
+            // every corridor staircase gets a floor tile through its middle.
+            if (Grid[lower] == CellType.StairLower && Grid[upper] == CellType.StairUpper) return false;
+
+            Room r = RoomAt(lower);
+            return r == null || !ReferenceEquals(r, RoomAt(upper));
+        }
+
         void TryAttachSatellite(Room host, RoomType satType)
         {
             // Satellite is 1 cell wide on the shared-wall axis (so exactly one

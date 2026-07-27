@@ -234,11 +234,16 @@ namespace DungeonGen
                 // underneath, so a floor tile hides the void beneath the ramp.
                 // StairUpper cells sit above open StairLower cells, so the
                 // solid-below check naturally excludes them.
-                if (!Open(c + Vector3Int.down))
+                // NeedsSlabBetween rather than a bare "is below solid" — an open cell
+                // below only means "skip the floor" when it's the SAME space (a tall
+                // room). A closet with a hallway above it is two different spaces; see
+                // the generator's NeedsSlabBetween. Must match DungeonMesher exactly or
+                // the visible floor and the collision floor disagree.
+                if (gen.NeedsSlabBetween(c + Vector3Int.down, c))
                     Emit(kit.floorPrefabs, "floor", center, Yaw(c, kit.randomizeFloorYaw), kit.floorOffset);
 
                 // Ceiling.
-                if (t != CellType.StairLower && !Open(c + Vector3Int.up))
+                if (t != CellType.StairLower && gen.NeedsSlabBetween(c, c + Vector3Int.up))
                     Emit(kit.ceilingPrefabs, "ceiling",
                         center + Vector3.up, Yaw(c + Vector3Int.up, kit.randomizeCeilingYaw), kit.ceilingOffset);
 
