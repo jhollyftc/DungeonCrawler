@@ -63,16 +63,51 @@ namespace DungeonGen
         /// <summary>0 oblivious → 1 fully alert.</summary>
         public float Awareness01 { get; private set; }
 
+        // ---- Debug isolation switches (see NpcPerceptionDebug) ----
+        // Static so one keypress silences a whole dungeon's worth of goblins; testing
+        // hearing against sight is otherwise impossible with a crowd. Reset on play-mode
+        // entry for the same reason NoiseBus resets its event — statics survive fast
+        // enter-playmode and would silently carry a disabled sense into the next session.
+        public static bool SightEnabled = true;
+        public static bool HearingEnabled = true;
+
+        /// <summary>Every live perception component — for the debug overlay to iterate.</summary>
+        public static readonly System.Collections.Generic.List<NpcPerception> All =
+            new System.Collections.Generic.List<NpcPerception>();
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            SightEnabled = true;
+            HearingEnabled = true;
+            All.Clear();
+        }
+
+        /// <summary>True while a target is in direct view THIS tick — the raw sight result.</summary>
+        public bool SeesTarget => CurrentTarget != null;
+        /// <summary>Seconds since this NPC last heard something (for the debug overlay).</summary>
+        public float SinceHeard => Time.time - lastHeardTime;
+
         Transform player;      // root, for occlusion comparison
         Transform playerEye;   // where to aim the sight test (the camera — lowers when crouched, so cover works)
         CharacterController body;
         float nextTick;
         bool wasVisible;
+        float lastHeardTime = -999f;
 
         void Awake() => body = GetComponent<CharacterController>();
 
-        void OnEnable() => NoiseBus.OnNoise += HandleNoise;
-        void OnDisable() => NoiseBus.OnNoise -= HandleNoise;
+        void OnEnable()
+        {
+            NoiseBus.OnNoise += HandleNoise;
+            All.Add(this);
+        }
+
+        void OnDisable()
+        {
+            NoiseBus.OnNoise -= HandleNoise;
+            All.Remove(this);
+        }
 
         void Start()
         {
@@ -94,7 +129,9 @@ namespace DungeonGen
 
         void TickSight(float dt)
         {
-            bool sees = playerEye != null && CanSee(playerEye.position, player);
+            // Sight disabled reads as "sees nothing", so awareness decays normally and
+            // the NPC falls back to hearing alone — that's the isolation test.
+            bool sees = SightEnabled && playerEye != null && CanSee(playerEye.position, player);
 
             if (sees)
             {
@@ -117,6 +154,8 @@ namespace DungeonGen
 
         void HandleNoise(NoiseEvent e)
         {
+            if (!HearingEnabled) return;   // debug isolation — see SightEnabled
+
             // Ignore own faction (a goblin doesn't investigate another goblin's
             // footsteps). Shouts that deliberately cross factions come in Phase 5.
             if (e.faction == faction) return;
@@ -127,6 +166,7 @@ namespace DungeonGen
             LastKnownPosition = e.alertTarget;
             HasLastKnown = true;
             Awareness01 = Mathf.Min(1f, Awareness01 + hearGain * e.loudness);
+            lastHeardTime = Time.time;
             OnHeard?.Invoke(e);
         }
 
