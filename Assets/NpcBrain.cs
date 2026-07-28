@@ -33,6 +33,8 @@ namespace DungeonGen
         [Header("Investigate")]
         [Tooltip("Seconds spent looking around at a last-known spot before giving up (if awareness has faded).")]
         public float lookAroundTime = 3f;
+        [Tooltip("Close enough to count as HAVING investigated (m). The investigate target is a single point and a whole group converges on it, so without a band they all fight to stand on the same tile: separation shoves them off, arrival flips false, they repath in, forever. This is the engageDistance equivalent for suspicion — big enough that the crowd settles into a ring around the spot rather than a scrum on it. Releases at x approachHysteresis, same as the alerted bands.")]
+        public float investigateRadius = 2f;
 
         [Header("Alerted")]
         [Tooltip("Close to within this distance of a seen target before attacking. Should be a touch under MeleeAttack.range so swings connect.")]
@@ -61,6 +63,7 @@ namespace DungeonGen
         bool stoppedAgent;
         bool retreating;        // latched: backing off until comfortably clear (see approachHysteresis)
         bool retreatPathIssued; // the retreat destination is already set — don't repath every frame
+        bool atInvestigatePoint; // latched: within the investigate band (see investigateRadius)
         Vector3 lastRepathTarget;
 
         NpcLocomotion body;
@@ -170,17 +173,51 @@ namespace DungeonGen
             // The last-known spot can move (a fresh noise updates it) — retarget if
             // it drifted meaningfully.
             if ((senses.LastKnownPosition - investigatePoint).sqrMagnitude > 1f)
+            {
                 GoToInvestigatePoint();
+                atInvestigatePoint = false;
+                stoppedAgent = false;
+            }
 
-            if (!body.HasArrived && !body.IsBlocked)
+            // Arrival BAND with hysteresis, for exactly the reason TickAlerted has one.
+            // HasArrived is a point test, and a group all pathing to the SAME point can
+            // never satisfy it together: boids separation pushes them off, arrival flips
+            // false, everyone repaths inward, separation pushes them off again. A radius
+            // lets them settle into a ring around the spot; the hysteresis stops a
+            // centimetre of drift re-triggering the approach.
+            float dist = Vector3.Distance(transform.position, investigatePoint);
+            if (atInvestigatePoint)
+            {
+                if (dist > investigateRadius * approachHysteresis)
+                {
+                    atInvestigatePoint = false;
+                    GoToInvestigatePoint();   // shoved clear — re-approach ONCE, not per frame
+                    stoppedAgent = false;
+                }
+            }
+            // IsBlocked still counts as "close enough": wedged on a prop or leaning on a
+            // door, an NPC should look around rather than grind forever (original rule).
+            else if (dist <= investigateRadius || body.IsBlocked)
+            {
+                atInvestigatePoint = true;
+            }
+
+            if (!atInvestigatePoint)
             {
                 timer = lookAroundTime; // reset the look-around clock until we arrive
                 return;
             }
 
-            // Arrived (or wedged close enough) — look around while awareness bleeds
-            // off. The perception interrupt at the top of Update pulls us out early
-            // if we see or hear something new.
+            // Close enough — park (ONCE; Stop() resets the agent's path, so calling it
+            // every frame churns the agent) and look around while awareness bleeds off.
+            // The perception interrupt at the top of Update pulls us out early if we see
+            // or hear something new.
+            if (!stoppedAgent)
+            {
+                body.Stop();
+                stoppedAgent = true;
+            }
+
             timer -= Time.deltaTime;
             if (timer <= 0f) Enter(State.WanderIdle);
         }
@@ -311,6 +348,8 @@ namespace DungeonGen
                     break;
                 case State.Investigate:
                     timer = lookAroundTime;
+                    atInvestigatePoint = false;
+                    stoppedAgent = false;
                     GoToInvestigatePoint();
                     break;
                 case State.Alerted:
