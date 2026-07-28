@@ -42,6 +42,8 @@ namespace DungeonGen
         [Header("Retrigger")]
         [Tooltip("Minimum seconds between impact sounds. A bouncing barrel fires OnCollisionEnter repeatedly; without this it machine-guns the clip.")]
         [SerializeField] private float minimumInterval = 0.08f;
+        [Tooltip("Force (0..1) at or above which an impact IGNORES the interval above and always registers. The interval is there to stop a settling prop machine-gunning, and settling impacts are weak — a genuinely hard hit landing just after a small one is exactly what you must hear.\n\nIt also gates DAMAGE, not just sound: the suppression path skips OnImpact, which DestructibleProp turns into damage, so a suppressed hit deals none. Without this override a barrel could bounce, then slam into a wall, and neither be heard nor break. 1 = never override (old behaviour).")]
+        [Range(0f, 1f)][SerializeField] private float alwaysAudibleForce = 0.7f;
 
         [Header("Variation")]
         [Tooltip("Random pitch spread, so repeated hits aren't identical.")]
@@ -83,15 +85,28 @@ namespace DungeonGen
                 if (debugAudio) Debug.Log($"[ImpactAudio] {name} hit '{collision.collider.name}' at {speed:0.00} m/s — muted (< {silentBelowSpeed})");
                 return;
             }
-            if (Time.time < nextAudibleTime)
+            float force = Mathf.Clamp01((speed - silentBelowSpeed) / Mathf.Max(0.01f, fullForceSpeed - silentBelowSpeed));
+
+            // The retrigger gate stops a SETTLING prop machine-gunning — and settling
+            // impacts are low-force by definition, so a hard enough hit overrides it.
+            //
+            // This matters well beyond the noise: the early return below skips OnImpact
+            // TOO, and that event is what DestructibleProp turns into damage. Gating
+            // purely on recency therefore swallowed the hit entirely — a barrel that
+            // bounced and then slammed into a wall inside the window went silent AND
+            // took no damage, so it simply didn't break. The killing blow is precisely
+            // the one that must never be suppressed.
+            bool overridesGate = force >= alwaysAudibleForce;
+
+            if (Time.time < nextAudibleTime && !overridesGate)
             {
-                if (debugAudio) Debug.Log($"[ImpactAudio] {name} hit at {speed:0.00} m/s — suppressed (retrigger interval)");
+                if (debugAudio)
+                    Debug.Log($"[ImpactAudio] {name} hit at {speed:0.00} m/s (force {force:0.00}) — " +
+                              $"suppressed (retrigger interval; needs force >= {alwaysAudibleForce:0.00} to override)");
                 return;
             }
 
             nextAudibleTime = Time.time + minimumInterval;
-
-            float force = Mathf.Clamp01((speed - silentBelowSpeed) / Mathf.Max(0.01f, fullForceSpeed - silentBelowSpeed));
             float volume = Mathf.Lerp(minimumVolume, maximumVolume, force);
 
             Vector3 point = collision.contactCount > 0 ? collision.GetContact(0).point : transform.position;
