@@ -92,6 +92,10 @@ namespace DungeonGen
         ViewmodelCamera viewmodel;
 
         public bool IsCarrying => held != null;
+        /// <summary>What's in hand, or null. Exposed so something being destroyed can
+        /// check whether IT is the held prop and make the player let go first —
+        /// otherwise the carry keeps gripping a destroyed object (DestructibleProp).</summary>
+        public Carryable Held => held;
 
         /// <summary>
         /// How loaded the player is, 0 (empty-handed or a trivial load) to 1 (at or
