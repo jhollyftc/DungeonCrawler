@@ -148,6 +148,10 @@ namespace DungeonGen
 
             if (roomStyle != null) roomStyle.InvalidateWallCache();
 
+            // Runtime material copies — Unity won't collect these, so a regenerate would
+            // leak a full set per distinct colour every F1/PgUp.
+            EmissiveMaterialVariants.Clear();
+
             gen = new DungeonGenerator(config, seed);
             gen.Generate();
             int edgeTotal = gen.MstEdges.Count + gen.LoopEdges.Count;
@@ -221,9 +225,26 @@ namespace DungeonGen
                 kitColliders.transform.SetParent(transform, false);
 
                 var missing = new System.Collections.Generic.HashSet<string>();
-                DungeonKitPlacer.Enumerate(gen, kit, missing, (prefab, posCells, rot, offset) =>
+                DungeonKitPlacer.Enumerate(gen, kit, missing, (prefab, posCells, rot, offset, cell) =>
                 {
                     var m = Matrix4x4.TRS(posCells * cellSize + offset + transform.position, rot, Vector3.one);
+
+                    // Per-room emissive tint. The piece's OWNING CELL is why PlaceCallback
+                    // carries one: a wall's posCells sits on the face between two cells and
+                    // can't be floored back to its owner reliably. Same rule as fog and the
+                    // flame VFX — the room's torch palette owns the hue, so a shrine's
+                    // candles can't drift away from its torches. Costs one extra batch per
+                    // distinct colour; a cached variant per colour is what keeps it bounded.
+                    Material tint = null;
+                    if (kit.emissiveMaterial != null && roomStyle != null)
+                    {
+                        EmissiveMaterialVariants.debugLog = kit.debugEmissive;
+                        Room r = gen.RoomAt(cell);
+                        Color c = r != null ? roomStyle.For(r.Type).torchColor : roomStyle.defaultTorchColor;
+                        tint = EmissiveMaterialVariants.Get(
+                            kit.emissiveMaterial, c * kit.emissiveIntensity, kit.emissiveProperty);
+                    }
+
                     // The static shell (walls/floors/ceilings) casts NO shadows
                     // — wall-on-wall shadows are invisible, but thousands of
                     // shell instances redrawn into every shadowed torch's six
@@ -231,8 +252,8 @@ namespace DungeonGen
                     // The shell still receives, so detail shadows (columns,
                     // arches, props — the placeWithCollider sink below and
                     // PropInstancer paths, which keep casting) fall across it.
-                    ir.AddInstance(prefab, m, castShadows: false);
-                }, roomStyle, (prefab, posCells, rot, offset) =>
+                    ir.AddInstance(prefab, m, castShadows: false, replaceMat: kit.emissiveMaterial, withMat: tint);
+                }, roomStyle, (prefab, posCells, rot, offset, cell) =>
                 {
                     Vector3 worldPos = posCells * cellSize + offset + transform.position;
                     PropInstancer.PlaceProps(ir, prefab,

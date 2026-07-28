@@ -41,6 +41,16 @@ namespace DungeonGen
         public GameObject[] ladderPrefabs; // optional — skipped if empty
         [Tooltip("Nudge applied in the LADDER'S OWN frame, not world space: Z = away from the mounting wall, X = along it, Y = up. Wall-relative because that's the only way one value can be correct on all four wall directions — a world-space offset embeds the ladder in the masonry on the opposite wall.")]
         public Vector3 ladderOffset;
+        [Header("Per-room emissive tinting (optional)")]
+        [Tooltip("The GLOWING material used by kit pieces with an emissive element (candle walls, braziers). When set, every instanced kit piece using this exact material gets a cached variant tinted to its room's TORCH COLOUR — so a shrine's candles burn the same cold blue as its torches, exactly like the fog and flame VFX already do. Leave empty to disable tinting entirely (pieces render with the authored material).\n\nThis is needed because a MaterialPropertyBlock can't work on the instanced path: nothing renders through the prefab's MeshRenderer, so an EmissionController on a kit wall does nothing. Cost is one extra batch per distinct colour in use — bounded by the palette, not by instance count.")]
+        public Material emissiveMaterial;
+        [Tooltip("Shader property tinted on the variant. _EmissionColor for URP/Lit.")]
+        public string emissiveProperty = "_EmissionColor";
+        [Tooltip("Log each emissive variant as it's built — shader, resolved colour, whether the property write landed, GI flags, and GPU-instancing state. Turn on when the tint applies but nothing glows.")]
+        public bool debugEmissive = false;
+        [Tooltip("Multiplies the room's torch colour before it's written as emission. MUST usually be > 1 to actually GLOW: the torch palette's colours are LDR-range (components <= 1), and emission only blooms above 1 — at 1 the candle is merely tinted, not lit. Bloom must also be enabled in the post-process Volume. 2.4 was the hand-tuned value on the original EmissionController.")]
+        public float emissiveIntensity = 2.4f;
+
         [Tooltip("Place corner posts on edges that touch a doorway/arch face (jamb corners and meeting-arch corners). Off = arches stand alone.")]
         public bool pillarsAtDoorways = false;
         public bool randomizeFloorYaw = true;
@@ -69,7 +79,17 @@ namespace DungeonGen
     /// </summary>
     public static class DungeonKitPlacer
     {
-        public delegate void PlaceCallback(GameObject prefab, Vector3 posCells, Quaternion rot, Vector3 offsetMeters);
+        /// <summary>
+        /// `cell` is the OWNING grid cell — the open cell a piece belongs to, which
+        /// `posCells` alone cannot recover: a wall's position sits ON the face between
+        /// two cells, so flooring it lands on the solid neighbour or the open one
+        /// depending which way the face points. Consumers need it to resolve the piece's
+        /// room (and therefore its RoomStyle) for per-room visual variation — e.g.
+        /// tinting a candle wall's emissive material to that room's torch colour.
+        /// For pieces that sit BETWEEN cells by nature (corner pillars on a lattice
+        /// edge) it's a representative adjacent cell, not an exact owner.
+        /// </summary>
+        public delegate void PlaceCallback(GameObject prefab, Vector3 posCells, Quaternion rot, Vector3 offsetMeters, Vector3Int cell);
 
         static readonly Vector3Int[] HDirs =
         {
@@ -201,24 +221,24 @@ namespace DungeonGen
 
             // Returns the picked prefab (null if the slot was empty) so wall
             // emission can record per-face restrictions for it.
-            GameObject Emit(GameObject[] slot, string slotName, Vector3 posCells, Quaternion rot, Vector3 offset)
+            GameObject Emit(GameObject[] slot, string slotName, Vector3 posCells, Quaternion rot, Vector3 offset, Vector3Int cell)
             {
                 if (slot == null || slot.Length == 0) { missing.Add(slotName); return null; }
                 GameObject prefab = slot[Hash(Vector3Int.RoundToInt(posCells * 4f), 11) % slot.Length];
                 if (prefab == null) { missing.Add(slotName); return null; }
-                place(prefab, posCells, rot, offset + kit.globalVisualOffset);
+                place(prefab, posCells, rot, offset + kit.globalVisualOffset, cell);
                 return prefab;
             }
 
             // Same as Emit, but for placements needing real collision even
             // when mesh-instanced (stairs, corner pillars) — the greybox
             // doesn't provide it for these. See placeWithCollider above.
-            void EmitCollider(GameObject[] slot, string slotName, Vector3 posCells, Quaternion rot, Vector3 offset)
+            void EmitCollider(GameObject[] slot, string slotName, Vector3 posCells, Quaternion rot, Vector3 offset, Vector3Int cell)
             {
                 if (slot == null || slot.Length == 0) { missing.Add(slotName); return; }
                 GameObject prefab = slot[Hash(Vector3Int.RoundToInt(posCells * 4f), 11) % slot.Length];
                 if (prefab == null) { missing.Add(slotName); return; }
-                placeWithCollider(prefab, posCells, rot, offset + kit.globalVisualOffset);
+                placeWithCollider(prefab, posCells, rot, offset + kit.globalVisualOffset, cell);
             }
 
             Quaternion Yaw(Vector3Int c, bool randomize) =>
@@ -241,12 +261,12 @@ namespace DungeonGen
                 // the generator's NeedsSlabBetween. Must match DungeonMesher exactly or
                 // the visible floor and the collision floor disagree.
                 if (gen.NeedsSlabBetween(c + Vector3Int.down, c))
-                    Emit(kit.floorPrefabs, "floor", center, Yaw(c, kit.randomizeFloorYaw), kit.floorOffset);
+                    Emit(kit.floorPrefabs, "floor", center, Yaw(c, kit.randomizeFloorYaw), kit.floorOffset, c);
 
                 // Ceiling.
                 if (t != CellType.StairLower && gen.NeedsSlabBetween(c, c + Vector3Int.up))
                     Emit(kit.ceilingPrefabs, "ceiling",
-                        center + Vector3.up, Yaw(c + Vector3Int.up, kit.randomizeCeilingYaw), kit.ceilingOffset);
+                        center + Vector3.up, Yaw(c + Vector3Int.up, kit.randomizeCeilingYaw), kit.ceilingOffset, c);
 
                 foreach (var d in HDirs)
                 {
@@ -283,7 +303,7 @@ namespace DungeonGen
                                 if (res.TryGetValue(FaceKey(i, d), out var reserved))
                                 {
                                     place(reserved.prefab, facePos, Quaternion.LookRotation(-(Vector3)d),
-                                          kit.wallOffset + kit.globalVisualOffset);
+                                          kit.wallOffset + kit.globalVisualOffset, c);
                                     placedWall = reserved.prefab;
                                     emitted = true;
                                     // A labeled feature wall (fireplace etc.) —
@@ -298,7 +318,7 @@ namespace DungeonGen
                                     var unlimited = UnlimitedWalls(room.Type, BandOf(room, c));
                                     if (unlimited != null)
                                     {
-                                        placedWall = Emit(unlimited, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
+                                        placedWall = Emit(unlimited, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
                                         emitted = true;
                                     }
                                 }
@@ -308,7 +328,7 @@ namespace DungeonGen
                                 var styled = style.HallwayWalls();
                                 if (styled != null)
                                 {
-                                    placedWall = Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
+                                    placedWall = Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
                                     emitted = true;
                                 }
                             }
@@ -317,13 +337,13 @@ namespace DungeonGen
                                 var styled = style.PrisonWalls();
                                 if (styled != null)
                                 {
-                                    placedWall = Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
+                                    placedWall = Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
                                     emitted = true;
                                 }
                             }
                         }
                         if (!emitted)
-                            Emit(kit.wallPrefabs, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset);
+                            Emit(kit.wallPrefabs, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
 
                         // Record this face's restrictions for the torch/prop
                         // placers (wall real estate). Kit generic walls carry
@@ -343,7 +363,7 @@ namespace DungeonGen
                     if (t == CellType.Prison && grid.InBounds(nb) && grid[nb] == CellType.Hallway &&
                         kit.prisonBarsPrefabs != null && kit.prisonBarsPrefabs.Length > 0 &&
                         (kit.prisonDoorPrefabs == null || kit.prisonDoorPrefabs.Length == 0))
-                        Emit(kit.prisonBarsPrefabs, "bars", facePos, Quaternion.LookRotation((Vector3)d), Vector3.zero);
+                        Emit(kit.prisonBarsPrefabs, "bars", facePos, Quaternion.LookRotation((Vector3)d), Vector3.zero, c);
 
                     // NOTE: archways are no longer emitted here. Their frames
                     // are thick enough to need collision, and the greybox
@@ -366,7 +386,7 @@ namespace DungeonGen
                 Vector3Int E = stair.Entry;
                 Vector3 cd = (Vector3)stair.Dir;
                 Vector3 foot = new Vector3(E.x + 0.5f, E.y, E.z + 0.5f) + cd * 0.5f;
-                EmitCollider(kit.stairPrefabs, "stair", foot, Quaternion.LookRotation(cd), kit.stairOffset);
+                EmitCollider(kit.stairPrefabs, "stair", foot, Quaternion.LookRotation(cd), kit.stairOffset, E);
             }
 
             // Corner pillars: classify each vertical lattice edge by the four
@@ -572,7 +592,7 @@ namespace DungeonGen
                                     carrySlot = outerSlot;
                                     carryName = "outer corner";
                                     carryRot = Quaternion.LookRotation(-quadDir[solid].normalized);
-                                    EmitCollider(carrySlot, carryName, edge, carryRot, kit.pillarOffset);
+                                    EmitCollider(carrySlot, carryName, edge, carryRot, kit.pillarOffset, q0);
                                     placed = true;
                                 }
                             }
@@ -586,7 +606,7 @@ namespace DungeonGen
                                     carrySlot = innerSlot;
                                     carryName = "inner corner";
                                     carryRot = Quaternion.LookRotation(quadDir[o].normalized);
-                                    EmitCollider(carrySlot, carryName, edge, carryRot, kit.pillarOffset);
+                                    EmitCollider(carrySlot, carryName, edge, carryRot, kit.pillarOffset, q0);
                                     placed = true;
                                 }
                             }
@@ -600,7 +620,7 @@ namespace DungeonGen
                                     bool fake = q == 0 ? fake0 : q == 1 ? fake1 : q == 2 ? fake2 : fake3;
                                     if (eOpen || fake) continue;
                                     Quaternion rot = Quaternion.LookRotation(-quadDir[q].normalized);
-                                    EmitCollider(outerSlot, "outer corner", edge, rot, kit.pillarOffset);
+                                    EmitCollider(outerSlot, "outer corner", edge, rot, kit.pillarOffset, q0);
                                     if (first) { carrySlot = outerSlot; carryName = "outer corner"; carryRot = rot; first = false; }
                                     placed = true;
                                 }
@@ -630,7 +650,7 @@ namespace DungeonGen
                                         carrySlot = outerSlot;
                                         carryName = "outer corner";
                                         carryRot = Quaternion.LookRotation(quadDir[face].normalized);
-                                        EmitCollider(carrySlot, carryName, edge, carryRot, kit.pillarOffset);
+                                        EmitCollider(carrySlot, carryName, edge, carryRot, kit.pillarOffset, q0);
                                         placed = true;
                                     }
                                 }
@@ -651,7 +671,7 @@ namespace DungeonGen
                                 {
                                     // Vertical continuation: keep the post
                                     // running while the edge is still wall-like.
-                                    EmitCollider(carrySlot, carryName, edge, carryRot, kit.pillarOffset);
+                                    EmitCollider(carrySlot, carryName, edge, carryRot, kit.pillarOffset, q0);
                                 }
                                 else
                                 {
@@ -671,7 +691,10 @@ namespace DungeonGen
             root.transform.SetParent(parent, false);
             var missing = new HashSet<string>();
 
-            Enumerate(gen, kit, missing, (prefab, posCells, rot, offset) =>
+            // PrefabKit mode instantiates whole prefabs, so per-room emissive tinting
+            // doesn't apply here — the prefab keeps its own MeshRenderer, and an
+            // EmissionController on it works normally. `cell` is unused for that reason.
+            Enumerate(gen, kit, missing, (prefab, posCells, rot, offset, cell) =>
             {
                 // Compose with the prefab's own root rotation — imported FBX assets
                 // often carry an axis-correction rotation (e.g. -90° X from Blender).

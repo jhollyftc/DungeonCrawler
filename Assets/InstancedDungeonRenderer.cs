@@ -79,7 +79,18 @@ namespace DungeonGen
             InstanceCount = 0;
         }
 
-        public void AddInstance(GameObject prefab, Matrix4x4 placement, bool castShadows = true)
+        /// <summary>
+        /// `replaceMat`/`withMat` swap ONE of the prefab's materials for this placement —
+        /// the seam for per-instance appearance without giving up instancing. There's no
+        /// MaterialPropertyBlock here to tint (nothing renders through the prefab's
+        /// MeshRenderer; it's only harvested once into a Proto), so varying a material
+        /// means varying the MATERIAL — and BatchKey already includes it, so a swapped
+        /// material simply lands in its own batch and draws its own colour for free.
+        /// Callers are expected to hand in a CACHED variant per distinct look, or every
+        /// placement becomes its own batch.
+        /// </summary>
+        public void AddInstance(GameObject prefab, Matrix4x4 placement, bool castShadows = true,
+                                Material replaceMat = null, Material withMat = null)
         {
             if (prefab == null) return;
             if (!protoCache.TryGetValue(prefab, out Proto proto))
@@ -90,10 +101,13 @@ namespace DungeonGen
 
             foreach (var part in proto.Parts)
             {
-                var key = new BatchKey { Mesh = part.mesh, Submesh = part.submesh, Mat = part.mat, CastShadows = castShadows };
+                Material mat = (replaceMat != null && withMat != null && part.mat == replaceMat)
+                    ? withMat : part.mat;
+
+                var key = new BatchKey { Mesh = part.mesh, Submesh = part.submesh, Mat = mat, CastShadows = castShadows };
                 if (!batchLookup.TryGetValue(key, out Batch b))
                 {
-                    b = new Batch { Mesh = part.mesh, Submesh = part.submesh, Material = part.mat, CastShadows = castShadows };
+                    b = new Batch { Mesh = part.mesh, Submesh = part.submesh, Material = mat, CastShadows = castShadows };
                     batchLookup[key] = b;
                     batches.Add(b);
                 }
