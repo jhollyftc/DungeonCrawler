@@ -52,6 +52,8 @@ namespace DungeonGen
         public LayerMask hitMask = ~0;
         [Tooltip("Blocks a hit if anything on this mask sits between the attacker and the victim — a wall or shut door defeats the swing even though the capsule sweep geometrically reached past it (CapsuleCast/Overlap test volume intersection only, not solid occlusion, so a goblin on the far side of a thin door was hittable with no LOS check at all). Should be WORLD geometry only; the NPC and Viewmodel layers are auto-stripped in Awake so a crowd can't block its own hits and the held weapon model can't self-occlude.")]
         public LayerMask losBlockMask = ~0;
+        [Tooltip("How far short of the victim's surface the line-of-sight ray stops (m). The ray's endpoint would otherwise sit exactly ON the collider, making the hit a floating-point coin flip — the cause of a swing failing dead-centre but landing a few pixels off. Small: a couple of centimetres.")]
+        public float losSurfaceSkin = 0.05f;
         [Tooltip("Optional: aim the sweep from this transform (position + forward) instead of the body. The PLAYER sets this to the camera so you slash where you LOOK — pitch included. NPCs leave it empty and sweep from the body.")]
         public Transform aimSource;
         [Tooltip("With an aimSource, start the sweep this far forward of it — pushes the origin out of the attacker's own capsule so the point-blank CheckSphere tests the TARGET, not your own chest.")]
@@ -322,6 +324,123 @@ namespace DungeonGen
             if (debugAttack) Debug.Log($"[Melee] {name}: cone hit '{root.name}' for {damage:0.#}.", this);
         }
 
+        /// <summary>
+        /// Would a swing RIGHT NOW connect with something damageable, and what?
+        ///
+        /// Runs the real sweep's geometry and the real rejection rules, dealing no
+        /// damage — so a reticle built on it can never disagree with an actual swing.
+        /// That's the whole point: an honest "would this hit?" readout answers whether a
+        /// miss was aim or something else (out of range, wrong faction, no line of sight,
+        /// target already dead). A reticle that guessed its own geometry would be worse
+        /// than none, because it would lie exactly when you're trying to diagnose a miss.
+        /// Same rule as ComputeZones backing both the placer and its debug gizmo.
+        /// </summary>
+        public bool PreviewWouldHit(out Transform target, out string reason)
+        {
+            target = null;
+            reason = "nothing in reach";
+
+            SweepGeometry(out Vector3 origin, out Vector3 dir, out Vector3 top, out Vector3 bottom);
+
+            // Same two-mode gather DoSweep uses: overlap when already touching a target
+            // (a cast STARTING inside a collider reports nothing), otherwise a cast.
+            int hits = Physics.OverlapCapsuleNonAlloc(top, bottom, sweepRadius, overlapScratch, hitMask, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < hits; i++)
+            {
+                if (!CanHit(overlapScratch[i], origin, dir, out var d, out string why)) { if (why != null) reason = why; continue; }
+                target = d.Transform;
+                reason = "in reach";
+                return true;
+            }
+
+            hits = Physics.CapsuleCastNonAlloc(top, bottom, sweepRadius, dir, castScratch, range, hitMask, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < hits; i++)
+            {
+                if (!CanHit(castScratch[i].collider, origin, dir, out var d, out string why)) { if (why != null) reason = why; continue; }
+                target = d.Transform;
+                reason = "in reach";
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>The sweep's origin/direction and capsule ends — shared so DoSweep, the
+        /// preview and the gizmo can't describe different volumes.</summary>
+        void SweepGeometry(out Vector3 origin, out Vector3 dir, out Vector3 top, out Vector3 bottom)
+        {
+            if (aimSource != null) { dir = aimSource.forward; origin = aimSource.position + dir * aimForwardOffset; }
+            else { dir = transform.forward; origin = transform.position + Vector3.up * originHeight; }
+
+            top = origin + Vector3.up * sweepUpExtent;
+            bottom = origin - Vector3.up * sweepDownExtent;
+        }
+
+        /// <summary>
+        /// Every reason a candidate collider is or isn't a legal victim, WITHOUT dealing
+        /// damage or touching per-swing state. TryHit applies these then damages; the
+        /// preview applies these then reports. One copy, so they can't drift.
+        /// `why` explains a rejection for the reticle's readout (null = not interesting).
+        /// </summary>
+        bool CanHit(Collider c, Vector3 origin, Vector3 dir, out IDamageable damageable, out string why)
+        {
+            damageable = null;
+            why = null;
+            if (c == null) return false;
+
+            damageable = c.GetComponentInParent<IDamageable>();
+            if (damageable == null) return false;                              // scenery
+
+            Transform root = damageable.Transform;
+            if (root == transform || root.IsChildOf(transform)) return false;  // yourself
+
+            if (FactionMember.Of(root) == ownFaction) { why = "same faction"; return false; }
+            if (damageable.IsDead) { why = "already dead"; return false; }
+
+            Vector3 to = c.ClosestPoint(origin) - origin;
+            if (to.sqrMagnitude > 0.0004f && Vector3.Dot(to.normalized, dir) < 0.1f) { why = "behind the swing"; return false; }
+
+            if (IsLineBlocked(origin, c, damageable.Transform)) { why = "no line of sight"; return false; }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Is something between the attacker and this victim?
+        ///
+        /// TWO traps here, both real bugs. First, HITTING THE VICTIM IS NOT AN
+        /// OBSTRUCTION — losBlockMask auto-strips the NPC layer so a goblin never blocks
+        /// itself, but a destructible PROP sits on an ordinary layer, so a plain Linecast
+        /// to the barrel reported the barrel and rejected the swing. Second, the endpoint
+        /// sits exactly ON the victim's surface, so whether that hit registers at all is a
+        /// floating-point coin flip — which is why aiming dead centre failed while nudging
+        /// a few pixels connected. Same shape as the interaction-sweep flicker, and the
+        /// same answer NpcPerception.CanSee already uses: a hit only counts as blocking if
+        /// it ISN'T the target. The short pull-back keeps the ray off that surface
+        /// entirely rather than relying on the comparison to save us every time.
+        /// </summary>
+        bool IsLineBlocked(Vector3 origin, Collider victim, Transform victimRoot)
+        {
+            Vector3 point = victim.ClosestPoint(origin);
+            Vector3 to = point - origin;
+            float dist = to.magnitude;
+            if (dist < 0.01f) return false;                    // origin is inside the victim — touching it, not blocked
+
+            Vector3 dir = to / dist;
+            float len = Mathf.Max(0f, dist - losSurfaceSkin);  // stop just short of the surface
+            if (len <= 0f) return false;
+
+            if (!Physics.Raycast(origin, dir, out RaycastHit hit, len, losBlockMask, QueryTriggerInteraction.Ignore))
+                return false;
+
+            // Identity by IDamageable, never transform.root — spawned NPCs share a
+            // generated root, so root comparison resolves every goblin to the same object.
+            var hitDamageable = hit.collider.GetComponentInParent<IDamageable>();
+            if (hitDamageable != null && hitDamageable.Transform == victimRoot) return false;
+
+            return true;
+        }
+
         void TryHit(Collider c, Vector3 origin, Vector3 dir, Vector3 blowDir)
         {
             if (c == null) return;
@@ -350,36 +469,18 @@ namespace DungeonGen
                 return;
             }
 
+            // Every legality rule lives in CanHit, which the reticle's PreviewWouldHit
+            // also calls — ONE copy, so a "would this land?" readout can never disagree
+            // with an actual swing (and a fix like the self-occlusion one below lands in
+            // both at once).
+            if (!CanHit(c, origin, dir, out damageable, out string why))
+            {
+                if (debugAttack && why != null)
+                    Debug.Log($"[Melee] {name}: '{c.transform.name}' rejected — {why}.", this);
+                return;
+            }
+
             Transform root = damageable.Transform;
-            if (root == transform || root.IsChildOf(transform)) return;  // never hit yourself
-            if (hitThisSwing.Contains(root)) return;                     // already resolved this root this swing
-            if (FactionMember.Of(root) == ownFaction)
-            {
-                if (debugAttack) Debug.Log($"[Melee] {name}: '{root.name}' rejected — same faction ({ownFaction}). If this is a valid target, someone's FactionMember is missing or wrong.", this);
-                return;
-            }
-            if (damageable.IsDead) return;
-
-            // Only in front — the overlap fallback is a sphere and shouldn't let a
-            // swing hit someone standing behind the attacker. Compared in FULL 3D
-            // against the aim direction: the old flat-vs-pitched-dir comparison
-            // collapsed when the player looked steeply DOWN at a short goblin and
-            // rejected legitimate point-blank hits.
-            Vector3 to = c.ClosestPoint(origin) - origin;
-            if (to.sqrMagnitude > 0.0004f && Vector3.Dot(to.normalized, dir) < 0.1f)
-            {
-                if (debugAttack) Debug.Log($"[Melee] {name}: '{root.name}' rejected — behind the swing (dot {Vector3.Dot(to.normalized, dir):0.00}).", this);
-                return;
-            }
-
-            // Line of sight: a wall/shut door between attacker and victim defeats the
-            // swing even though the capsule geometrically reached past it.
-            Vector3 victimPoint = c.ClosestPoint(origin);
-            if (Physics.Linecast(origin, victimPoint, losBlockMask, QueryTriggerInteraction.Ignore))
-            {
-                if (debugAttack) Debug.Log($"[Melee] {name}: '{root.name}' rejected — no line of sight (blocked by a wall/door).", this);
-                return;
-            }
 
             // Dedupe LAST, only once this collider has passed every check — same
             // reasoning as ConeHit: a victim can present several colliders (capsule +
