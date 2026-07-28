@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace DungeonGen
 {
@@ -39,8 +40,12 @@ namespace DungeonGen
         [Header("When to track")]
         [Tooltip("Track the player when they're within this range (m).")]
         public float trackRadius = 6f;
-        [Tooltip("ON: only track while the NPC actually knows about the player (sees them, or awareness above its investigate threshold). OFF: track anyone close — spookier, but it telegraphs detection the stealth system hasn't granted.")]
-        public bool onlyWhenAware = true;
+        [Tooltip("ON: the head only goes to things the NPC has actually EARNED — the player while genuinely in sight, otherwise the spot it's suspicious about (its last-known position). OFF: track anyone close regardless — spookier, but it telegraphs detection the stealth system hasn't granted.\n\nThe distinction matters: awareness also rises from HEARING, and a goblin that only heard a noise doesn't know where you ARE, it knows where the NOISE was. Driving the head from awareness made it swivel onto your live position through a wall, leaking exactly what hearing is supposed to leave uncertain. Looking at the last-known spot instead is honest AND a better tell — you can watch it stare at the wrong place.")]
+        [FormerlySerializedAs("onlyWhenAware")]
+        [FormerlySerializedAs("onlyWhenSeen")]
+        public bool onlyWhatItKnows = true;
+        [Tooltip("Lifts the gaze off the floor when looking at a suspected spot (m). Noise positions are often near ground level — a thrown barrel's landing point — and staring straight at the floor reads as confusion rather than suspicion.")]
+        public float suspicionLookHeight = 1.1f;
 
         [Header("Neck limits")]
         [Tooltip("Max head yaw (deg) away from body forward. Beyond it the head gives up rather than owl-turning.")]
@@ -98,14 +103,12 @@ namespace DungeonGen
             float target = 0f;
             Vector3 lookDir = Vector3.zero;
 
-            if (playerEye != null)
+            if (TryPickLookPoint(out Vector3 lookPoint))
             {
-                Vector3 to = playerEye.position - headBone.position;
+                Vector3 to = lookPoint - headBone.position;
                 float dist = to.magnitude;
 
                 bool wants = dist < trackRadius;
-                if (wants && onlyWhenAware && senses != null)
-                    wants = senses.CurrentTarget != null || senses.Awareness01 >= senses.investigateThreshold;
 
                 if (wants && dist > 0.05f)
                 {
@@ -144,6 +147,7 @@ namespace DungeonGen
             }
 
             if (target > 0f) lastLookDir = lookDir;   // only update while actively tracking
+
             weight = Mathf.MoveTowards(weight, target, blendSpeed * Time.deltaTime);
             if (weight < 0.001f || lastLookDir == Vector3.zero) return;
 
@@ -153,6 +157,46 @@ namespace DungeonGen
             // Same Body reference as the clamp above — never mix the two.
             Quaternion delta = Quaternion.FromToRotation(Body.forward, lastLookDir);
             headBone.rotation = Quaternion.Slerp(Quaternion.identity, delta, weight) * headBone.rotation;
+        }
+
+        /// <summary>
+        /// What the head is allowed to look at, from what this NPC legitimately knows:
+        ///   SEEING the player  → their live position (it can watch them move)
+        ///   merely SUSPICIOUS  → LastKnownPosition, the spot it believes something is
+        ///   neither           → nothing; the head eases back to its animated pose
+        ///
+        /// The middle case is the point. A goblin that heard a barrel land knows where
+        /// the NOISE was, not where you are — so it stares at the noise while you slip
+        /// past behind it. That's honest (no knowledge it hasn't earned) and reads far
+        /// better than either alternative: tracking your real position through a wall
+        /// leaks your location, while not tracking at all makes a suspicious NPC look
+        /// oblivious at exactly the moment it's meant to look unnerved.
+        /// </summary>
+        bool TryPickLookPoint(out Vector3 point)
+        {
+            point = default;
+
+            // "Spooky" mode: no knowledge gating at all, just track whoever's close.
+            if (!onlyWhatItKnows || senses == null)
+            {
+                if (playerEye == null) return false;
+                point = playerEye.position;
+                return true;
+            }
+
+            if (senses.SeesTarget && playerEye != null)
+            {
+                point = playerEye.position;
+                return true;
+            }
+
+            if (senses.HasLastKnown && senses.Awareness01 >= senses.investigateThreshold)
+            {
+                point = senses.LastKnownPosition + Vector3.up * suspicionLookHeight;
+                return true;
+            }
+
+            return false;
         }
 
         void EnsurePlayer()
