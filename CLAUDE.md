@@ -305,6 +305,35 @@ and the kit placer's floor rule has NO cell-type guard — it relied entirely on
 the solid-below test to skip them, so without it every corridor staircase gains a
 floor tile through its middle.
 
+**YOU CANNOT `MaterialPropertyBlock` THE INSTANCED PATH — vary the MATERIAL instead.**
+Nothing renders through a kit prefab's `MeshRenderer`: `InstancedDungeonRenderer`
+harvests it ONCE into a `Proto` and draws with `Graphics.RenderMeshInstanced`, so a
+block has no renderer to attach to (an `EmissionController` on a kit wall does
+exactly nothing — real bug). True per-instance colour would need the property in the
+shader's instancing buffer, which URP/Lit doesn't do for `_EmissionColor`. But
+`BatchKey` already includes the material, so a swapped material is its own batch
+drawing its own colour — `AddInstance` takes an optional replace/with pair.
+**CACHE the variants** (`EmissiveMaterialVariants`, keyed by colour): same colour must
+return the SAME material or every piece becomes its own batch and instancing is gone.
+They're runtime copies, so **destroy them on regenerate** or every F1 leaks a set.
+Kit emissives are tinted to the room's TORCH COLOUR — same source as fog and the
+flame VFX (§7), so they can't drift, and a new room type gets correct candles free.
+**`MaterialGlobalIlluminationFlags.EmissiveIsBlack` must be cleared explicitly**
+(cost an hour): Unity sets it on any material whose authored `_EmissionColor` is
+black — exactly the case when the source was previously driven by a property block —
+`new Material(source)` copies the flag, and a later `SetColor` does NOT clear it, so
+the variant is tinted but never glows. Assign `globalIlluminationFlags` to fix.
+(Also: emission only BLOOMS above 1, the palette is LDR-range, and bloom + HDR must
+be on in the pipeline — the "tinted but flat" symptom has three separate causes, so
+`debugEmissive` logs which.)
+
+**`PlaceCallback` carries the OWNING CELL.** `posCells` can't recover it — a wall's
+position sits ON the face between two cells, so flooring it lands on the solid
+neighbour or the open one depending which way the face points. Consumers need the
+cell to resolve a piece's room (and so its RoomStyle) for any per-room visual
+variation. NB the reserved capped-asset path (fireplaces etc.) calls `place` DIRECTLY,
+bypassing `Emit` — it's easy to miss when touching this.
+
 **Material/atlasing note:** each distinct material = a separate instanced batch.
 Multi-material assets multiply batches (a 3-material arch = 3 instances/batches
 per placement). Plan is to atlas multi-material kit assets down to 1 material
@@ -912,6 +941,15 @@ Formula-driven with authored override points (the user's explicit choice).
   `engageDistance` (circumference ÷ `separationRadius` caps how many fit), so the surplus
   oscillates continuously. Both boundaries now latch and release wider: at
   `engageDistance` 3 the bands are retreat < 2.0 until 2.5, hold 2.5–3.0, approach > 3.75.
+  **INVESTIGATE needed the same treatment, for a sharper reason** (`investigateRadius`):
+  every NPC investigating one noise paths to the IDENTICAL `LastKnownPosition`, and
+  `HasArrived` is a POINT test — a group can never satisfy it together, because they'd
+  all have to stand on one tile. Separation shoves them off, arrival flips false,
+  everyone repaths inward, forever. The radius is investigate's `engageDistance`: it lets
+  them settle into a RING around the spot, which is what separation was already trying to
+  do and the brain kept undoing. `IsBlocked` still counts as arrived (wedged on a prop →
+  look around rather than grind). **General rule: whenever a group shares one
+  destination, the arrival test must be a BAND, not a point.**
   Also stop churning the agent — `Stop()` was calling `ResetPath()` EVERY frame while
   parked, approach recomputed a full path every frame, and retreat re-issued a destination
   every frame at the `tooCloseDistance` line.
@@ -931,6 +969,20 @@ Formula-driven with authored override points (the user's explicit choice).
   (suspicious→investigate→hunt from one number). Sight ticks on a random per-NPC
   stagger, never per frame. (`GetInstanceID` is deprecated in Unity 6.5 — use
   `Random`/`GetEntityId`.)
+  **KNOWN GAP — sight detection is BINARY AND INSTANT, whatever the doc above says.**
+  `TickSight` sets `CurrentTarget` the moment the cone + LOS test passes, regardless of
+  `Awareness01`, and `NpcBrain` interrupts straight to Alerted on `CurrentTarget != null`.
+  So the meter only actually gates the HEARING → investigate path; for sight it's
+  decorative. This is the likeliest reason goblins read as over-sensitive, and note that
+  `sightGainPerSecond`/`decayPerSecond`/`investigateThreshold` **cannot fix it** — they
+  shape the meter, and the meter isn't what triggers the hunt. Gating `CurrentTarget`
+  behind an awareness threshold is the fix; left undone deliberately, as a design call.
+  **`NpcPerceptionDebug`** (drop on any scene object) makes it visible: an awareness bar
+  over every NPC — **F3** overlay, **F4** sight off, **F5** hearing off. The switches are
+  STATIC (one keypress covers the whole dungeon; isolating a sense in a crowd is
+  impossible otherwise) and reset on play-mode entry, same fast-enter-playmode trap
+  `NoiseBus` guards. A bar near ZERO while the NPC reads SEES is the gap above, not an
+  overlay artifact.
 - **NPC combat (`IDamageable`/`DamageInfo`/`Health`, `MeleeAttack`, `ThrownDamage`,
   `FactionMember`)** — attackers only ever talk to `IDamageable`; `Health` sits on
   BOTH player and NPCs, so a goblin's swing and a thrown barrel hurt either with no
@@ -1031,7 +1083,15 @@ Formula-driven with authored override points (the user's explicit choice).
     `bodyReference` is the **head bone itself**: being the last link in the animated
     chain, its accumulated world rotation reflects the whole posed hierarchy (hips
     tipped, spine bent, neck posed) in a way an earlier bone like hips/spine alone
-    doesn't capture. Gated by awareness so it's an honest detection tell.
+    doesn't capture. **Gated on what the NPC actually KNOWS, not on awareness**
+    (`onlyWhatItKnows`): SEEING the player tracks their live position; merely SUSPICIOUS
+    tracks `LastKnownPosition`; neither tracks nothing. Awareness rises from HEARING too,
+    so gating on it made a goblin that had only heard a noise lock onto the player's real
+    position THROUGH WALLS — leaking the one thing hearing is meant to leave uncertain and
+    undoing the LOS check that makes crouching behind cover work. The suspicion case is
+    the good one: it stares at where the barrel landed while you slip past behind it.
+    `suspicionLookHeight` lifts the gaze off the floor (noise positions are often ground
+    level, and staring down reads as confusion). An honest detection tell either way.
     `NpcCombatAudio`: hurt grunts scaled by impulse, death cry + delayed body-fall
     thud (house audio pattern, § PhysicsDoorAudio).
 - **NPC crowd spacing** — three separate mechanisms, learned the hard way:

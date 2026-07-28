@@ -51,6 +51,8 @@ namespace DungeonGen
         [Range(4, 24)] public int pixelsPerCell = 12;
         [Tooltip("Optional UI RawImage COMPONENT in the scene (GameObject > UI > Raw Image) — NOT an image asset. The mapper generates the texture and assigns it here every redraw, so leave the RawImage's own Texture field empty. Assign this to put the map in real UI (anchored, scalable, layered with the rest of the HUD); leave it empty to use the OnGUI overlay at overlayRect instead, which needs no canvas setup.")]
         public RawImage target;
+        [Tooltip("Optional Canvas holding the RawImage. Disabling the RawImage alone leaves the canvas drawing (and its other children visible), so if the map has its own canvas, assign it here and the toggle hides the whole thing. Safe to leave empty.")]
+        public Canvas targetCanvas;
         [Tooltip("Optional UI Text for the floor readout when rendering into a RawImage (the OnGUI label only draws in overlay mode). Using TextMeshPro instead? Leave this empty and drive your own field from the public CurrentFloorNumber / FloorCount.")]
         public Text floorLabel;
         [Tooltip("Screen rect (pixels) for the OnGUI fallback: x, y, width, height. Ignored when a RawImage is assigned.")]
@@ -148,6 +150,14 @@ namespace DungeonGen
             // but a RawImage just keeps rendering whatever texture it holds, so without
             // this the M key would silently do nothing in UI mode.
             if (target != null && target.enabled != visible) target.enabled = visible;
+
+            // The canvas is what actually hides the RawImage, so toggle it too — but
+            // INDEPENDENTLY of `target`, not nested inside its check. Nested it only ran
+            // on the frames target's own state disagreed with `visible`, so the canvas
+            // stopped tracking after the first toggle; and it dereferenced targetCanvas
+            // with no guard, throwing whenever a RawImage is assigned and this isn't.
+            if (targetCanvas != null && targetCanvas.enabled != visible) targetCanvas.enabled = visible;
+
             if (floorLabel != null && floorLabel.enabled != visible) floorLabel.enabled = visible;
 
             if (vis == null || vis.Generator == null) return;
