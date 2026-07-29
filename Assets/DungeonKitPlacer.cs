@@ -260,12 +260,39 @@ namespace DungeonGen
                 // room). A closet with a hallway above it is two different spaces; see
                 // the generator's NeedsSlabBetween. Must match DungeonMesher exactly or
                 // the visible floor and the collision floor disagree.
+                // Per-space surface sets, resolved once and shared by the floor and
+                // ceiling below. Owner is decided the same way stair walls and stairs are:
+                // RoomAt first (a stair cell carved inside a room stays in Room.Cells, so
+                // it correctly inherits that room's floor), then the cell type. Each falls
+                // back to the kit's generic, so a partially authored style still renders.
+                GameObject[] floorSlot = kit.floorPrefabs;
+                GameObject[] ceilingSlot = kit.ceilingPrefabs;
+                if (style != null)
+                {
+                    Room surfRoom = RoomAtCached(c);
+                    if (surfRoom != null)
+                    {
+                        floorSlot = style.FloorsFor(surfRoom.Type) ?? floorSlot;
+                        ceilingSlot = style.CeilingsFor(surfRoom.Type) ?? ceilingSlot;
+                    }
+                    else if (t == CellType.Prison)
+                    {
+                        floorSlot = style.PrisonFloors() ?? floorSlot;
+                        ceilingSlot = style.PrisonCeilings() ?? ceilingSlot;
+                    }
+                    else
+                    {
+                        floorSlot = style.HallwayFloors() ?? floorSlot;
+                        ceilingSlot = style.HallwayCeilings() ?? ceilingSlot;
+                    }
+                }
+
                 if (gen.NeedsSlabBetween(c + Vector3Int.down, c))
-                    Emit(kit.floorPrefabs, "floor", center, Yaw(c, kit.randomizeFloorYaw), kit.floorOffset, c);
+                    Emit(floorSlot, "floor", center, Yaw(c, kit.randomizeFloorYaw), kit.floorOffset, c);
 
                 // Ceiling.
                 if (t != CellType.StairLower && gen.NeedsSlabBetween(c, c + Vector3Int.up))
-                    Emit(kit.ceilingPrefabs, "ceiling",
+                    Emit(ceilingSlot, "ceiling",
                         center + Vector3.up, Yaw(c + Vector3Int.up, kit.randomizeCeilingYaw), kit.ceilingOffset, c);
 
                 foreach (var d in HDirs)
@@ -386,7 +413,40 @@ namespace DungeonGen
                 Vector3Int E = stair.Entry;
                 Vector3 cd = (Vector3)stair.Dir;
                 Vector3 foot = new Vector3(E.x + 0.5f, E.y, E.z + 0.5f) + cd * 0.5f;
-                EmitCollider(kit.stairPrefabs, "stair", foot, Quaternion.LookRotation(cd), kit.stairOffset, E);
+                // Which staircase this is depends on WHOSE it is. Interior stairs are
+                // carved inside a room — their cells never leave Room.Cells, only the
+                // CellType changes — so RoomAt resolves the owner, exactly the rule stair
+                // WALLS already follow (§7). A corridor stair belongs to no room and keeps
+                // the kit's generic.
+                //
+                // The stair's own cells are E+dir and E+dir*2; E itself is the cell BEFORE
+                // the flight, so it's checked last and only as a fallback — for a stair
+                // rising out of a room into a corridor, E may be the corridor side.
+                GameObject[] stairSlot = kit.stairPrefabs;
+                if (style != null)
+                {
+                    Vector3Int d = stair.Dir;
+                    Room best = null; int bestScore = -1;
+                    void ConsiderStairRoom(Vector3Int p)
+                    {
+                        var r = RoomAtCached(p);
+                        if (r == null) return;
+                        int s = RoomStyle.Specialness(r.Type);
+                        if (s > bestScore) { bestScore = s; best = r; }
+                    }
+                    // Specialness breaks a tie the same way pillars do at an edge touching
+                    // several rooms — a flight shared between a throne room and a generic
+                    // one should read as the throne room's.
+                    ConsiderStairRoom(E + d);
+                    ConsiderStairRoom(E + d * 2);
+                    ConsiderStairRoom(E + d + Vector3Int.up);
+                    ConsiderStairRoom(E + d * 2 + Vector3Int.up);
+                    if (best == null) ConsiderStairRoom(E);
+
+                    if (best != null) stairSlot = style.StairsFor(best.Type) ?? stairSlot;
+                }
+
+                EmitCollider(stairSlot, "stair", foot, Quaternion.LookRotation(cd), kit.stairOffset, E);
             }
 
             // Corner pillars: classify each vertical lattice edge by the four

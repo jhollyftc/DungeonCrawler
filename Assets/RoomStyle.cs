@@ -111,6 +111,62 @@ namespace DungeonGen
         [Tooltip("Wall assets for prison closets (band is always Bottom). Empty = kit's generic walls.")]
         public List<WallAsset> prisonWalls = new List<WallAsset>();
 
+        // ---------------- Floors & ceilings ----------------
+        //
+        // Deliberately plain prefab arrays rather than WallAssets: a floor has no bands
+        // (there's one per cell, not a course), no per-room caps, and nothing mounts on
+        // it, so all that machinery would be dead weight. Same fallback philosophy as
+        // everything else here — empty means the kit's generic, so a partially authored
+        // style still renders.
+
+        [System.Serializable]
+        public class SurfaceSet
+        {
+            public RoomType type;
+            [Tooltip("Floor tiles for rooms of this type. Empty = kit's generic floor.")]
+            public GameObject[] floorPrefabs;
+            [Tooltip("Ceiling tiles for rooms of this type. Empty = kit's generic ceiling.")]
+            public GameObject[] ceilingPrefabs;
+        }
+
+        [Header("Floors & ceilings (empty = kit's generic)")]
+        [Tooltip("Per-room-type floor and ceiling tiles. A shrine can have its own flagstones and a kitchen its scorched brick without touching the walls.")]
+        public List<SurfaceSet> roomSurfaces = new List<SurfaceSet>();
+        [Tooltip("Floor tiles for corridors. Corridors are most of what the player walks over, so this is the single highest-mileage surface in the dungeon.")]
+        public GameObject[] hallwayFloorPrefabs;
+        [Tooltip("Ceiling tiles for corridors.")]
+        public GameObject[] hallwayCeilingPrefabs;
+        [Tooltip("Floor tiles for prison closets.")]
+        public GameObject[] prisonFloorPrefabs;
+        [Tooltip("Ceiling tiles for prison closets.")]
+        public GameObject[] prisonCeilingPrefabs;
+
+        /// <summary>Floor tiles for this room type, or null for the kit's.</summary>
+        public GameObject[] FloorsFor(RoomType type)
+        {
+            foreach (var s in roomSurfaces)
+                if (s.type == type)
+                    return (s.floorPrefabs != null && s.floorPrefabs.Length > 0) ? s.floorPrefabs : null;
+            return null;
+        }
+
+        /// <summary>Ceiling tiles for this room type, or null for the kit's.</summary>
+        public GameObject[] CeilingsFor(RoomType type)
+        {
+            foreach (var s in roomSurfaces)
+                if (s.type == type)
+                    return (s.ceilingPrefabs != null && s.ceilingPrefabs.Length > 0) ? s.ceilingPrefabs : null;
+            return null;
+        }
+
+        public GameObject[] HallwayFloors() => Nullable(hallwayFloorPrefabs);
+        public GameObject[] HallwayCeilings() => Nullable(hallwayCeilingPrefabs);
+        public GameObject[] PrisonFloors() => Nullable(prisonFloorPrefabs);
+        public GameObject[] PrisonCeilings() => Nullable(prisonCeilingPrefabs);
+
+        /// <summary>Empty reads as "unauthored" (null) so callers can `?? kitGeneric`.</summary>
+        static GameObject[] Nullable(GameObject[] a) => (a != null && a.Length > 0) ? a : null;
+
         Dictionary<(RoomType, WallBand), List<WallAsset>> wallCache;
         GameObject[] hallwayWallCache;
         GameObject[] prisonWallCache;
@@ -233,6 +289,8 @@ namespace DungeonGen
             public GameObject[] outerPillarPrefabs;
             [Tooltip("Inner (concave) corner posts for this type. Empty = kit's generic.")]
             public GameObject[] innerPillarPrefabs;
+            [Tooltip("Staircases for flights INSIDE a room of this type — a throne room gets its grand stair, a shrine its worn stone steps. Corridor stairs (which belong to no room) always use the kit's generic. Empty = kit's generic.\n\nAUTHORING WARNING: the stair prefab's authored collider IS the walking surface (the greybox's approximate ramp is skipped whenever the kit has stair prefabs, so the two can't disagree). A variant with different STEP geometry therefore changes how the player moves through that room, not just how it looks — keep the tread height and run matching the generic, and vary the dressing.")]
+            public GameObject[] stairPrefabs;
         }
 
         [Header("Openings (empty = kit's generic arch/door)")]
@@ -254,6 +312,15 @@ namespace DungeonGen
             foreach (var s in roomOpenings)
                 if (s.type == type)
                     return (s.doorPrefabs != null && s.doorPrefabs.Length > 0) ? s.doorPrefabs : null;
+            return null;
+        }
+
+        /// <summary>Staircase prefabs for flights inside this room type, or null for the kit's.</summary>
+        public GameObject[] StairsFor(RoomType type)
+        {
+            foreach (var s in roomOpenings)
+                if (s.type == type)
+                    return (s.stairPrefabs != null && s.stairPrefabs.Length > 0) ? s.stairPrefabs : null;
             return null;
         }
 
