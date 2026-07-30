@@ -2,7 +2,15 @@ using UnityEngine;
 
 namespace DungeonGen
 {
-    public enum DamageType { Melee, Thrown, Fall, Environment }
+    // Projectile is APPENDED deliberately — existing values keep their serialized
+    // indices, and only one place in the codebase branches on this at all
+    // (NpcHitReactions' thrownVerticalPop).
+    //
+    // Arrows are NOT Thrown: that type redirects part of the shove UPWARD, which is
+    // tuned for a hurled barrel where being lifted off your feet sells a body blow. An
+    // arrow is a puncture, not a shove — reusing Thrown launched NPCs skyward when shot
+    // from above (real bug).
+    public enum DamageType { Melee, Thrown, Fall, Environment, Projectile }
 
     /// <summary>
     /// Everything about one instance of harm. Passed by ref (in) — it's a struct

@@ -59,6 +59,10 @@ namespace DungeonGen
 
         /// <summary>Fired on any impact: (position, whether it damaged something).</summary>
         public event System.Action<Vector3, bool> OnImpact;
+        /// <summary>A weak point was struck: (the Hitbox, world point). The hook for a
+        /// distinct headshot sound or VFX — kept separate from OnImpact so a listener
+        /// doesn't have to re-derive what was hit.</summary>
+        public event System.Action<Hitbox, Vector3> OnWeakPointHit;
 
         Rigidbody body;
         GameObject shooter;
@@ -202,16 +206,28 @@ namespace DungeonGen
 
             armed = false;   // one victim per shot, before TakeDamage — a death reaction
                              // can move colliders and re-contact this same frame
+
+            // Weak point? Resolved from the EXACT collider struck, so a head shot is
+            // worth more than the same arrow into a torso. Knockback is left unscaled —
+            // where you hit something shouldn't change how hard it's shoved.
+            Hitbox hitbox = Hitbox.On(hit);
+            float multiplier = hitbox != null ? Mathf.Max(0f, hitbox.damageMultiplier) : 1f;
+
             damageable.TakeDamage(new DamageInfo
             {
-                amount = damage * drawScale,
+                amount = damage * drawScale * multiplier,
                 point = point,
                 direction = dir,
                 instigator = shooter,
-                type = DamageType.Thrown,
+                // Projectile, NOT Thrown: Thrown redirects part of the shove UPWARD
+                // (NpcHitReactions.thrownVerticalPop), which is tuned for a hurled barrel
+                // and sent NPCs flying skyward when shot from above.
+                type = DamageType.Projectile,
                 impulse = knockback * drawScale,
                 poiseDamage = poiseDamage * drawScale,
             });
+
+            if (hitbox != null) OnWeakPointHit?.Invoke(hitbox, point);
             return true;
         }
 
