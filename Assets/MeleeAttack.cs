@@ -40,10 +40,14 @@ namespace DungeonGen
         public float poiseDamage = 25f;
 
         [Header("Timing")]
-        [Tooltip("Seconds between starting the swing and the hit landing — the victim's dodge window. THE combat-feel number.")]
+        [Tooltip("Seconds between starting the swing and the hit landing — the victim's dodge window. THE combat-feel number. IGNORED when sweepFromAnimationEvent is on.")]
         public float windup = 0.45f;
         [Tooltip("Seconds after the hit before another swing can start.")]
         public float recovery = 0.8f;
+        [Tooltip("Fire the sweep from an ANIMATION EVENT on the clip's impact frame (call AnimationSweep) instead of the windup timer. ON for animated attackers — NPCs — because a fixed delay cannot match a per-weapon clip's impact frame, and the hit landing exactly when the blade visually connects is what makes a parry feel fair: otherwise players learn to time an invisible timer rather than the animation, and every new weapon needs its windup hand-synced. OFF for the procedural player swing, whose arc IS code and already knows its own impact point.")]
+        public bool sweepFromAnimationEvent = false;
+        [Tooltip("Failsafe (seconds) when sweepFromAnimationEvent is on: if no AnimationSweep arrives within this long, the swing is abandoned and recovery starts. A missing, misnamed or mis-timed Animation Event would otherwise leave the attacker stuck mid-swing FOREVER — IsSwinging never clears, so CanAttack never returns true again and the NPC silently stops fighting. Set comfortably longer than the clip.")]
+        public float animationSweepTimeout = 3f;
 
         [Header("Sweep")]
         [Tooltip("Height above the feet the sweep originates from.")]
@@ -87,6 +91,29 @@ namespace DungeonGen
         /// of it, so hit VFX/audio still treat it as an ordinary hit.
         /// </summary>
         public event Action<IDamageable, Vector3> OnConeInnerHit;
+        /// <summary>
+        /// The swing was ABANDONED before landing — parried, interrupted, or the animation
+        /// event never arrived. Distinct from OnSwingEnd (which means "the swing resolved")
+        /// so a listener can tell a completed attack from a broken one. `NpcAnimatorDriver`
+        /// uses it to break the Animator out of the swing state: under
+        /// sweepFromAnimationEvent the clip is what fires the sweep, so cancelling in code
+        /// alone would let the event land anyway.
+        /// </summary>
+        public event Action OnSwingCancelled;
+        /// <summary>
+        /// This attacker's blow was PARRIED. The attacker decides what that means — a goblin
+        /// staggers (route it into a poise break, which already produces a major stagger),
+        /// a future boss might shrug it off, the player just loses their combo. The defender
+        /// raising this reaches the attacker through DamageInfo.instigator, so no interface
+        /// needs a return value and no attacker learns that guarding exists.
+        /// </summary>
+        public event Action OnParried;
+        /// <summary>
+        /// This attacker's blow was BLOCKED (shield, not body). Separate from OnParried so
+        /// feedback can differ — a block is a dull clang and a halted swing, a parry is a
+        /// ring and a stagger.
+        /// </summary>
+        public event Action OnBlocked;
 
         /// <summary>
         /// A narrow sub-cone for DoConeSweep — see its `inner` parameter. `range` 0 or
@@ -136,8 +163,18 @@ namespace DungeonGen
         InnerCone activeInner;   // set per DoConeSweep call, read by ConeHit
         ConePush activePush;     // ditto, read by ShoveProp
         readonly HashSet<Transform> hitThisSwing = new HashSet<Transform>();
-        static readonly Collider[] overlapScratch = new Collider[16];
-        static readonly RaycastHit[] castScratch = new RaycastHit[16];
+        // 64, not 16 — sized for an NPC ATTACKER, which is the harsher case and was not the
+        // one these were originally written for. A player's sweep usually contains one or two
+        // enemies. A goblin swinging from INSIDE a crowd is surrounded by neighbours sitting
+        // at separation radius, and every one of them brings its capsule plus ~15 dormant
+        // ragdoll bone colliders. hitMask is not auto-stripped of the NPC layer (only
+        // losBlockMask is), so those all get gathered and only get rejected by the faction
+        // check AFTERWARDS — by which point they have already consumed the buffer. Overflow
+        // silently truncates the gather, and the dropped collider can be the player, so the
+        // swing whiffs for no visible reason and only in a crowd. Same failure the cone hit
+        // (see coneScratch); this is that lesson applied to the sweep.
+        static readonly Collider[] overlapScratch = new Collider[64];
+        static readonly RaycastHit[] castScratch = new RaycastHit[64];
         // The cone sweeps a MUCH larger volume than the sword capsule, and each enemy
         // brings many colliders (its capsule + all the dormant ragdoll bone colliders),
         // so a crowd blows past 16 instantly — a too-small buffer silently caps the
@@ -165,17 +202,127 @@ namespace DungeonGen
             if (!CanAttack) return false;
             IsSwinging = true;
             OnSwingStart?.Invoke();
-            Invoke(nameof(LandSweep), windup);
-            if (debugAttack) Debug.Log($"[Melee] {name}: swing started (lands in {windup:0.00}s).", this);
+
+            if (sweepFromAnimationEvent)
+            {
+                // The CLIP owns the impact frame now. Only a failsafe is scheduled, so a
+                // missing or misnamed Animation Event ends the swing instead of wedging the
+                // attacker mid-swing forever.
+                Invoke(nameof(AnimationSweepTimedOut), Mathf.Max(0.1f, animationSweepTimeout));
+                if (debugAttack) Debug.Log($"[Melee] {name}: swing started (awaiting AnimationSweep).", this);
+            }
+            else
+            {
+                Invoke(nameof(LandSweep), windup);
+                if (debugAttack) Debug.Log($"[Melee] {name}: swing started (lands in {windup:0.00}s).", this);
+            }
             return true;
+        }
+
+        /// <summary>
+        /// ANIMATION EVENT target — put one on the clip's impact frame, function name
+        /// `AnimationSweep`. Void and argument-less so it appears cleanly in the Animator's
+        /// event picker.
+        ///
+        /// Guarded on IsSwinging, which matters more than it looks: an Animation Event fires
+        /// whenever the clip plays that frame, including if the state is re-entered or the
+        /// clip loops. Without the guard a looping attack state would sweep repeatedly, and
+        /// because DoSweep CLEARS the per-swing dedupe set each call, every repeat is a
+        /// fresh full-damage hit on the same victim.
+        /// </summary>
+        public void AnimationSweep()
+        {
+            if (!IsSwinging)
+            {
+                if (debugAttack)
+                    Debug.Log($"[Melee] {name}: AnimationSweep ignored — not swinging (clip re-entered or looping?).", this);
+                return;
+            }
+            CancelInvoke(nameof(AnimationSweepTimedOut));
+            LandSweep();
+        }
+
+        void AnimationSweepTimedOut()
+        {
+            Debug.LogWarning($"[Melee] {name}: sweepFromAnimationEvent is ON but no AnimationSweep arrived " +
+                             $"within {animationSweepTimeout:0.#}s — check the clip has an Animation Event calling " +
+                             "'AnimationSweep' on its impact frame. Swing abandoned so the attacker isn't stuck.", this);
+            CancelSwing();
+        }
+
+        /// <summary>
+        /// Abandon an in-flight swing without landing it — parried, staggered, interrupted.
+        /// Recovery still applies, so being interrupted costs the attacker tempo rather than
+        /// letting it instantly re-swing.
+        ///
+        /// Raises OnSwingCancelled rather than OnSwingEnd because under
+        /// sweepFromAnimationEvent, cancelling in CODE is not enough: the clip is still
+        /// playing and will fire AnimationSweep on schedule. The IsSwinging guard there
+        /// catches it, but the Animator also needs driving out of the swing state or the
+        /// attacker stands there finishing an attack it has already lost.
+        /// </summary>
+        public void CancelSwing()
+        {
+            if (!IsSwinging) return;
+            CancelInvoke(nameof(LandSweep));
+            CancelInvoke(nameof(AnimationSweepTimedOut));
+            IsSwinging = false;
+            readyAt = Time.time + recovery;
+            OnSwingCancelled?.Invoke();
+            if (debugAttack) Debug.Log($"[Melee] {name}: swing CANCELLED.", this);
+        }
+
+        /// <summary>
+        /// This attacker was PARRIED. Kills the swing and announces it; what being parried
+        /// COSTS is left to the attacker's own components (a goblin should take a poise
+        /// break, which already produces a major stagger through NpcHitReactions), so the
+        /// punish can differ per creature without this component knowing about any of them.
+        /// </summary>
+        public void Parried()
+        {
+            CancelSwing();
+            OnParried?.Invoke();
+            if (debugAttack) Debug.Log($"[Melee] {name}: PARRIED.", this);
+        }
+
+        /// <summary>
+        /// The blow was BLOCKED — it connected, but with a shield rather than a body. Halts
+        /// the swing so the weapon visibly stops dead instead of following through as though
+        /// it had cut flesh, which is the single biggest tell that a block registered.
+        ///
+        /// Called from inside the sweep (a guard mitigates during TakeDamage), which is why
+        /// LandSweep runs DoSweep before clearing IsSwinging — otherwise this arrives after
+        /// the swing has already resolved itself and CancelSwing does nothing.
+        ///
+        /// Lighter than Parried: the swing stops and recovery starts, but no poise break, so
+        /// blocking buys you a beat while parrying opens the attacker up.
+        /// </summary>
+        public void Blocked()
+        {
+            CancelSwing();
+            OnBlocked?.Invoke();
+            if (debugAttack) Debug.Log($"[Melee] {name}: BLOCKED — swing halted.", this);
         }
 
         // NPC path: the timed landing of a TryAttack() swing.
         void LandSweep()
         {
+            // The sweep runs FIRST, while IsSwinging is still true. That ordering matters: a
+            // victim's guard mitigates INSIDE TakeDamage, which happens inside DoSweep, and a
+            // block or parry answers by halting this swing (Blocked/Parried → CancelSwing).
+            // Clearing IsSwinging up front made CancelSwing hit its own early-return, so the
+            // punish silently did nothing and the attacker played the rest of its swing as if
+            // it had connected.
+            DoSweep();
+
+            // Still swinging = nobody interrupted us, so resolve normally. If a guard
+            // cancelled during the sweep, CancelSwing has already set recovery and raised
+            // OnSwingCancelled, and firing OnSwingEnd too would report the same swing as both
+            // completed and abandoned.
+            if (!IsSwinging) return;
+
             IsSwinging = false;
             readyAt = Time.time + recovery;
-            DoSweep();
             OnSwingEnd?.Invoke();
         }
 
@@ -251,6 +398,15 @@ namespace DungeonGen
             }
 
             blowDirectionOverride = Vector3.zero;
+
+            // A FULL buffer means the gather was truncated and a target may have been dropped
+            // — the swing then whiffs with nothing else wrong, only in a crowd, which is
+            // impossible to diagnose from behaviour alone. Always reported, not gated on
+            // debugAttack: it is a capacity fault, not tracing.
+            int capacity = touchingTarget ? overlapScratch.Length : castScratch.Length;
+            if (hits >= capacity)
+                Debug.LogWarning($"[Melee] {name}: sweep gather hit the {capacity}-collider buffer limit — " +
+                                 "targets may have been silently dropped. Raise overlapScratch/castScratch.", this);
 
             // No living target, but the blade caught a wall/door/prop — spark off IT
             // instead of connecting with nothing. Only when nothing was damaged: a real
@@ -623,6 +779,17 @@ namespace DungeonGen
             // generated root, so root comparison resolves every goblin to the same object.
             var hitDamageable = hit.collider.GetComponentInParent<IDamageable>();
             if (hitDamageable != null && hitDamageable.Transform == victimRoot) return false;
+
+            // ...and never let the ATTACKER occlude its own swing. This mattered only once
+            // NPCs started attacking: with an aimSource the origin is pushed clear of the
+            // attacker by aimForwardOffset, but an NPC has no aimSource, so its origin sits
+            // INSIDE its own chest and every collider it owns is a candidate occluder. It
+            // works today purely because the goblin's colliders are all on the NPC layer,
+            // which Awake strips from losBlockMask — i.e. it depends on layer hygiene on
+            // every rig, and this project has already shipped a character that was left on
+            // Default. The failure mode there is "swings silently never land", far harder to
+            // read than the last one. Cheap to make structural instead of conventional.
+            if (hit.collider.transform.IsChildOf(transform)) return false;
 
             return true;
         }

@@ -53,24 +53,56 @@ namespace DungeonGen
         void HandleDamaged(DamageInfo info)
         {
             if (health.IsDead || info.poiseDamage <= 0f) return;
+            Chip(info.poiseDamage, info);
+        }
+
+        /// <summary>
+        /// Take poise damage from something OTHER than a landed blow — a block absorbing a
+        /// hit, a future stamina drain. Public because the guard removes `poiseDamage` from
+        /// the blow (so this can't also arrive via OnDamaged and be counted twice) and then
+        /// applies its own, usually larger, cost here.
+        /// </summary>
+        public void Chip(float amount, DamageInfo cause = default)
+        {
+            if (health != null && health.IsDead) return;
+            if (amount <= 0f) return;
             lastDamageTime = Time.time;
 
             if (Resisting)
             {
-                if (debugPoise) Debug.Log($"[Poise] {name}: {info.poiseDamage:0} poise ignored (resistance window).", this);
+                if (debugPoise) Debug.Log($"[Poise] {name}: {amount:0} poise ignored (resistance window).", this);
                 return;
             }
 
-            Current -= info.poiseDamage;
-            if (debugPoise) Debug.Log($"[Poise] {name}: -{info.poiseDamage:0} → {Current:0}/{max:0}.", this);
+            Current -= amount;
+            if (debugPoise) Debug.Log($"[Poise] {name}: -{amount:0} → {Current:0}/{max:0}.", this);
 
-            if (Current <= 0f)
+            if (Current <= 0f) Break(cause);
+        }
+
+        /// <summary>
+        /// Empty the pool outright — a guaranteed stagger. The shield bash uses this shape for
+        /// its guaranteed break, and a PARRY uses it on the attacker, so being parried reuses
+        /// the same major-stagger reaction NpcHitReactions already produces instead of needing
+        /// a bespoke stun state.
+        ///
+        /// Respects the resistance window, which is what stops a crowd chain-stunning
+        /// something forever — including via repeated parries.
+        /// </summary>
+        public void Break(DamageInfo cause = default)
+        {
+            if (health != null && health.IsDead) return;
+            if (Resisting)
             {
-                Current = max;                       // reset after the break
-                resistUntil = Time.time + breakResistance;
-                if (debugPoise) Debug.Log($"[Poise] {name}: POISE BREAK → major stagger.", this);
-                OnPoiseBreak?.Invoke(info);
+                if (debugPoise) Debug.Log($"[Poise] {name}: break ignored (resistance window).", this);
+                return;
             }
+
+            Current = max;                       // reset after the break
+            resistUntil = Time.time + breakResistance;
+            lastDamageTime = Time.time;
+            if (debugPoise) Debug.Log($"[Poise] {name}: POISE BREAK → major stagger.", this);
+            OnPoiseBreak?.Invoke(cause);
         }
 
         void Update()

@@ -28,25 +28,93 @@ namespace DungeonGen
         public bool IsDead { get; private set; }
         public Transform Transform => transform;
 
-        void Awake() => Current = max;
+        /// <summary>
+        /// What the last blow's defences did to it — for feedback (a block spark, a parry
+        /// flash, a UI tell) and, via its surface override, for the ATTACKER's impact VFX.
+        /// Logic lives in the mitigators, not here. Read it immediately after TakeDamage:
+        /// OnHitLanded fires after TakeDamage returns, so an attacker's effects component
+        /// sees the result of its own blow.
+        /// </summary>
+        public Mitigation LastMitigation { get; private set; }
+        public DamageOutcome LastOutcome => LastMitigation.outcome;
+
+          private Animator animator;
+        IDamageMitigator[] mitigators;
+
+        void Awake()
+        {
+            Current = max;
+
+            // Cached, not fetched per hit — TakeDamage runs on every arrow, swing and barrel
+            // in a crowd. Sorted so a parry resolves before flat armour reduction; a
+            // mitigator added at runtime must call RefreshMitigators.
+            RefreshMitigators();
+
+            animator = GetComponent<Animator>();
+            if (animator != null)
+            {
+                animator.SetFloat("Health", Current);
+            }            
+        }
 
         public void TakeDamage(in DamageInfo info)
         {
             if (IsDead) return;
 
-            Current = Mathf.Max(0f, Current - Mathf.Max(0f, info.amount));
+            // Let the victim's own defences alter the blow FIRST — a raised shield, a parry,
+            // future armour. Consulted here rather than in each attacker so blocking works
+            // against melee, arrows, thrown props and the environment alike, and no damage
+            // source ever learns that guarding exists (see IDamageMitigator).
+            //
+            // `info` is an `in` parameter, so it is copied once here and the copy is what
+            // mitigators edit and what everything downstream sees — OnDamaged listeners
+            // (NpcCombatAudio's grunt volume, NpcHitReactions' knockback, NpcFace's shock)
+            // must react to the blow that ACTUALLY landed, not the one that was thrown.
+            DamageInfo blow = info;
+            Mitigation result = Mitigation.None;
+            if (mitigators != null)
+            {
+                for (int i = 0; i < mitigators.Length; i++)
+                {
+                    Mitigation m = mitigators[i].Mitigate(ref blow);
+                    // Keep the STRONGEST outcome: a parry outranks a block for feedback
+                    // purposes even if a later mitigator only blocked. The surface override
+                    // rides along with whichever one won, since that's the thing the blow
+                    // actually struck.
+                    if (m.outcome > result.outcome) result = m;
+                }
+            }
+            LastMitigation = result;
+
+            Current = Mathf.Max(0f, Current - Mathf.Max(0f, blow.amount));
 
             if (debugDamage)
-                Debug.Log($"[Health] {name} took {info.amount:0.#} {info.type} damage " +
-                          $"from {(info.instigator != null ? info.instigator.name : "the world")} — {Current:0.#}/{max:0.#} HP.", this);
+                Debug.Log($"[Health] {name} took {blow.amount:0.#} {blow.type} damage " +
+                          $"from {(blow.instigator != null ? blow.instigator.name : "the world")}" +
+                          $"{(LastOutcome != DamageOutcome.None ? $" [{LastOutcome}, was {info.amount:0.#}]" : "")} — {Current:0.#}/{max:0.#} HP.", this);
 
-            OnDamaged?.Invoke(info);
+            OnDamaged?.Invoke(blow);
 
             if (Current <= 0f)
             {
                 IsDead = true;
-                OnDied?.Invoke(info);
+                OnDied?.Invoke(blow);   // the blow that actually killed, post-mitigation
             }
+            if (animator != null)
+            {
+                animator.SetFloat("Health", Current);
+            }
+        }
+
+        /// <summary>
+        /// Re-scan for IDamageMitigator components. Call after adding or removing one at
+        /// runtime (equipping a shield that arrives as a component rather than a toggle).
+        /// </summary>
+        public void RefreshMitigators()
+        {
+            mitigators = GetComponents<IDamageMitigator>();
+            if (mitigators.Length > 1)
+                System.Array.Sort(mitigators, (a, b) => a.MitigationOrder.CompareTo(b.MitigationOrder));
         }
 
         public void Heal(float amount)

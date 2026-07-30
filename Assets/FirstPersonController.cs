@@ -362,7 +362,8 @@ namespace DungeonGen
                 "Ctrl / Mouse4 - Crouch\n" +
                 "E - Interact / Pick up / Drop\n" +
                 "LMB (hold) - Light Attack / Throw\n" +
-                "RMB (hold, release) - Heavy Attack\n" +
+                "RMB (hold) - Shield Block / tap to Parry\n" +
+                "MMB (hold, release) - Heavy Attack\n" +
                 "Q (hold, release) - Shield Bash\n" +
                 "F1 - New Dungeon (same depth)\n" +
                 "PgUp/PgDn - Depth +/- (same seed)\n" +

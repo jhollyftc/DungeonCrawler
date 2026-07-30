@@ -50,10 +50,42 @@ namespace DungeonGen
         [Header("Input")]
         [Tooltip("0 = left mouse (LIGHT combo).")]
         public int lightMouseButton = 0;
-        [Tooltip("1 = right mouse (HEAVY: hold to charge, release to swing).")]
-        public int heavyMouseButton = 1;
-        [Tooltip("SHIELD BASH key. A dedicated off-hand key, kept off the mouse so it's independent of light/heavy (and leaves the mouse free for a future shield BLOCK bind).")]
+        [Tooltip("2 = MIDDLE mouse (HEAVY: hold to charge, release to swing). Moved off RMB, which PlayerGuard now uses to raise the shield — blocking earns the more reachable button because it is reactive and heavy attacks are not. NOTE: this field is SERIALIZED, so an existing Player prefab keeps whatever it was saved with; change it in the inspector, the code default only applies to new instances.")]
+        public int heavyMouseButton = 2;
+        [Tooltip("SHIELD BASH key. A dedicated off-hand key, kept off the mouse so it's independent of light/heavy and of the RMB block.")]
         public KeyCode bashKey = KeyCode.Q;
+
+        [Header("Shield block pose (driven by PlayerGuard)")]
+        [Tooltip("Shield hand offset while the guard is up. This component owns the shield transform — PlayerGuard deliberately holds only STATE, so the two can't fight over the pose (the same one-owner rule as ViewmodelCollision).")]
+        public Vector3 blockShieldPosition = new Vector3(-0.06f, 0.05f, 0.18f);
+        [Tooltip("Shield hand rotation (Euler) while the guard is up — brace it across the body.")]
+        public Vector3 blockShieldEuler = new Vector3(-6f, 28f, -10f);
+        [Tooltip("Sway suppression while blocking. High: a braced shield shouldn't bob with your stride.")]
+        [Range(0f, 1f)] public float blockShieldSuppress = 0.85f;
+        [Tooltip("Sword hand offset while blocking — pulled back and low, out of the way behind the shield.")]
+        public Vector3 blockSwordPosition = new Vector3(0.05f, -0.06f, -0.12f);
+        [Tooltip("Sword hand rotation (Euler) while blocking.")]
+        public Vector3 blockSwordEuler = new Vector3(10f, -14f, 6f);
+        [Tooltip("Sway suppression on the SWORD hand while blocking. Lower than the shield's — the sword is tucked out of the way, not braced, so letting it keep some bob reads as a hand at rest rather than a second locked prop.")]
+        [Range(0f, 1f)] public float blockSwordSuppress = 0.5f;
+        [Tooltip("PLAY-MODE POSE AUTHORING: hold the block pose regardless of input, so you can drag the fields above and watch the shield move live in the Game view — the same workflow as previewT for swings. Remember to turn it off; while it's on the guard pose overrides everything and you can't swing.")]
+        public bool previewBlockPose = false;
+
+        [Header("Block impact shake")]
+        [Tooltip("How far (m) the shield is jolted by a blocked blow at blockShakeFullDamage. Small — this is a judder, not a swing.")]
+        public float blockShakeDistance = 0.035f;
+        [Tooltip("Rotational judder (deg) on the shield at full strength. A little goes a long way; the rotation is what reads as the shield RINGING rather than sliding.")]
+        public float blockShakeAngle = 4f;
+        [Tooltip("Absorbed damage that produces a full-strength shake. Below it the jolt scales down, so chip hits barely register and a heavy blow really rocks you.")]
+        public float blockShakeFullDamage = 12f;
+        [Tooltip("Oscillations per second. High enough to read as a vibration rather than a wobble — 25-40 is the useful band.")]
+        public float blockShakeFrequency = 30f;
+        [Tooltip("Seconds the shake takes to die away. Short: an impact rings briefly and stops.")]
+        public float blockShakeDuration = 0.22f;
+        [Tooltip("Multiplier on the shake for a PARRY. Parries deflect rather than absorb, so a sharper, smaller tick reads better than the heavy jolt of a block — and it keeps the two audibly and visibly distinct.")]
+        public float parryShakeScale = 0.55f;
+        [Tooltip("How fast the shield eases into and out of the block pose. Separate from shieldLag, which is tuned for the SWING counter-motion: a block should snap up faster than a shield drifting after a sword.")]
+        public float blockPoseLag = 0.03f;
 
         [Header("Light combo (LMB) — cycles per tap")]
         [Tooltip("The light swings, played in order per LMB tap and wrapping. Give each a different arc so the directions vary.")]
@@ -170,6 +202,7 @@ namespace DungeonGen
         public bool IsBashing => bashing;
 
         MeleeAttack melee;
+        PlayerGuard guard;      // optional — holds STATE only; this component still owns the shield pose
         PlayerCarry carry;
         FirstPersonController controller;
         CameraKick cameraKick;
@@ -254,11 +287,16 @@ namespace DungeonGen
         Vector3 swordTargetPos, swordTargetEuler;
         float swordTargetSuppress;
         Vector3 swordPos, swordEuler;
+        Vector3 swordBlockPos, swordBlockEuler;   // the block layer's own smoothed sword pose
+        float swordBlockSuppress;
+        Vector3 blockShakeAxis = Vector3.back;    // blow direction in viewmodel space
+        float blockShakeTime, blockShakeStrength;
         float swordSuppress;
 
         void Awake()
         {
             melee = GetComponent<MeleeAttack>();
+            guard = GetComponent<PlayerGuard>();
             carry = GetComponent<PlayerCarry>();
             controller = GetComponent<FirstPersonController>();
             cameraKick = GetComponentInChildren<CameraKick>(true);
@@ -447,6 +485,11 @@ namespace DungeonGen
             if (Cursor.lockState != CursorLockMode.Locked) return false;
             if (carry != null && carry.IsCarrying) return false;
             if (carriedLastFrame) return false;               // this click was the THROW
+            if (guard != null && guard.IsGuarding) return false;   // arms are busy holding the shield
+            // Preview holds the block pose by force. Attacking through it means SetHandPoses
+            // writes the shield target from the swing every frame while TickShield overrides
+            // it back, so the two fight over the shield for the whole swing.
+            if (previewBlockPose) return false;
             return true;
         }
 
@@ -638,6 +681,8 @@ namespace DungeonGen
             if (swinging || charging) return false;
             if (carry != null && carry.IsCarrying) return false;
             if (carriedLastFrame) return false;
+            if (guard != null && guard.IsGuarding) return false;   // drop the guard before bashing with it
+            if (previewBlockPose) return false;                   // see CanSwing
             if (shieldSway == null) return false;                 // nothing to thrust
             return true;
         }
@@ -1072,16 +1117,160 @@ namespace DungeonGen
         /// rest when idle (the target defaults to zero), so it settles naturally after
         /// a swing without anyone explicitly clearing it.
         /// </summary>
+        // ^ that doc belongs to TickShield, further down. Leaving it stranded here would
+        //   attach it to the wrong method in tooling and mislead the next reader.
+
+        /// <summary>
+        /// The sword's half of the block pose, as its own smoothed layer.
+        ///
+        /// WHY a separate layer rather than the existing swordTarget*/TickSword loop: that
+        /// loop exists, but it is wired ONLY into the bash path (FinishFrameBash), where the
+        /// shield leads and the sword takes derived counter-motion. On the ordinary path
+        /// nothing runs it, and the sword is instead written DIRECTLY by SetHandPoses during a
+        /// swing and zeroed once at EndSwing. So while idle, nothing writes the sword at all —
+        /// and ViewmodelSway.SetAttackPose is a LATCH, it just stores what it was last given.
+        /// Posing the sword directly for a block therefore set it instantly (a pop, no
+        /// ease-in) and then left it there forever. That was the bug.
+        ///
+        /// Routing the block through swordTarget* instead would mean calling TickSword on the
+        /// normal path too, where it would overwrite SetHandPoses' direct per-frame write and
+        /// add lag to every swing — a real change to swing feel, to fix an idle-state problem.
+        ///
+        /// Skipped entirely while the swing system owns the hand, and held at rest during that
+        /// time so the layer resumes from the pose the swing actually left behind rather than
+        /// snapping back to a stale block offset the moment the swing ends.
+        /// </summary>
+        void TickBlockSword(bool blocking)
+        {
+            if (swordSway == null) return;
+
+            bool swingOwnsSword = swinging || charging || bashing || previewT > 0f;
+            if (swingOwnsSword)
+            {
+                swordBlockPos = Vector3.zero;
+                swordBlockEuler = Vector3.zero;
+                swordBlockSuppress = 0f;
+                return;
+            }
+
+            Vector3 targetPos = blocking ? blockSwordPosition : Vector3.zero;
+            Vector3 targetEuler = blocking ? blockSwordEuler : Vector3.zero;
+            float targetSuppress = blocking ? blockSwordSuppress : 0f;
+
+            float k = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.001f, blocking ? blockPoseLag : shieldLag));
+            swordBlockPos = Vector3.Lerp(swordBlockPos, targetPos, k);
+            swordBlockEuler = Vector3.Lerp(swordBlockEuler, targetEuler, k);
+            swordBlockSuppress = Mathf.Lerp(swordBlockSuppress, targetSuppress, k);
+
+            // Written EVERY idle frame, not only while blocking — that is what guarantees the
+            // sword actually returns to rest instead of keeping whatever it was last given.
+            swordSway.SetAttackPose(swordBlockPos, Quaternion.Euler(swordBlockEuler), swordBlockSuppress);
+        }
+
         void TickShield()
         {
             if (shieldSway == null) return;
 
-            float k = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.001f, shieldLag));
+            // A raised guard overrides the derived counter-motion. Written as a TARGET rather
+            // than posed directly, so it eases in and out through the smoothing below and the
+            // shield can't pop when the guard drops. PlayerGuard owns the STATE; this
+            // component owns the transform — one owner, as ever.
+            //
+            // previewBlockPose forces it on for authoring: drag the block fields and watch the
+            // shield move live, the same workflow previewT gives swings.
+            bool blocking = previewBlockPose || (guard != null && guard.IsGuarding);
+            if (blocking)
+            {
+                shieldTargetPos = blockShieldPosition;
+                shieldTargetEuler = blockShieldEuler;
+                shieldTargetSuppress = blockShieldSuppress;
+            }
+
+            TickBlockSword(blocking);
+
+            // Blocking uses its own lag: shieldLag is tuned for the swing counter-motion,
+            // where trailing the sword is the point. A guard coming up late feels unresponsive
+            // and, worse, misrepresents the parry window you're actually being judged on.
+            float lag = blocking ? blockPoseLag : shieldLag;
+            float k = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.001f, lag));
             shieldPos = Vector3.Lerp(shieldPos, shieldTargetPos, k);
             shieldEuler = Vector3.Lerp(shieldEuler, shieldTargetEuler, k);
             shieldSuppress = Mathf.Lerp(shieldSuppress, shieldTargetSuppress, k);
 
-            shieldSway.SetAttackPose(shieldPos, Quaternion.Euler(shieldEuler), shieldSuppress);
+            // Shake is added AFTER the smoothing, never folded into the target. A target is
+            // what the lerp eases TOWARD, so an oscillation written there would be damped into
+            // nothing by the very smoothing that makes the guard feel solid — you'd tune the
+            // amplitude up and up and still see almost no movement. Same reason HeadBob
+            // composes additively on top of the camera rather than driving it.
+            Vector3 shakePos = shieldPos;
+            Vector3 shakeEuler = shieldEuler;
+            if (blockShakeTime > 0f)
+            {
+                blockShakeTime -= Time.deltaTime;
+                float remaining = Mathf.Clamp01(blockShakeTime / Mathf.Max(0.001f, blockShakeDuration));
+
+                // Decaying sine: rings and dies. Squaring the envelope drops it away faster
+                // than it arrives, which is what an impact does — a linear fade reads as a
+                // motor running down.
+                float envelope = remaining * remaining;
+                float wave = Mathf.Sin((blockShakeDuration - blockShakeTime) * blockShakeFrequency * Mathf.PI * 2f);
+                float amount = envelope * wave * blockShakeStrength;
+
+                shakePos += blockShakeAxis * (blockShakeDistance * amount);
+                // Judder about the two axes ACROSS the blow, so the shield rocks around the
+                // impact rather than spinning about the line of force.
+                shakeEuler += new Vector3(-blockShakeAxis.y, blockShakeAxis.x, 0f) * (blockShakeAngle * amount);
+            }
+
+            // Diagnostic for "the shield misbehaves during swings". Prints the three things
+            // that can drive the shield, so the culprit is identified rather than guessed:
+            // a live SHAKE (blockShakeTime > 0), the BLOCK override, or the swing's own
+            // counter-motion target. Whichever is moving is the one to look at.
+            if (debugMelee && swinging)
+                Debug.Log($"[Shield] target={shieldTargetEuler} posed={shakeEuler} " +
+                          $"blocking={blocking} shakeT={blockShakeTime:0.000} " +
+                          $"swordEulerIn={swordEuler}", this);
+
+            shieldSway.SetAttackPose(shakePos, Quaternion.Euler(shakeEuler), shieldSuppress);
+        }
+
+        /// <summary>
+        /// Jolt the shield along a blow. Called from PlayerGuard's block/parry events —
+        /// PlayerGuard owns the guard STATE, this component owns the shield transform, so the
+        /// feedback lives here (one owner per transform, as with ViewmodelCollision).
+        /// </summary>
+        void HandleGuardBlocked(Vector3 blowDir, float absorbed) => ShakeShield(blowDir, absorbed);
+
+        // A parry deflects rather than absorbs, so it gets a sharper, smaller tick. It still
+        // gets ONE — a parry with no shield reaction at all, next to a block that visibly
+        // rings, would read as the parry having failed.
+        void HandleGuardParried(Vector3 blowDir, GameObject attacker)
+            => ShakeShield(blowDir, blockShakeFullDamage, parryShakeScale);
+
+        public void ShakeShield(Vector3 worldBlowDirection, float absorbed, float scale = 1f)
+        {
+            if (blockShakeDuration <= 0f) return;
+
+            // Into the VIEWMODEL's frame: the shield pose is a camera-local offset, so a world
+            // direction has to be converted or the jolt points somewhere unrelated to where the
+            // blow came from. A frontal blow travels toward the camera and so lands as -Z
+            // locally, which pushes the shield back at you — exactly right, with no special
+            // casing for direction.
+            Transform eye = melee != null && melee.aimSource != null ? melee.aimSource : transform;
+            Vector3 local = eye.InverseTransformDirection(worldBlowDirection);
+            blockShakeAxis = local.sqrMagnitude > 1e-6f ? local.normalized : Vector3.back;
+
+            float strength = blockShakeFullDamage > 0f
+                           ? Mathf.Clamp01(absorbed / blockShakeFullDamage)
+                           : 1f;
+            // A blow absorbed to nothing still rang the shield — floor it so a fully mitigated
+            // hit isn't silent and invisible, which would read as the block not registering.
+            strength = Mathf.Max(0.35f, strength) * scale;
+
+            // Restart rather than accumulate: two blows in quick succession should re-ring the
+            // shield, not stack into a bigger and bigger wobble.
+            blockShakeTime = blockShakeDuration;
+            blockShakeStrength = strength;
         }
 
         /// <summary>
@@ -1112,11 +1301,22 @@ namespace DungeonGen
         void OnEnable()
         {
             if (melee != null) melee.OnConeInnerHit += CapturePlowed;
+            if (guard != null)
+            {
+                guard.OnBlocked += HandleGuardBlocked;
+                guard.OnParried += HandleGuardParried;
+            }
         }
 
         void OnDisable()
         {
             if (melee != null) melee.OnConeInnerHit -= CapturePlowed;
+            if (guard != null)
+            {
+                guard.OnBlocked -= HandleGuardBlocked;
+                guard.OnParried -= HandleGuardParried;
+            }
+            blockShakeTime = 0f;   // don't resume a half-finished ring after a weapon swap
             if (charging && controller != null) controller.moveScaleOverride = 1f;
             charging = false;
             returning = false;

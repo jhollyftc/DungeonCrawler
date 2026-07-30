@@ -50,9 +50,13 @@ namespace DungeonGen
         static readonly int VelocityXParam = Animator.StringToHash("VelocityX");
         static readonly int VelocityZParam = Animator.StringToHash("VelocityZ");
         static readonly int DieParam = Animator.StringToHash("Die");
+        static readonly int AttackParam = Animator.StringToHash("Attack");
+        static readonly int CancelAttackParam = Animator.StringToHash("CancelAttack");
 
         NpcLocomotion body;
+        MeleeAttack melee;      // optional — an unarmed NPC just walks
         bool hasSpeed, hasMotionSpeed, hasVelocityX, hasVelocityZ, hasDie;
+        bool hasAttack, hasCancelAttack;
 
         void Awake()
         {
@@ -89,9 +93,55 @@ namespace DungeonGen
                 if (p.nameHash == VelocityXParam) hasVelocityX = true;
                 if (p.nameHash == VelocityZParam) hasVelocityZ = true;
                 if (p.nameHash == DieParam) hasDie = true;
+                if (p.nameHash == AttackParam) hasAttack = true;
+                if (p.nameHash == CancelAttackParam) hasCancelAttack = true;
             }
             if (!hasSpeed)
                 Debug.Log($"[NPC] {name}: controller has no 'Speed' float parameter — add one to blend idle/walk by movement.", this);
+
+            // The attack animation hookup. MeleeAttack itself has NO Animator reference —
+            // it decides WHEN a swing happens and knows nothing about how it looks, exactly
+            // as the AI knows nothing about the Animator. This driver stays the single seam.
+            melee = GetComponent<MeleeAttack>();
+            if (melee != null && !hasAttack)
+                Debug.Log($"[NPC] {name}: has a MeleeAttack but the controller declares no 'Attack' trigger — " +
+                          "swings will still hit, they just won't be animated.", this);
+            if (melee != null && melee.sweepFromAnimationEvent && !hasCancelAttack)
+                Debug.Log($"[NPC] {name}: sweepFromAnimationEvent is ON but the controller declares no " +
+                          "'CancelAttack' trigger — an interrupted or PARRIED swing will keep playing its clip " +
+                          "to the end, since cancelling in code can't pull the Animator out of the state.", this);
+        }
+
+        void OnEnable()
+        {
+            if (melee == null) return;
+            melee.OnSwingStart += HandleSwingStart;
+            melee.OnSwingCancelled += HandleSwingCancelled;
+        }
+
+        void OnDisable()
+        {
+            if (melee == null) return;
+            melee.OnSwingStart -= HandleSwingStart;
+            melee.OnSwingCancelled -= HandleSwingCancelled;
+        }
+
+        void HandleSwingStart()
+        {
+            if (animator == null || !hasAttack) return;
+            // Clear any stale cancel before starting, or a CancelAttack that no transition
+            // consumed sits armed and yanks the Animator straight back out of this swing.
+            if (hasCancelAttack) animator.ResetTrigger(CancelAttackParam);
+            animator.SetTrigger(AttackParam);
+        }
+
+        void HandleSwingCancelled()
+        {
+            if (animator == null) return;
+            // Consume an Attack that hasn't been taken yet, so a cancelled swing can't be
+            // resurrected by a trigger still sitting in the queue.
+            if (hasAttack) animator.ResetTrigger(AttackParam);
+            if (hasCancelAttack) animator.SetTrigger(CancelAttackParam);
         }
 
         /// <summary>
