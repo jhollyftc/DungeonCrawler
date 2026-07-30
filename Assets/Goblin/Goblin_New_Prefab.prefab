@@ -502,11 +502,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -3714003574039648521, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.8490096
+      value: 0.8499925
       objectReference: {fileID: 0}
     - target: {fileID: -3714003574039648521, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0.5283774
+      value: 0.5267948
       objectReference: {fileID: 0}
     - target: {fileID: -3714003574039648521, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.y
@@ -834,11 +834,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8332496597460359287, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.43215042
+      value: 0.4353707
       objectReference: {fileID: 0}
     - target: {fileID: 8332496597460359287, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0.9018015
+      value: 0.90025127
       objectReference: {fileID: 0}
     - target: {fileID: 8332496597460359287, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.y
@@ -961,6 +961,15 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       insertIndex: -1
       addedObject: {fileID: -3256002401687352519}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6349449021188665375}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 45523479954662236}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -7770067562315944642}
     - targetCorrespondingSourceObject: {fileID: -8699787447509501512, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       insertIndex: -1
       addedObject: {fileID: 58973243294828293}
@@ -1602,6 +1611,11 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 8879528566716807029, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
   m_PrefabInstance: {fileID: 6074892118056620374}
   m_PrefabAsset: {fileID: 0}
+--- !u!4 &3478672187845170333 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7208261743932278219, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
+  m_PrefabInstance: {fileID: 6074892118056620374}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &4164464271554039373 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 7891850266450665243, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
@@ -2152,8 +2166,8 @@ MonoBehaviour:
   walkTimeout: 45
   lookAroundTime: 3
   investigateRadius: 2
-  engageDistance: 3
-  tooCloseDistance: 2
+  engageDistance: 2.1
+  tooCloseDistance: 1.5
   retreatStepDistance: 1
   approachHysteresis: 1.25
   repathThreshold: 0.5
@@ -2231,8 +2245,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 233fe64865ab90a41ab2fb5434e8a677, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcHeadTrack
-  headBone: {fileID: 0}
-  bodyReference: {fileID: 0}
+  headBone: {fileID: 3478672187845170333}
+  bodyReference: {fileID: 3478672187845170333}
   trackRadius: 9
   onlyWhatItKnows: 1
   suspicionLookHeight: 1.1
@@ -2253,7 +2267,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.Health
   max: 30
-  debugDamage: 1
+  debugDamage: 0
 --- !u!114 &8057483453532789507
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2300,6 +2314,10 @@ MonoBehaviour:
   hurtMinimumVolume: 0.35
   hurtInterval: 0.25
   hurtChance: 0.4
+  attackClips: []
+  attackVolume: 0.8
+  attackChance: 0.35
+  attackInterval: 1.2
   deathClips:
   - {fileID: 8300000, guid: 243d0c175d1731341969a115165658cf, type: 3}
   - {fileID: 8300000, guid: 42df7e21f7f6977428cb36cd2f1675a4, type: 3}
@@ -2558,6 +2576,80 @@ MonoBehaviour:
   - {fileID: 985130416351889382}
   - {fileID: 7029478018645984886}
   randomizeOnEnable: 1
+--- !u!114 &6349449021188665375
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6381376234669534215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d24726767371c424daa2436769494c19, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.MeleeAttack
+  damage: 5
+  range: 1.7
+  sweepRadius: 0.1
+  sweepUpExtent: 0.3
+  sweepDownExtent: 0.5
+  knockback: 5
+  poiseDamage: 10
+  windup: 0.45
+  recovery: 0.8
+  sweepFromAnimationEvent: 1
+  animationSweepTimeout: 3
+  originHeight: 1.1
+  hitMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  losBlockMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  losSurfaceSkin: 0.05
+  aimSource: {fileID: 0}
+  aimForwardOffset: 0.45
+  blowDirectionOverride: {x: 0, y: 0, z: 0}
+  debugAttack: 0
+--- !u!114 &45523479954662236
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6381376234669534215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c01659bb65983fb4387d94fe39617db6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.MeleeHitEffects
+  surfaceLibrary: {fileID: 11400000, guid: 37df9bb4b5dd2cb4d93c00877b2392ad, type: 2}
+  defaultTargetSurface: 1
+  defaultEnvironmentSurface: 0
+  hitSource: {fileID: 0}
+--- !u!114 &-7770067562315944642
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6381376234669534215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 42f46f98c61bc3648a0f4ba9216cf5ec, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcMeleeAudio
+  source: {fileID: 0}
+  maxDistance: 14
+  whooshClips:
+  - {fileID: 8300000, guid: c32f3ba66ddc334448b1918287210117, type: 3}
+  - {fileID: 8300000, guid: 26e306c8f0a230544bef4e80a9813304, type: 3}
+  - {fileID: 8300000, guid: 26ad8124e828a654b81cfc217f424ac1, type: 3}
+  volume: 0.7
+  pitchRange: {x: 0.9, y: 1.1}
+  whooshFromAnimationEvent: 1
+  whooshDelay: 0.25
+  cullDistance: 18
 --- !u!1 &6577283558178491389 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: -8139853090755257685, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
