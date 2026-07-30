@@ -21,19 +21,18 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: SnowMaterial
-  m_Shader: {fileID: 4800000, guid: 0406db5a14f94604a8c57ccfbc9f3b46, type: 3}
+  m_Shader: {fileID: 4800000, guid: f752ac570d416fe488c4fbfb75b87f13, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords:
-  - _SURFACE_TYPE_TRANSPARENT
+  m_ValidKeywords: []
   m_InvalidKeywords:
   - _FLIPBOOKBLENDING_OFF
+  - _SURFACE_TYPE_TRANSPARENT
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
-  m_CustomRenderQueue: 3000
-  stringTagMap:
-    RenderType: Transparent
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
   disabledShaderPasses:
   - SHADOWCASTER
   - DepthOnly
@@ -101,15 +100,21 @@ Material:
     m_Floats:
     - _AlphaClip: 0
     - _AlphaToMask: 0
+    - _BandSoftness: 1
+    - _Bands: 2.39
     - _Blend: 0
     - _BlendOp: 0
+    - _BlobEdge: 0.562
     - _BumpScale: 1
+    - _CameraFadeFar: 3.3
+    - _CameraFadeNear: 0.48
     - _CameraFadingEnabled: 0
     - _CameraFarFadeDistance: 2
     - _CameraNearFadeDistance: 1
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
     - _ColorMode: 0
+    - _Coverage: 0.484
     - _Cull: 2
     - _Cutoff: 0.5
     - _DetailAlbedoMapScale: 1
@@ -118,22 +123,31 @@ Material:
     - _DistortionEnabled: 0
     - _DistortionStrength: 1
     - _DistortionStrengthScaled: 0.1
+    - _DriftScale: 1
     - _DstBlend: 10
     - _DstBlendAlpha: 10
+    - _Edge: 0.6
     - _EnvironmentReflections: 1
     - _FlipbookBlending: 0
     - _FlipbookMode: 0
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
+    - _LayerPhase: 0
+    - _MaxAlpha: 0.027
+    - _MaxLight: 1.05
     - _Metallic: 0
     - _Mode: 0
+    - _NoiseScaleA: 0.388
+    - _NoiseScaleB: 0.31
     - _OcclusionStrength: 1
+    - _Opacity: 1
     - _Parallax: 0.005
     - _QueueOffset: 0
     - _ReceiveShadows: 1
     - _Smoothness: 0.5
     - _SmoothnessTextureChannel: 0
+    - _SoftFade: 2.35
     - _SoftParticlesEnabled: 0
     - _SoftParticlesFarFadeDistance: 1
     - _SoftParticlesNearFadeDistance: 0
@@ -141,6 +155,8 @@ Material:
     - _SrcBlend: 5
     - _SrcBlendAlpha: 1
     - _Surface: 1
+    - _WarpScale: 0.0519
+    - _WarpStrength: 6.88
     - _WorkflowMode: 1
     - _ZWrite: 0
     m_Colors:
@@ -149,7 +165,12 @@ Material:
     - _CameraFadeParams: {r: 0, g: Infinity, b: 0, a: 0}
     - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _NoiseSpeedA: {r: 0.02, g: 0.013, b: 0, a: 0}
+    - _NoiseSpeedB: {r: -0.031, g: 0.022, b: 0, a: 0}
+    - _ShadowTint: {r: 0.5, g: 0.5, b: 0.5, a: 1}
     - _SoftParticleFadeParams: {r: 0, g: 0, b: 0, a: 0}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
+    - _Tint: {r: 0.8679245, g: 0.8679245, b: 0.8679245, a: 1}
+    - _WarpSpeed: {r: 0.01, g: -0.014, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
