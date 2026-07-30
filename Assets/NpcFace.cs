@@ -216,13 +216,14 @@ namespace DungeonGen
             float rate = dead ? deathBlendRate : hurt ? hitBlendRate : blendRate;
             float k = Application.isPlaying ? 1f - Mathf.Exp(-rate * Time.deltaTime) : 1f;
 
-            if (jaw != null && eyebrow != null)
+            // Jaw and eyebrow are driven in SEPARATE blocks, each guarded on its own
+            // bone: a rig with only one of the two assigned still gets that half
+            // animated. A single combined guard meant a missing eyebrow bone silently
+            // froze the jaw too, and the face read as dead rather than partial.
+            if (jaw != null)
             {
-                ebMin = Mathf.Lerp(ebMin, target.eyebrowRange.x, k);
-                ebMax = Mathf.Lerp(ebMax, target.eyebrowRange.y, k);
                 jMin = Mathf.Lerp(jMin, target.jawRange.x, k);
                 jMax = Mathf.Lerp(jMax, target.jawRange.y, k);
-                ebSpeed = Mathf.Lerp(ebSpeed, target.eyebrowSpeed, k);
                 jSpeed = Mathf.Lerp(jSpeed, target.jawSpeed, k);
 
                 float t = Time.time;
@@ -234,9 +235,18 @@ namespace DungeonGen
                 float idleJaw = Mathf.Lerp(jMin, jMax, Wave01(t, jSpeed));
                 float jawAngle = Mathf.Lerp(idleJaw, jawOpenAngle, VoiceOpen());
 
+                jaw.localRotation = Quaternion.AngleAxis(jawAngle, jawAxis.normalized);
+            }
+
+            if (eyebrow != null)
+            {
+                ebMin = Mathf.Lerp(ebMin, target.eyebrowRange.x, k);
+                ebMax = Mathf.Lerp(ebMax, target.eyebrowRange.y, k);
+                ebSpeed = Mathf.Lerp(ebSpeed, target.eyebrowSpeed, k);
+
+                float t = Time.time;
                 float ebValue = Wave01(t, ebSpeed);
 
-                jaw.localRotation = Quaternion.AngleAxis(jawAngle, jawAxis.normalized);
                 eyebrow.localRotation = Quaternion.AngleAxis(Mathf.Lerp(ebMin, ebMax, ebValue), eyebrowAxis.normalized);
             }
 
