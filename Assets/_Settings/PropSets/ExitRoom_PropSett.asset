@@ -10,34 +10,34 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
-  m_Name: Barracks_PropSet
+  m_Name: ExitRoom_PropSett
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
   entries:
-  - label: Tables
+  - label: TheWayOut
     prefabs:
-    - {fileID: 7279145288024505586, guid: 20e2a5cb1a1d776429cf1a12807c85e5, type: 3}
-    anchor: 0
+    - {fileID: 4412226758045267548, guid: 56e64783e1f52034e8a7e5b1f8cb3fca, type: 3}
+    anchor: 3
     tier: 3
-    featurePositionMode: 0
-    featureWallSide: 0
+    featurePositionMode: 1
+    featureWallSide: 2
     featureSpot: 0
-    featureFacing: 0
+    featureFacing: 4
     featureYaw: 0
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
     guaranteed: 0
-    count: 0
-    chancePerCell: 0.546
-    maxPerRoom: 3
-    preferredZones: 4
-    facing: 2
-    yawRange: {x: 0, y: 0}
+    count: 1
+    chancePerCell: 0.444
+    maxPerRoom: 1
+    preferredZones: 8
+    facing: 3
+    yawRange: {x: -3, y: 3}
     subCellJitter: 0
-    snapToWall: 0
+    snapToWall: 1
     snapToInsideCorner: 0
     sharesTile: 0
-    wallGap: 0.1
+    wallGap: 1
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
@@ -106,42 +106,10 @@ MonoBehaviour:
     gridStride: 2
     snapToCeilingWall: 0
     allowCenter: 0
-  - label: Well
-    prefabs:
-    - {fileID: 8092874129027547640, guid: a37885a67eabb2840b7e1af0587aa663, type: 3}
-    anchor: 3
-    tier: 1
-    featurePositionMode: 0
-    featureWallSide: 2
-    featureSpot: 0
-    featureFacing: 0
-    featureYaw: 90
-    hostLabel: 
-    chancePerHost: 0.6
-    minSpacing: 0
-    guaranteed: 0
-    count: 1
-    chancePerCell: 0.444
-    maxPerRoom: 1
-    preferredZones: 8
-    facing: 3
-    yawRange: {x: -3, y: 3}
-    subCellJitter: 0
-    snapToWall: 1
-    snapToInsideCorner: 0
-    sharesTile: 0
-    wallGap: 1
-    mountHeight: 2.2
-    mountHeightJitter: 0
-    ceilingLayout: 0
-    gridStride: 2
-    snapToCeilingWall: 0
-    allowCenter: 0
   - label: Barrel
     prefabs:
     - {fileID: 8418309518360107936, guid: 26210594d958cc14ebdec7eb22c3ae0f, type: 3}
     - {fileID: 6154846084994668213, guid: f3a632176cfd83b44b667cbbb8936833, type: 3}
-    - {fileID: 3505821494461039929, guid: 051b9939b063eaf4aa08cd78886ea85f, type: 3}
     anchor: 0
     tier: 3
     featurePositionMode: 1
@@ -228,36 +196,6 @@ MonoBehaviour:
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
-    gridStride: 2
-    snapToCeilingWall: 0
-    allowCenter: 0
-  - label: Hanging Lights
-    prefabs: []
-    anchor: 1
-    tier: 0
-    featurePositionMode: 1
-    featureWallSide: 0
-    featureSpot: 0
-    featureFacing: 4
-    featureYaw: 0
-    hostLabel: 
-    chancePerHost: 0.6
-    minSpacing: 0
-    guaranteed: 0
-    count: 0
-    chancePerCell: 1
-    maxPerRoom: 0
-    preferredZones: 4
-    facing: 0
-    yawRange: {x: 0, y: 5}
-    subCellJitter: 0.21
-    snapToWall: 1
-    snapToInsideCorner: 0
-    sharesTile: 0
-    wallGap: 0.5
-    mountHeight: 2.2
-    mountHeightJitter: 0
-    ceilingLayout: 1
     gridStride: 2
     snapToCeilingWall: 0
     allowCenter: 0

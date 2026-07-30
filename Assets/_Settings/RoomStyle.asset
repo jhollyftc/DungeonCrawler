@@ -24,6 +24,10 @@ MonoBehaviour:
     torchColor: {r: 1, g: 0, b: 0.73324835, a: 1}
     intensityScale: 5
     spacingScale: 1.5
+  - type: 0
+    torchColor: {r: 1, g: 1, b: 1, a: 1}
+    intensityScale: 5
+    spacingScale: 1.5
   - type: 3
     torchColor: {r: 0.8867924, g: 0.06393668, b: 0.037646834, a: 1}
     intensityScale: 5
@@ -57,7 +61,7 @@ MonoBehaviour:
     intensityScale: 5
     spacingScale: 1.5
   - type: 13
-    torchColor: {r: 0.6264139, g: 0.6, b: 0.9019608, a: 1}
+    torchColor: {r: 0.14231043, g: 0.11974902, b: 0.3679245, a: 1}
     intensityScale: 5
     spacingScale: 1.5
   - type: 8
@@ -137,6 +141,14 @@ MonoBehaviour:
       allowPropsInFront: 1
       allowTorch: 1
       featureLabel: 
+    - prefab: {fileID: 648554235091625533, guid: 51629a99e5360a349992b630bce44be3, type: 3}
+      bottom: 1
+      middle: 0
+      top: 0
+      maxPerRoom: 3
+      allowPropsInFront: 0
+      allowTorch: 0
+      featureLabel: 
   - type: 8
     walls:
     - prefab: {fileID: 919132149155446097, guid: 756bea7903c0da24294e89c61da1d75f, type: 3}
@@ -181,7 +193,43 @@ MonoBehaviour:
       featureLabel: 
   - type: 3
     walls:
+    - prefab: {fileID: 648554235091625533, guid: c5911f5eb5dc69740871bb157eb92547, type: 3}
+      bottom: 1
+      middle: 0
+      top: 0
+      maxPerRoom: 0
+      allowPropsInFront: 0
+      allowTorch: 0
+      featureLabel: 
+    - prefab: {fileID: 8609303920990423748, guid: 4672b79960f796a4292f0991a69ebd41, type: 3}
+      bottom: 1
+      middle: 0
+      top: 0
+      maxPerRoom: 0
+      allowPropsInFront: 0
+      allowTorch: 0
+      featureLabel: 
     - prefab: {fileID: 919132149155446097, guid: 756bea7903c0da24294e89c61da1d75f, type: 3}
+      bottom: 0
+      middle: 1
+      top: 1
+      maxPerRoom: 0
+      allowPropsInFront: 0
+      allowTorch: 0
+      featureLabel: 
+  - type: 0
+    walls:
+    - prefab: {fileID: 919132149155446097, guid: bb3ddc4d8fc7d1b4f999f4d72eef2608, type: 3}
+      bottom: 1
+      middle: 0
+      top: 0
+      maxPerRoom: 0
+      allowPropsInFront: 1
+      allowTorch: 1
+      featureLabel: 
+  - type: 7
+    walls:
+    - prefab: {fileID: 919132149155446097, guid: bb3ddc4d8fc7d1b4f999f4d72eef2608, type: 3}
       bottom: 1
       middle: 1
       top: 1
@@ -189,7 +237,73 @@ MonoBehaviour:
       allowPropsInFront: 1
       allowTorch: 1
       featureLabel: 
-  hallwayWalls: []
+  - type: 13
+    walls:
+    - prefab: {fileID: 919132149155446097, guid: bb3ddc4d8fc7d1b4f999f4d72eef2608, type: 3}
+      bottom: 1
+      middle: 0
+      top: 0
+      maxPerRoom: 0
+      allowPropsInFront: 1
+      allowTorch: 1
+      featureLabel: 
+  hallwayWalls:
+  - prefab: {fileID: 6816111268289552834, guid: a507041bcc2604848b97158ebe1c3bea, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 1
+    allowTorch: 1
+    featureLabel: 
+  - prefab: {fileID: 2664923012870131323, guid: f1066dbb1f09dc946a521eaf53fe94d2, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 1
+    allowTorch: 0
+    featureLabel: 
+  - prefab: {fileID: 1750113322000258475, guid: 36250c458a95c924cb4cc9a1fa9f3579, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 1
+    allowTorch: 1
+    featureLabel: 
+  - prefab: {fileID: 6816111268289552834, guid: a507041bcc2604848b97158ebe1c3bea, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 1
+    allowTorch: 1
+    featureLabel: 
+  - prefab: {fileID: 6816111268289552834, guid: a507041bcc2604848b97158ebe1c3bea, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 1
+    allowTorch: 1
+    featureLabel: 
+  - prefab: {fileID: 6816111268289552834, guid: a507041bcc2604848b97158ebe1c3bea, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 1
+    allowTorch: 1
+    featureLabel: 
+  - prefab: {fileID: 6816111268289552834, guid: a507041bcc2604848b97158ebe1c3bea, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 1
+    allowTorch: 1
+    featureLabel: 
   prisonWalls:
   - prefab: {fileID: 919132149155446097, guid: ccec73f6eefbaf74ea92aa848c16051b, type: 3}
     bottom: 1
@@ -199,7 +313,7 @@ MonoBehaviour:
     allowPropsInFront: 1
     allowTorch: 0
     featureLabel: 
-  - prefab: {fileID: 919132149155446097, guid: 7e25aaefb11a36a42893b7b0fbec44e6, type: 3}
+  - prefab: {fileID: 5843945103381957244, guid: e1b95c79d79cba548b7ade94b37893e6, type: 3}
     bottom: 1
     middle: 0
     top: 0
@@ -223,28 +337,58 @@ MonoBehaviour:
     allowPropsInFront: 0
     allowTorch: 1
     featureLabel: 
+  - prefab: {fileID: 919132149155446097, guid: f68452ae55b0eb24bb85cc8068e5472f, type: 3}
+    bottom: 1
+    middle: 0
+    top: 0
+    maxPerRoom: 0
+    allowPropsInFront: 1
+    allowTorch: 1
+    featureLabel: 
+  roomSurfaces:
+  - type: 7
+    floorPrefabs: []
+    ceilingPrefabs:
+    - {fileID: 919132149155446097, guid: 78362f8b50845734b9868f3f3a0e313d, type: 3}
+  - type: 8
+    floorPrefabs:
+    - {fileID: 919132149155446097, guid: 5d5433e5d39869044ac91255b4e30a09, type: 3}
+    ceilingPrefabs:
+    - {fileID: 919132149155446097, guid: 683c5e18ac200ad4485a7c6adc038a25, type: 3}
+  hallwayFloorPrefabs: []
+  hallwayCeilingPrefabs:
+  - {fileID: 919132149155446097, guid: 683c5e18ac200ad4485a7c6adc038a25, type: 3}
+  prisonFloorPrefabs:
+  - {fileID: 919132149155446097, guid: 5d5433e5d39869044ac91255b4e30a09, type: 3}
+  prisonCeilingPrefabs:
+  - {fileID: 919132149155446097, guid: 683c5e18ac200ad4485a7c6adc038a25, type: 3}
   roomOpenings:
   - type: 0
     archwayPrefabs:
-    - {fileID: 1222708879805728174, guid: d1a9ad98a5b88cd4591abb6df8a66a93, type: 3}
+    - {fileID: 5995367872348806340, guid: b15d1b5646a6d5e4082917b7fc9e639e, type: 3}
     doorPrefabs:
     - {fileID: 1029005481309709157, guid: f0c5463a716c04b408525af9c08e4184, type: 3}
-    outerPillarPrefabs: []
+    outerPillarPrefabs:
+    - {fileID: 1537402847695427244, guid: 3bb82d9e8435b3d4caa97c19a0f4e657, type: 3}
     innerPillarPrefabs: []
+    stairPrefabs:
+    - {fileID: 1653914997044485433, guid: 04037e0f2add6274fa63b35cc5bb8089, type: 3}
   - type: 1
     archwayPrefabs:
     - {fileID: 1222708879805728174, guid: d1a9ad98a5b88cd4591abb6df8a66a93, type: 3}
     doorPrefabs:
-    - {fileID: 1029005481309709157, guid: f0c5463a716c04b408525af9c08e4184, type: 3}
+    - {fileID: 1029005481309709157, guid: 52494da86f067b0408b58e8fb47dd04d, type: 3}
     outerPillarPrefabs: []
     innerPillarPrefabs: []
+    stairPrefabs: []
   - type: 2
     archwayPrefabs:
     - {fileID: 1222708879805728174, guid: d1a9ad98a5b88cd4591abb6df8a66a93, type: 3}
     doorPrefabs:
-    - {fileID: 1029005481309709157, guid: f0c5463a716c04b408525af9c08e4184, type: 3}
+    - {fileID: 1029005481309709157, guid: 52494da86f067b0408b58e8fb47dd04d, type: 3}
     outerPillarPrefabs: []
     innerPillarPrefabs: []
+    stairPrefabs: []
   - type: 5
     archwayPrefabs:
     - {fileID: 5863904433962368668, guid: 257c32ea742224d468b0aefc32df8d4b, type: 3}
@@ -252,6 +396,8 @@ MonoBehaviour:
     - {fileID: 1029005481309709157, guid: d7e35bf58c716254d99cc0df9de4392d, type: 3}
     outerPillarPrefabs: []
     innerPillarPrefabs: []
+    stairPrefabs:
+    - {fileID: 1653914997044485433, guid: 04037e0f2add6274fa63b35cc5bb8089, type: 3}
   - type: 11
     archwayPrefabs:
     - {fileID: 5863904433962368668, guid: 257c32ea742224d468b0aefc32df8d4b, type: 3}
@@ -259,13 +405,66 @@ MonoBehaviour:
     - {fileID: 1029005481309709157, guid: d7e35bf58c716254d99cc0df9de4392d, type: 3}
     outerPillarPrefabs: []
     innerPillarPrefabs: []
+    stairPrefabs:
+    - {fileID: 1653914997044485433, guid: 04037e0f2add6274fa63b35cc5bb8089, type: 3}
   - type: 8
     archwayPrefabs:
     - {fileID: 5863904433962368668, guid: 257c32ea742224d468b0aefc32df8d4b, type: 3}
     doorPrefabs:
-    - {fileID: 1029005481309709157, guid: d7e35bf58c716254d99cc0df9de4392d, type: 3}
+    - {fileID: 1029005481309709157, guid: 22defcf78bbffd44e8f9622598c8d361, type: 3}
     outerPillarPrefabs: []
     innerPillarPrefabs: []
+    stairPrefabs:
+    - {fileID: 1653914997044485433, guid: 04037e0f2add6274fa63b35cc5bb8089, type: 3}
+  - type: 7
+    archwayPrefabs:
+    - {fileID: 5995367872348806340, guid: b15d1b5646a6d5e4082917b7fc9e639e, type: 3}
+    doorPrefabs:
+    - {fileID: 5995367872348806340, guid: b15d1b5646a6d5e4082917b7fc9e639e, type: 3}
+    outerPillarPrefabs:
+    - {fileID: 1537402847695427244, guid: 3bb82d9e8435b3d4caa97c19a0f4e657, type: 3}
+    innerPillarPrefabs: []
+    stairPrefabs:
+    - {fileID: 1653914997044485433, guid: 04037e0f2add6274fa63b35cc5bb8089, type: 3}
+  - type: 13
+    archwayPrefabs:
+    - {fileID: 5995367872348806340, guid: b15d1b5646a6d5e4082917b7fc9e639e, type: 3}
+    doorPrefabs:
+    - {fileID: 5995367872348806340, guid: b15d1b5646a6d5e4082917b7fc9e639e, type: 3}
+    outerPillarPrefabs:
+    - {fileID: 1537402847695427244, guid: 3bb82d9e8435b3d4caa97c19a0f4e657, type: 3}
+    innerPillarPrefabs: []
+    stairPrefabs:
+    - {fileID: 1653914997044485433, guid: 04037e0f2add6274fa63b35cc5bb8089, type: 3}
+  - type: 3
+    archwayPrefabs:
+    - {fileID: 5863904433962368668, guid: 257c32ea742224d468b0aefc32df8d4b, type: 3}
+    doorPrefabs:
+    - {fileID: 1029005481309709157, guid: 52494da86f067b0408b58e8fb47dd04d, type: 3}
+    outerPillarPrefabs:
+    - {fileID: 4427756941774512757, guid: 146d7ec88adf7f049a4451c6c9c158e4, type: 3}
+    innerPillarPrefabs: []
+    stairPrefabs: []
+  - type: 4
+    archwayPrefabs:
+    - {fileID: 5863904433962368668, guid: 257c32ea742224d468b0aefc32df8d4b, type: 3}
+    doorPrefabs:
+    - {fileID: 5863904433962368668, guid: 257c32ea742224d468b0aefc32df8d4b, type: 3}
+    outerPillarPrefabs:
+    - {fileID: 4427756941774512757, guid: 146d7ec88adf7f049a4451c6c9c158e4, type: 3}
+    innerPillarPrefabs: []
+    stairPrefabs:
+    - {fileID: 1653914997044485433, guid: 04037e0f2add6274fa63b35cc5bb8089, type: 3}
+  - type: 6
+    archwayPrefabs:
+    - {fileID: 5995367872348806340, guid: b15d1b5646a6d5e4082917b7fc9e639e, type: 3}
+    doorPrefabs:
+    - {fileID: 5995367872348806340, guid: b15d1b5646a6d5e4082917b7fc9e639e, type: 3}
+    outerPillarPrefabs:
+    - {fileID: 1537402847695427244, guid: 3bb82d9e8435b3d4caa97c19a0f4e657, type: 3}
+    innerPillarPrefabs: []
+    stairPrefabs:
+    - {fileID: 1653914997044485433, guid: 04037e0f2add6274fa63b35cc5bb8089, type: 3}
   roomProps:
   - type: 8
     props: {fileID: 11400000, guid: a4ad4a9c6cd6db84b8bccf1e4edf45e3, type: 2}
@@ -274,11 +473,11 @@ MonoBehaviour:
   - type: 3
     props: {fileID: 11400000, guid: a595edc14d0a4fa4bbb610c818d3bcb3, type: 2}
   - type: 7
-    props: {fileID: 11400000, guid: 4f3a1a894028cfc4083cc3e4a602ecd7, type: 2}
+    props: {fileID: 11400000, guid: b2a19866151385f4f8fa1d2324392b84, type: 2}
   - type: 1
-    props: {fileID: 11400000, guid: 4f3a1a894028cfc4083cc3e4a602ecd7, type: 2}
+    props: {fileID: 11400000, guid: cc228de8e7c1729488d96aa5c2a7afd8, type: 2}
   - type: 2
-    props: {fileID: 11400000, guid: 4f3a1a894028cfc4083cc3e4a602ecd7, type: 2}
+    props: {fileID: 11400000, guid: 8c7641af40681f7448893a0e64e0ecc4, type: 2}
   - type: 4
     props: {fileID: 11400000, guid: 4f3a1a894028cfc4083cc3e4a602ecd7, type: 2}
   - type: 6
@@ -293,4 +492,6 @@ MonoBehaviour:
     props: {fileID: 11400000, guid: 068433a7c4626834bafc83d9c5ff0414, type: 2}
   - type: 14
     props: {fileID: 11400000, guid: 068433a7c4626834bafc83d9c5ff0414, type: 2}
+  - type: 0
+    props: {fileID: 11400000, guid: cc228de8e7c1729488d96aa5c2a7afd8, type: 2}
   hallwayProps: {fileID: 11400000, guid: f091b7636f761184fb6292fa86c06da5, type: 2}

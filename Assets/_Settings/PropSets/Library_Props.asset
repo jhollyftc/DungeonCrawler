@@ -1,0 +1,141 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
+  m_Name: Library_Props
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
+  entries:
+  - label: Tables
+    prefabs:
+    - {fileID: 7279145288024505586, guid: 20e2a5cb1a1d776429cf1a12807c85e5, type: 3}
+    anchor: 0
+    tier: 3
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 0.546
+    maxPerRoom: 3
+    preferredZones: 4
+    facing: 2
+    yawRange: {x: 0, y: 0}
+    subCellJitter: 0
+    snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0.1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Book Shelves
+    prefabs:
+    - {fileID: 1841846976050919672, guid: b2a4a10f82e4acb4da4bac9d45767f07, type: 3}
+    - {fileID: 3091887059629816438, guid: 4bc2428f94769cc4090b737b288d507b, type: 3}
+    - {fileID: 2487930608722856401, guid: 4d25d3d05b82d60448174768b0e8ef16, type: 3}
+    anchor: 0
+    tier: 1
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 4
+    guaranteed: 0
+    count: 0
+    chancePerCell: 0.444
+    maxPerRoom: 0
+    preferredZones: 8
+    facing: 3
+    yawRange: {x: -3, y: 3}
+    subCellJitter: 0
+    snapToWall: 1
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0.7
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Cobwebs
+    prefabs:
+    - {fileID: 919132149155446097, guid: e073a4d06a281954db3ad6019b5b0cdc, type: 3}
+    anchor: 1
+    tier: 0
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 45, y: 45}
+    subCellJitter: 0
+    snapToWall: 1
+    snapToInsideCorner: 1
+    sharesTile: 1
+    wallGap: 0
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Alchemy Table
+    prefabs:
+    - {fileID: 2731656401227985495, guid: 609bcf5f511487e46b9d6ef3ce2e945c, type: 3}
+    anchor: 3
+    tier: 1
+    featurePositionMode: 0
+    featureWallSide: 2
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    guaranteed: 0
+    count: 1
+    chancePerCell: 0.444
+    maxPerRoom: 1
+    preferredZones: 8
+    facing: 3
+    yawRange: {x: -3, y: 3}
+    subCellJitter: 0
+    snapToWall: 1
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0

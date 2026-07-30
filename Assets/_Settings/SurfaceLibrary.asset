@@ -14,12 +14,42 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.SurfaceLibrary
   entries:
   - surface: 1
-    vfx: {fileID: 4452052710904138540, guid: 36f92a6525ea462488e9152f719dd161, type: 3}
+    vfx: {fileID: 2219292488338847417, guid: c008c0df9793a6b418a4548dc3f6666c, type: 3}
     vfxLifetime: 2
     sfx:
     - {fileID: 8300000, guid: d1f6f77749f03724581baba33a40cb79, type: 3}
     - {fileID: 8300000, guid: 2eab51e73fe29554ebcecb766e9b8abd, type: 3}
     - {fileID: 8300000, guid: c8ca416b62501f7459a63d773164cb22, type: 3}
+    volume: 1
+    pitchRange: {x: 0.95, y: 1.05}
+  - surface: 3
+    vfx: {fileID: 5111661238283004553, guid: 0d943e5e64ea779429d0619573fe7010, type: 3}
+    vfxLifetime: 2
+    sfx:
+    - {fileID: 8300000, guid: e21855edcd9ca3646ae65ced0049d8df, type: 3}
+    - {fileID: 8300000, guid: a8a061cd9f9675d469a5c7011b458ce4, type: 3}
+    - {fileID: 8300000, guid: 60732f8bae7752c45b63f13690f8a075, type: 3}
+    - {fileID: 8300000, guid: d39f946a797bffe42bb999eb3abd109d, type: 3}
+    volume: 1
+    pitchRange: {x: 0.95, y: 1.05}
+  - surface: 4
+    vfx: {fileID: 9136566953809437027, guid: 60ec151a604cd324496c5d0a81fd42c9, type: 3}
+    vfxLifetime: 2
+    sfx:
+    - {fileID: 8300000, guid: 7d482db9349aec442ac6628e1d9449b1, type: 3}
+    - {fileID: 8300000, guid: f2f6e91da2ce7a142bd70de5d0ac5512, type: 3}
+    - {fileID: 8300000, guid: 2e8189e4e57223b4285bf873ff1c044e, type: 3}
+    - {fileID: 8300000, guid: fd532b40df7fd21438d2a4d050a5b386, type: 3}
+    volume: 1
+    pitchRange: {x: 0.95, y: 1.05}
+  - surface: 2
+    vfx: {fileID: 5221993095556742822, guid: c88fb5495505c7a48821eae21d6f7d86, type: 3}
+    vfxLifetime: 2
+    sfx:
+    - {fileID: 8300000, guid: 7d482db9349aec442ac6628e1d9449b1, type: 3}
+    - {fileID: 8300000, guid: f2f6e91da2ce7a142bd70de5d0ac5512, type: 3}
+    - {fileID: 8300000, guid: 2e8189e4e57223b4285bf873ff1c044e, type: 3}
+    - {fileID: 8300000, guid: fd532b40df7fd21438d2a4d050a5b386, type: 3}
     volume: 1
     pitchRange: {x: 0.95, y: 1.05}
   defaultEntry:
