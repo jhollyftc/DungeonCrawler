@@ -57,6 +57,16 @@ namespace DungeonGen
         void HandleHit(IDamageable victim, DamageInfo info)
         {
             SurfaceType surface = Surface.Of(victim.Transform, defaultTargetSurface);
+
+            // A BLOCKED hit never touched the victim — it rang off their shield, so spraying
+            // blood would be wrong. The victim's mitigator is the only thing that knows what
+            // interposed itself, and it reports that through Health.LastMitigation. Safe to
+            // read here: OnHitLanded fires after TakeDamage returns, so this is the result of
+            // THIS blow.
+            var health = victim as Health ?? victim.Transform.GetComponent<Health>();
+            if (health != null && health.LastMitigation.overrideSurface)
+                surface = health.LastMitigation.surface;
+
             SurfaceImpact.Spawn(surfaceLibrary, surface, info.point, info.direction, hitSource);
         }
 
