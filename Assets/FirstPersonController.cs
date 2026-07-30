@@ -72,6 +72,14 @@ namespace DungeonGen
             externalVelocity += velocity;
         }
 
+        /// <summary>
+        /// The live decaying dash/knockback velocity (horizontal). Exposed so the shield
+        /// bash's plow can carry NPCs at the player's ACTUAL current lunge speed rather
+        /// than a copied constant — the carry then decays with the lunge automatically,
+        /// one source of truth instead of two numbers that can drift apart.
+        /// </summary>
+        public Vector3 ExternalVelocity => externalVelocity;
+
         /// <summary>True while crouched. Read by anything that cares how quiet the player is (future NPC alerting).</summary>
         public bool IsCrouching { get; private set; }
         /// <summary>Current horizontal speed (m/s). Physics pushes scale off this, so how hard you shove things follows how fast you're actually moving.</summary>

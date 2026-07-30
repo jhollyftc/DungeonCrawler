@@ -118,6 +118,34 @@ namespace DungeonGen
         [Tooltip("Draw the bash CONE (reach + fan angle) as a gizmo when this component is selected — see exactly what the shove will catch.")]
         public bool drawBashCone = true;
 
+        [Header("Bash PLOW — the 'windshield' carry (narrow cone INSIDE the bash cone)")]
+        [Tooltip("Half-angle (deg) of the narrow cone whose victims get CARRIED along in front of the shield instead of being flung immediately. 0 = OFF (the bash behaves exactly as it did before the plow existed). ~25-30 reads as 'whoever is dead ahead'. Deliberately much narrower than bashConeHalfAngle: carrying someone standing 50 degrees off your centreline looks like telekinesis, and you'd lose the crowd-parting role the wide cone plays. With both live, one bash plows the people in front AND fans the flanks aside.")]
+        [Range(0f, 90f)] public float bashPlowHalfAngle = 0f;
+        [Tooltip("Reach (m) of the plow cone. Shorter than bashConeRange — this is who the shield actually reaches, not who feels the shockwave. MUST be <= bashConeRange to do anything: the plow is a sub-cone tested only on targets the wide cone already accepted, so anything beyond the wide reach is rejected before the plow is ever consulted.")]
+        public float bashPlowRange = 1.6f;
+        [Tooltip("Shove applied AT CAPTURE. Keep it near zero: the real knockback is deferred to the release, and a big value here just fights the carry it's starting.")]
+        public float bashPlowCaptureImpulse = 0.5f;
+        [Tooltip("Fraction of the player's live lunge velocity the carried NPC is driven at. 1 = matches you exactly. Slightly BELOW 1 lets you close on them a little as you charge, which reads as pressing them back rather than them floating ahead of you.")]
+        [Range(0f, 1.5f)] public float bashPlowSpeedScale = 0.95f;
+        [Tooltip("Corrective pull (per second) back toward the offset the NPC was captured at. This is a WEAK spring on top of the velocity match, not the main drive — it only stops them slowly sinking into you or drifting off. High values feel kinematic, like they're welded to the shield.")]
+        public float bashPlowFollowStrength = 5f;
+        [Tooltip("Release everyone once the lunge decays below this speed (m/s). Without it the carry outlives the charge and NPCs get nudged along by a lunge that's visually over.")]
+        public float bashPlowReleaseSpeed = 1.5f;
+        [Tooltip("Apply the release fling as a zero-damage DamageInfo instead of a raw impulse. ON reuses the whole NpcHitReactions routing, so the stagger still scales with the shove — at the cost of a second damage EVENT reaching hit audio/VFX (an extra grunt as they're flung, which usually sounds right). OFF drives NpcLocomotion.AddImpulse directly: no second event, but no stagger scaling either.")]
+        public bool bashPlowReleaseThroughDamage = true;
+        [Tooltip("Draw the narrow PLOW cone as a gizmo alongside the wide bash cone.")]
+        public bool drawBashPlowCone = true;
+
+        [Header("Bash PROP shove (crates, barrels, tables, doors)")]
+        [Tooltip("IMPULSE (N·s) delivered to props in the shove cone. 0 = OFF. NOT the same quantity as shieldBash.knockback, which is a VELOCITY for NPCs — mass turns this into speed via dv = J/m, so one value covers every prop weight: light props launch, heavy ones barely shift. SIZE IT AS mass x desired launch speed. Props here are heavy (the barrel is 45kg), so the useful range is HUNDREDS, not single digits: 45kg x 7 m/s = ~315. It must also exceed bashDashSpeed x mass or the prop can't outrun your own lunge and you just keep colliding with it. Turn on MeleeAttack.debugAttack to log the resulting m/s per prop.")]
+        public float bashPropImpulse = 320f;
+        [Tooltip("Reach (m) of the PROP shove. Defaults to the plow's reach rather than the wide cone's, deliberately: the wide cone is a shockwave that staggers PEOPLE, and shoving objects several metres away reads as telekinesis. Widen if you want the crowd-clearing drama.")]
+        public float bashPropRange = 1.8f;
+        [Tooltip("Half-angle (deg) of the PROP shove cone.")]
+        [Range(5f, 150f)] public float bashPropHalfAngle = 35f;
+        [Tooltip("Draw the PROP shove cone as a gizmo.")]
+        public bool drawBashPropCone = true;
+
         [Tooltip("Log every swing with its name and hit/whiff.")]
         public bool debugMelee = false;
 
@@ -181,6 +209,23 @@ namespace DungeonGen
         Vector3 bashRecoilDir;    // shield bounce-back direction on a bash hit
         Vector3 lastShieldPose, lastShieldEuler;   // last pose the bash wrote, so counter-motion resumes without a pop
         float lastShieldSuppress;
+
+        /// <summary>One NPC stuck to the windshield for the duration of a bash lunge.</summary>
+        struct Plowed
+        {
+            public IDamageable target;
+            public NpcLocomotion loco;
+            /// <summary>Where it sat relative to the player AT CAPTURE, in the player's own
+            /// flat frame — stored player-LOCAL, not world, so turning the mouse mid-charge
+            /// carries them around with you instead of leaving them behind.</summary>
+            public Vector3 localOffset;
+            /// <summary>The plow has driven this NPC for at least one frame. Until it has,
+            /// its IsBlocked still describes its OWN approach from the previous frame (it
+            /// may have been pressed against a wall walking at you), and honouring that
+            /// would release it before the carry ever started.</summary>
+            public bool driven;
+        }
+        readonly List<Plowed> plowed = new List<Plowed>();
 
         Camera fovCam;            // world camera, for the bash FOV kick
         float baseFov;
@@ -652,6 +697,7 @@ namespace DungeonGen
             bashSweepTimer = 0f;
             bashHitAnyone = false;
             bashFreeze = 0f;
+            plowed.Clear();   // nobody carries over from a previous bash
             returning = false;
             bufferedLight = false;
             cameraKick?.Kick(shieldBash.swingKickEuler);
@@ -682,6 +728,11 @@ namespace DungeonGen
                 float envelope = Mathf.Sin(p * Mathf.PI);
                 shieldBash.ComputePose(bt, out Vector3 fpos, out Vector3 feuler, out float fsup);
                 ApplyShieldPose(fpos + bashRecoilDir * (shieldBash.recoilDistance * envelope), feuler, fsup);
+                // The carry must keep ticking through the freeze. The plow expires on a
+                // timeout (NpcLocomotion.SetPlowVelocity), so skipping it here would drop
+                // everyone mid-charge at the exact moment of first contact — which is when
+                // the freeze fires.
+                TickPlow();
                 return;
             }
 
@@ -702,6 +753,10 @@ namespace DungeonGen
                 DoBashImpact(firstFrame: false);
             }
 
+            // Carry runs every frame the bash is alive, INCLUDING during bashFreeze above —
+            // which returns early, so TickPlow is called there too (see that block).
+            TickPlow();
+
             if (bt >= 1f) { EndBash(); return; }
 
             shieldBash.ComputePose(bt, out Vector3 pos, out Vector3 euler, out float suppress);
@@ -715,6 +770,142 @@ namespace DungeonGen
         /// `firstFrame` opens a fresh dedupe set; later frames continue it, so each
         /// enemy is caught exactly once — whenever the charge actually reaches them.
         /// </summary>
+        /// <summary>
+        /// A cone victim landed in the narrow inner cone — stick it to the windshield.
+        /// Its damage/flinch/grunt already fired inside the sweep (the shield DID connect);
+        /// what's deferred is the shove.
+        /// </summary>
+        void CapturePlowed(IDamageable target, Vector3 blow)
+        {
+            if (target == null || bashPlowHalfAngle <= 0f) return;
+
+            Transform t = target.Transform;
+            var loco = t != null ? t.GetComponent<NpcLocomotion>() : null;
+            // No locomotion, no carry. The plow drives NPCs through their CharacterController;
+            // anything else (a destructible prop, a future turret) just took the hit and
+            // keeps whatever knockback it was given.
+            if (loco == null) return;
+
+            Vector3 offset = t.position - transform.position;
+            offset.y = 0f;
+            plowed.Add(new Plowed
+            {
+                target = target,
+                loco = loco,
+                localOffset = transform.InverseTransformDirection(offset),
+            });
+
+            if (debugMelee) Debug.Log($"[PlayerMelee] plow CAPTURED '{t.name}'.", this);
+        }
+
+        /// <summary>
+        /// Drive every carried NPC for one frame, and release the ones that should come off.
+        /// Velocity-matched to the player's live lunge with a weak corrective pull toward the
+        /// capture offset — the same philosophy as PlayerCarry's hold point: mostly physical,
+        /// lightly corrected, never a rigid constraint. A hard positional weld would look
+        /// kinematic and break the instant one of them was blocked.
+        /// </summary>
+        void TickPlow()
+        {
+            if (plowed.Count == 0) return;
+
+            Vector3 dash = controller != null ? controller.ExternalVelocity : Vector3.zero;
+            dash.y = 0f;
+
+            // The lunge is spent — the charge is visually over, so stop carrying rather than
+            // nudging bodies along behind a dash that's finished.
+            if (dash.magnitude < bashPlowReleaseSpeed) { ReleasePlowed(); return; }
+
+            for (int i = plowed.Count - 1; i >= 0; i--)
+            {
+                Plowed p = plowed[i];
+
+                // Died or was destroyed mid-carry: drop it with no fling. A corpse is being
+                // handed to the ragdoll and shouldn't also be shoved.
+                if (p.loco == null || !p.loco.isActiveAndEnabled || p.target == null || p.target.IsDead)
+                {
+                    if (p.loco != null) p.loco.ClearPlow();
+                    plowed.RemoveAt(i);
+                    continue;
+                }
+
+                // Pinned against geometry. MUST release: the player doesn't collide with
+                // NPCs, so continuing to drive a body that can't move means the player walks
+                // straight through it and it ends up BEHIND the shield. Only trusted once
+                // the plow has actually driven it for a frame — see Plowed.driven.
+                if (p.driven && p.loco.IsBlocked)
+                {
+                    ReleaseOne(p);
+                    plowed.RemoveAt(i);
+                    continue;
+                }
+
+                // Where it should be: the capture offset, rebuilt in the player's CURRENT
+                // frame so turning the mouse swings the carried bodies around with you.
+                Vector3 wantPos = transform.position + transform.TransformDirection(p.localOffset);
+                Vector3 error = wantPos - p.loco.transform.position;
+                error.y = 0f;
+
+                p.loco.SetPlowVelocity(dash * bashPlowSpeedScale + error * bashPlowFollowStrength);
+
+                // Plowed is a STRUCT in a List, so `p` is a copy — the flag has to be
+                // written back or it never sticks and the blocked check stays disabled.
+                p.driven = true;
+                plowed[i] = p;
+            }
+        }
+
+        /// <summary>Fling one carried NPC and let it go.</summary>
+        void ReleaseOne(Plowed p)
+        {
+            if (p.loco == null || p.target == null) return;
+            p.loco.ClearPlow();
+            if (p.target.IsDead) return;
+
+            // Blow recomputed from where the body is NOW, not where it was captured — it has
+            // been carried some distance since, and a fling should go where it currently is.
+            // Same flatDir/bearing/sideBias construction the cone uses, so the plow release
+            // and the wide cone fan the crowd the same way.
+            Vector3 flatDir = transform.forward;
+            flatDir.y = 0f;
+            flatDir = flatDir.sqrMagnitude > 1e-4f ? flatDir.normalized : transform.forward;
+
+            Vector3 to = p.loco.transform.position - transform.position;
+            to.y = 0f;
+            Vector3 toDir = to.sqrMagnitude > 1e-6f ? to.normalized : flatDir;
+            Vector3 blow = Vector3.Slerp(flatDir, toDir, Mathf.Clamp01(bashConeSideBias)).normalized;
+
+            if (bashPlowReleaseThroughDamage)
+            {
+                // Zero damage, real impulse: the point is to reuse NpcHitReactions' routing
+                // so the stagger still scales with the shove. The cost is a second damage
+                // EVENT (an extra grunt as they're flung) — see the field tooltip.
+                p.target.TakeDamage(new DamageInfo
+                {
+                    amount = 0f,
+                    point = p.loco.transform.position,
+                    direction = blow,
+                    instigator = gameObject,
+                    type = DamageType.Melee,
+                    impulse = shieldBash.knockback,
+                    poiseDamage = 0f,   // poise already broke at capture
+                });
+            }
+            else
+            {
+                p.loco.AddImpulse(blow * shieldBash.knockback);
+            }
+
+            if (debugMelee) Debug.Log($"[PlayerMelee] plow RELEASED '{p.loco.name}'.", this);
+        }
+
+        /// <summary>Fling everyone still on the windshield and clear the set.</summary>
+        void ReleasePlowed()
+        {
+            for (int i = 0; i < plowed.Count; i++) ReleaseOne(plowed[i]);
+            plowed.Clear();
+        }
+
         void DoBashImpact(bool firstFrame)
         {
             melee.damage = shieldBash.damage;
@@ -724,7 +915,27 @@ namespace DungeonGen
 
             // A CONE shove, not a single blow: everyone in front is flung along their own
             // bearing (radial) — center enemies straight back, flanks out to the side.
-            bool hit = melee.DoConeSweep(bashConeHalfAngle, bashConeSideBias, continueSweep: !firstFrame) > 0;
+            // The optional inner cone carves out whoever is dead ahead and hands them to
+            // the plow instead (OnConeInnerHit → CapturePlowed), so a single sweep produces
+            // both behaviours. Dedupe is shared, so nobody is both carried and flung.
+            var inner = new MeleeAttack.InnerCone
+            {
+                halfAngleDeg = bashPlowHalfAngle,
+                range = bashPlowRange,
+                impulse = bashPlowCaptureImpulse,
+            };
+            // Props ride the same sweep on their own cone. They're real Rigidbodies that the
+            // player COLLIDES with, so they need no plow channel — momentum carries them, and
+            // forcing a velocity onto a Rigidbody every frame would fight the solver and read
+            // floaty. A shove is all they want.
+            var push = new MeleeAttack.ConePush
+            {
+                halfAngleDeg = bashPropHalfAngle,
+                range = bashPropRange,
+                impulse = bashPropImpulse,
+            };
+            bool hit = melee.DoConeSweep(bashConeHalfAngle, bashConeSideBias,
+                                         continueSweep: !firstFrame, inner: inner, push: push) > 0;
             if (debugMelee && hit) Debug.Log($"[PlayerMelee] bash {(firstFrame ? "impact" : "charge-through")} — HIT.", this);
 
             if (hit)
@@ -784,6 +995,7 @@ namespace DungeonGen
         {
             bashing = false;
             bashSweepTimer = 0f;
+            ReleasePlowed();   // the lunge is over — everyone still stuck comes off now
             // Hand the shield back to counter-motion at the pose the bash left it (≈rest
             // after recovery), so the next sword swing's derived motion eases in cleanly.
             shieldPos = lastShieldPose;
@@ -897,14 +1109,25 @@ namespace DungeonGen
             return lightCombo[Mathf.Clamp(previewSwingIndex, 0, lightCombo.Count - 1)];
         }
 
+        void OnEnable()
+        {
+            if (melee != null) melee.OnConeInnerHit += CapturePlowed;
+        }
+
         void OnDisable()
         {
+            if (melee != null) melee.OnConeInnerHit -= CapturePlowed;
             if (charging && controller != null) controller.moveScaleOverride = 1f;
             charging = false;
             returning = false;
             tension = 0f;
             if (swinging) EndSwing();
             if (bashing) EndBash();
+            // Belt and braces for a loadout swap mid-lunge. EndBash above already releases,
+            // and NpcLocomotion's plow times out on its own, but leaving a body being driven
+            // by a component that no longer runs is not a state worth relying on a timeout
+            // to exit. Second call is a no-op — ReleasePlowed clears the list.
+            ReleasePlowed();
 
             // Don't leave a widened FOV or a half-wound shield behind if disabled mid-charge.
             bashCharging = false;
@@ -971,14 +1194,28 @@ namespace DungeonGen
             Vector3 origin = eye == transform ? transform.position + Vector3.up * originHeight : eye.position;
             origin.y = transform.position.y + originHeight * 0.4f;   // draw near knee/waist — the shove plane
 
-            Gizmos.color = new Color(0.3f, 0.7f, 1f, 0.9f);
+            DrawConeFan(origin, flat, bashConeHalfAngle, bashConeRange, new Color(0.3f, 0.7f, 1f, 0.9f));
+
+            // The narrow PLOW cone nested inside it — whoever gets carried rather than
+            // flung. Drawn in the same frame so the two reaches are directly comparable.
+            if (drawBashPlowCone && bashPlowHalfAngle > 0f)
+                DrawConeFan(origin, flat, bashPlowHalfAngle, bashPlowRange, new Color(1f, 0.5f, 0.1f, 0.95f));
+
+            // The PROP shove cone — green, so all three reaches are comparable at a glance.
+            if (drawBashPropCone && bashPropImpulse > 0f)
+                DrawConeFan(origin, flat, bashPropHalfAngle, bashPropRange, new Color(0.3f, 1f, 0.4f, 0.9f));
+        }
+
+        static void DrawConeFan(Vector3 origin, Vector3 flat, float halfAngle, float range, Color color)
+        {
+            Gizmos.color = color;
             const int steps = 20;
             Vector3 prevEdge = origin;
             for (int i = 0; i <= steps; i++)
             {
-                float a = Mathf.Lerp(-bashConeHalfAngle, bashConeHalfAngle, i / (float)steps);
+                float a = Mathf.Lerp(-halfAngle, halfAngle, i / (float)steps);
                 Vector3 rayDir = Quaternion.AngleAxis(a, Vector3.up) * flat;
-                Vector3 end = origin + rayDir * bashConeRange;
+                Vector3 end = origin + rayDir * range;
                 if (i == 0 || i == steps) Gizmos.DrawLine(origin, end);   // the two edges
                 if (i > 0) Gizmos.DrawLine(prevEdge, end);                // the arc
                 prevEdge = end;

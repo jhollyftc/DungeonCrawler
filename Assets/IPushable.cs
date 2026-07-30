@@ -32,5 +32,23 @@ namespace DungeonGen
         /// things from the same stall, so the object picks.
         /// </summary>
         bool PreferIntentPush => false;
+
+        /// <summary>
+        /// A ONE-SHOT deliberate blow — a shield bash's cone shove — as opposed to the
+        /// per-frame contact push Push() is built for.
+        ///
+        /// The distinction exists because of the SPEED CAP. Push() refuses once the prop is
+        /// already moving at maxPushSpeed, which is essential for contact: that fires every
+        /// frame you lean on something and would otherwise accelerate it without limit. A
+        /// burst fires once per attack (the sweep dedupes), so the cap protects nothing and
+        /// instead silently EATS the blow — the capsule's contact push has usually already
+        /// pushed the prop past the cap by the time the attack's cone resolves, so the bash
+        /// appeared to do nothing except when it reached the prop before the player did.
+        ///
+        /// Defaults to Push(), so an implementer that doesn't care (a door — hinge torque has
+        /// its own clamps) needs no changes.
+        /// </summary>
+        void PushBurst(Vector3 contactPoint, Vector3 pushDirection, float impulse)
+            => Push(contactPoint, pushDirection, impulse);
     }
 }

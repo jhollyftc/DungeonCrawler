@@ -50,6 +50,22 @@ namespace DungeonGen
             Vector3 v = body.linearVelocity;
             if (new Vector3(v.x, 0f, v.z).magnitude >= maxPushSpeed) return;
 
+            Apply(contactPoint, pushDirection, force);
+        }
+
+        /// <summary>
+        /// A one-shot blow (shield bash). Same delivery as Push but WITHOUT the maxPushSpeed
+        /// gate — see IPushable.PushBurst for why that cap must not apply here. pushMultiplier
+        /// still does, so a stubborn prop stays stubborn.
+        /// </summary>
+        public void PushBurst(Vector3 contactPoint, Vector3 pushDirection, float impulse)
+        {
+            if (body == null || body.isKinematic) return;
+            Apply(contactPoint, pushDirection, impulse);
+        }
+
+        private void Apply(Vector3 contactPoint, Vector3 pushDirection, float force)
+        {
             Vector3 impulse = pushDirection.normalized * (force * pushMultiplier);
 
             if (pushAtContactPoint)

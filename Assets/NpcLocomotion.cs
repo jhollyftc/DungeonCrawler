@@ -133,6 +133,8 @@ namespace DungeonGen
         float verticalVelocity;
         Vector3 impulse;
         float impulseTimer;
+        Vector3 plowVelocity;
+        float plowTimer;
         float lastGroundedY;
         bool haveGroundedY;
         int facingLockedFrame = -1;   // last frame a brain called FaceTowards — see FaceMovement
@@ -265,6 +267,18 @@ namespace DungeonGen
             // "blocked" or the NPC stutters at the start of every walk.
             Vector3 want = Agent.pathPending ? Vector3.zero : Agent.desiredVelocity * SpeedMultiplier;
 
+            // A plowed NPC's OWN steering stands down for the duration. NpcBrain keeps
+            // pathing toward the player while alerted, so without this the carry and the
+            // approach pull against each other and the NPC crawls forward out of the
+            // windshield instead of being driven back. Same principle as facingLockedFrame:
+            // while an external system owns the motion, the local one yields.
+            if (plowTimer > 0f)
+            {
+                plowTimer -= udt;
+                if (plowTimer <= 0f) plowVelocity = Vector3.zero;
+                else want = Vector3.zero;
+            }
+
             if (impulseTimer > 0f)
             {
                 impulseTimer -= udt;
@@ -282,7 +296,10 @@ namespace DungeonGen
             Vector3 sep = Separation();
             // Pathing/separation pace with SCALED time (pauses with hitstop/slow-mo);
             // the impulse contribution paces with UNSCALED time (ignores it) — see udt.
-            Vector3 horizontalIntent = (want + sep) * dt + impulse * udt;
+            // The plow paces with UNSCALED time for the same reason the impulse does: a
+            // bash fires Hitstop, and the victim shouldn't stop being carried because the
+            // world briefly froze.
+            Vector3 horizontalIntent = (want + sep) * dt + (impulse + plowVelocity) * udt;
             Vector3 motion = horizontalIntent + Vector3.up * verticalVelocity * dt;
 
             Vector3 beforePos = transform.position;
@@ -301,7 +318,10 @@ namespace DungeonGen
             // silently reduced to a fraction of a percent of its real distance. Skipping
             // correction entirely during an active impulse sidesteps the hitstop/dt
             // interaction rather than trying to out-guess it.
-            bool rejectPush = impulseTimer <= 0f;
+            // A plow is legitimate external motion, so it suspends the correction for the
+            // same reason an impulse does — and additionally because the plow's whole job
+            // is displacement this NPC did not ask for.
+            bool rejectPush = impulseTimer <= 0f && plowTimer <= 0f;
             Vector3 rawAfterPos = transform.position;
             Vector3 rawActualHorizontal = new Vector3(rawAfterPos.x - beforePos.x, 0f, rawAfterPos.z - beforePos.z);
             float intendedMag = horizontalIntent.magnitude;
@@ -327,7 +347,13 @@ namespace DungeonGen
                           $"grounded={Controller.isGrounded} ccVel={Controller.velocity}", this);
             }
 
-            IsBlocked = want.magnitude > blockedDesiredSpeed && CurrentSpeed < blockedSpeed;
+            // "Something is driving me and I'm not moving." While plowed the NPC's own
+            // `want` is zeroed, so the drive being tested has to be the PLOW or IsBlocked
+            // would read false exactly when it matters most — the bash needs it to detect
+            // a body pinned against a wall and let go (the player passes through NPCs, so
+            // a pinned one would otherwise end up behind the shield).
+            Vector3 drive = plowTimer > 0f ? plowVelocity : want;
+            IsBlocked = drive.magnitude > blockedDesiredSpeed && CurrentSpeed < blockedSpeed;
 
             if (!CheckFall()) return;   // recovered this frame — skip the rest
 
@@ -534,6 +560,44 @@ namespace DungeonGen
             impulse += velocity;
             impulseTimer = impulseDecay;
         }
+
+        /// <summary>
+        /// SUSTAINED external drive — the shield bash's "windshield" plow, where a
+        /// captured NPC is carried along in front of the charging player before being
+        /// flung. Call every frame while the carry lasts; it expires on its own after
+        /// `holdSeconds`.
+        ///
+        /// A separate channel from AddImpulse deliberately. An impulse is a one-shot that
+        /// DECAYS (that's what makes a hit read as a hit), so faking a sustained carry by
+        /// re-triggering it every frame would silently reset impulseDecay forever and read
+        /// as a bug to anyone who found it later.
+        ///
+        /// **This MUST be the route any external system uses to move an NPC.** Writing the
+        /// transform or calling Controller.Move from outside gets clamped straight back out
+        /// by the reject-unwanted-push correction in Update — that correction is what stops
+        /// the player shoving NPCs through walls, and it can't tell a deliberate plow from
+        /// an accidental capsule shove unless the plow declares itself here.
+        ///
+        /// TIMEOUT, not an explicit Clear, because the driver can vanish mid-carry: a
+        /// loadout swap disables PlayerMelee, the player dies, the dungeon regenerates. Any
+        /// of those with a latched flag would leave an NPC driven forever with no way to
+        /// stop it. Refreshing a short expiry each frame fails safe instead.
+        /// </summary>
+        public void SetPlowVelocity(Vector3 velocity, float holdSeconds = 0.1f)
+        {
+            plowVelocity = new Vector3(velocity.x, 0f, velocity.z);
+            plowTimer = Mathf.Max(plowTimer, holdSeconds);
+        }
+
+        /// <summary>Release a plow immediately (the carry ended, or the NPC hit a wall).</summary>
+        public void ClearPlow()
+        {
+            plowVelocity = Vector3.zero;
+            plowTimer = 0f;
+        }
+
+        /// <summary>Being carried by an external drive right now — see SetPlowVelocity.</summary>
+        public bool IsPlowed => plowTimer > 0f;
 
         /// <summary>Teleport onto the nearest navmesh point. The CharacterController must be disabled across the move or it fights the warp.</summary>
         public bool WarpToNavMesh(Vector3 world, float maxDistance)

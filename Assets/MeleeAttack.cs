@@ -79,6 +79,48 @@ namespace DungeonGen
         /// nothing was damaged (a real hit already sells contact on its own).
         /// </summary>
         public event Action<Vector3, Vector3, Collider> OnEnvironmentHit;
+        /// <summary>
+        /// A cone-sweep target landed inside the optional INNER cone: (victim, blow
+        /// direction). Its shove was reduced to `InnerCone.impulse` instead of the full
+        /// knockback, so the listener owns what happens next — the bash carries it on the
+        /// windshield and flings it at the end. Fires alongside OnHitLanded, not instead
+        /// of it, so hit VFX/audio still treat it as an ordinary hit.
+        /// </summary>
+        public event Action<IDamageable, Vector3> OnConeInnerHit;
+
+        /// <summary>
+        /// A narrow sub-cone for DoConeSweep — see its `inner` parameter. `range` 0 or
+        /// `halfAngleDeg` 0 disables it, which is the default, so an unaware caller gets
+        /// exactly the old behaviour.
+        /// </summary>
+        public struct InnerCone
+        {
+            public float halfAngleDeg;
+            public float range;
+            /// <summary>Shove applied on capture. Keep it small — the point is that the real
+            /// knockback is deferred to the release; a large value here fights the carry.</summary>
+            public float impulse;
+
+            public bool Active => range > 0f && halfAngleDeg > 0f;
+            public float CosHalf => Mathf.Cos(Mathf.Clamp(halfAngleDeg, 1f, 179f) * Mathf.Deg2Rad);
+        }
+
+        /// <summary>
+        /// The PROP shove of a cone sweep — see ShoveProp. Its own range/angle rather than
+        /// the damage cone's, and `impulse` is an IMPULSE (N·s), NOT a velocity like
+        /// `knockback`. `impulse` 0 disables it, which is the default.
+        /// </summary>
+        public struct ConePush
+        {
+            public float halfAngleDeg;
+            public float range;
+            /// <summary>Impulse magnitude (N·s) handed to IPushable. Mass turns this into
+            /// speed via dv = J/m, so one value covers every prop weight.</summary>
+            public float impulse;
+
+            public bool Active => impulse > 0f && range > 0f && halfAngleDeg > 0f;
+            public float CosHalf => Mathf.Cos(Mathf.Clamp(halfAngleDeg, 1f, 179f) * Mathf.Deg2Rad);
+        }
 
         public bool IsSwinging { get; private set; }
         public bool CanAttack => !IsSwinging && Time.time >= readyAt && !Suppressed;
@@ -91,6 +133,8 @@ namespace DungeonGen
         Vector3 envHitPoint;
         Collider envHitCollider;
         Faction ownFaction;
+        InnerCone activeInner;   // set per DoConeSweep call, read by ConeHit
+        ConePush activePush;     // ditto, read by ShoveProp
         readonly HashSet<Transform> hitThisSwing = new HashSet<Transform>();
         static readonly Collider[] overlapScratch = new Collider[16];
         static readonly RaycastHit[] castScratch = new RaycastHit[16];
@@ -239,10 +283,28 @@ namespace DungeonGen
         /// dedupe still guarantees one hit each across the whole window. Returns victims
         /// hit BY THIS CALL, so a per-frame caller can tell when someone new was caught.
         /// </param>
-        public int DoConeSweep(float halfAngleDeg, float sideBias, bool continueSweep = false)
+        /// <param name="inner">
+        /// Optional NARROW sub-cone nested inside the main one. A target inside it takes the
+        /// hit with `inner.impulse` instead of the full `knockback` and is reported through
+        /// `OnConeInnerHit`, so the caller can do something SUSTAINED with it instead — the
+        /// shield bash's plow, where whoever is dead ahead is carried along on the
+        /// windshield and flung at the end rather than immediately. Default = disabled, and
+        /// the sweep behaves exactly as it did before this existed. This component knows
+        /// nothing about plowing: it only knows "inner cone means reduced shove, and tell
+        /// the caller".
+        /// </param>
+        /// <param name="push">
+        /// Optional PROP shove — crates, barrels, tables, doors caught in the same sweep.
+        /// Own range/angle, and its `impulse` is an impulse, not a velocity. Default =
+        /// disabled. See ShoveProp for why it routes through IPushable.
+        /// </param>
+        public int DoConeSweep(float halfAngleDeg, float sideBias, bool continueSweep = false,
+                               InnerCone inner = default, ConePush push = default)
         {
             if (!continueSweep) hitThisSwing.Clear();
             landedThisSwing = 0;
+            activeInner = inner;
+            activePush = push;
 
             Vector3 origin, dir;
             if (aimSource != null) { dir = aimSource.forward; origin = aimSource.position + dir * aimForwardOffset; }
@@ -257,7 +319,10 @@ namespace DungeonGen
             // Broad-phase sphere padded vertically: the origin is at eye height but enemies
             // are short, so a floor target at the cone's edge is diagonally further than
             // `range` — gather generously, then gate the true reach on FLAT distance below.
-            int n = Physics.OverlapSphereNonAlloc(origin, range + 2f, coneScratch, hitMask, QueryTriggerInteraction.Ignore);
+            // Gather out to whichever cone reaches furthest, or a prop push configured wider
+            // than the damage cone would be silently truncated by the broad phase.
+            float gather = Mathf.Max(range, activePush.Active ? activePush.range : 0f) + 2f;
+            int n = Physics.OverlapSphereNonAlloc(origin, gather, coneScratch, hitMask, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < n; i++)
                 ConeHit(coneScratch[i], origin, flatDir, cosHalf, range, Mathf.Clamp01(sideBias));
 
@@ -266,12 +331,101 @@ namespace DungeonGen
             return landedThisSwing;
         }
 
+        /// <summary>
+        /// The PROP half of a cone sweep: a crate, barrel, table or door caught in the shove.
+        /// Its own narrower cone (see ConePush), because the wide cone is a shockwave that
+        /// staggers PEOPLE — moving objects several metres away reads as telekinesis.
+        ///
+        /// The force is delivered as an IMPULSE through IPushable, which is what makes mass
+        /// work for free: PushableProp (and the plain-Rigidbody fallback) apply it with
+        /// ForceMode.Impulse, so dv = J/m and a light barrel launches while a heavy table
+        /// barely shifts, with no per-prop tuning. Routing through IPushable rather than
+        /// touching the Rigidbody directly also keeps the house split intact — the attacker
+        /// supplies force, the object decides what it means — so a PhysicsDoor turns this
+        /// into hinge torque (a linear force would fight the joint and tear it off) and a
+        /// PushableProp still applies its own multiplier and speed cap.
+        ///
+        /// NB the impulse is a different QUANTITY from `knockback`, which is a VELOCITY for
+        /// NPCs. Feeding one number to both would be a units error presenting as "props
+        /// barely twitch" or "props explode", depending entirely on their mass.
+        /// </summary>
+        void ShoveProp(Collider c, Vector3 origin, Vector3 flatDir, float sideBias, bool alreadyDeduped = false)
+        {
+            if (!activePush.Active) return;
+
+            Rigidbody body = c.attachedRigidbody;
+            // Kinematic covers static scenery AND a living NPC's dormant ragdoll bones,
+            // which NpcRagdollReaction parks kinematic until death.
+            if (body == null || body.isKinematic) return;
+
+            Transform root = body.transform;
+            if (root == transform || root.IsChildOf(transform)) return;
+
+            // A self-mover handles being shoved through its OWN channel (knockback into
+            // NpcLocomotion), and driving its Rigidbody as well would fight that. Testing for
+            // the CharacterController rather than for an AI component keeps this ignorant of
+            // the AI layer — the question is "does this thing move itself", not "is it a
+            // goblin".
+            if (root.GetComponent<CharacterController>() != null) return;
+
+            // Skipped when the damage path already claimed this root — see the call site in
+            // ConeHit. A prop can be BOTH damageable and pushable (a barrel has Health for
+            // DestructibleProp AND a Rigidbody), so the shove can't be gated on the absence
+            // of the other.
+            if (!alreadyDeduped && hitThisSwing.Contains(root)) return;
+
+            Vector3 to = root.position - origin;
+            Vector3 toFlat = new Vector3(to.x, 0f, to.z);
+            float dist = toFlat.magnitude;
+            if (dist > activePush.range) return;
+            Vector3 toDir = dist > 1e-3f ? toFlat / dist : flatDir;
+            if (Vector3.Dot(toDir, flatDir) < activePush.CosHalf) return;
+
+            // Same LOS rule as the damage path: a shut door between you and a crate in the
+            // next room shouldn't let the bash shove it.
+            Vector3 point = c.ClosestPoint(origin);
+            if (Physics.Linecast(origin, point, losBlockMask, QueryTriggerInteraction.Ignore)) return;
+
+            if (!alreadyDeduped && !hitThisSwing.Add(root)) return;
+
+            // Same radial blow the damage path uses, so props and people fan out together
+            // instead of the shove visibly disagreeing with itself.
+            Vector3 blow = Vector3.Slerp(flatDir, toDir, sideBias).normalized;
+
+            // Apply through the CENTRE OF MASS HEIGHT, not the raw surface point. The sweep
+            // origin is at eye level and props are low, so ClosestPoint lands near a barrel's
+            // TOP RIM — and PushableProp defaults to AddForceAtPosition, which turns that
+            // lever arm into mostly TORQUE. The barrel tips over in place instead of being
+            // launched, which reads as "the shove did nothing" while still making a contact
+            // noise. Keeping the lateral offset preserves some spin (a shoved barrel should
+            // tumble); only the vertical lever arm is removed.
+            Vector3 shovePoint = new Vector3(point.x, body.worldCenterOfMass.y, point.z);
+
+            IPushable pushable = body.GetComponent<IPushable>();
+            // PushBurst, not Push: a one-shot blow must bypass maxPushSpeed, which exists to
+            // tame the PER-FRAME contact push and otherwise eats the bash entirely once the
+            // capsule has already nudged the prop past the cap. See IPushable.PushBurst.
+            if (pushable != null) pushable.PushBurst(shovePoint, blow, activePush.impulse);
+            else body.AddForceAtPosition(blow * activePush.impulse, shovePoint, ForceMode.Impulse);
+
+            if (debugAttack)
+                Debug.Log($"[Melee] {name}: cone SHOVED '{root.name}' — {activePush.impulse:0.#} N·s " +
+                          $"on mass {body.mass:0.#} = {activePush.impulse / Mathf.Max(0.01f, body.mass):0.0} m/s " +
+                          $"(before the prop's own pushMultiplier/maxPushSpeed).", this);
+        }
+
         void ConeHit(Collider c, Vector3 origin, Vector3 flatDir, float cosHalf, float range, float sideBias)
         {
             if (c == null) return;
 
             var damageable = c.GetComponentInParent<IDamageable>();
-            if (damageable == null) return;
+            // Not a living thing — it may still be a PROP worth shoving. Deliberately an
+            // else-branch, never a fall-through from the damage path's early returns: a DEAD
+            // NPC's ragdoll bones are non-kinematic Rigidbodies, and letting a rejected
+            // damageable reach the push code would have the bash fling corpses apart by
+            // their individual bones.
+            if (damageable == null) { ShoveProp(c, origin, flatDir, sideBias); return; }
+
             Transform root = damageable.Transform;
             if (root == transform || root.IsChildOf(transform)) return;   // never hit yourself
             if (hitThisSwing.Contains(root)) return;                      // already resolved this root this swing
@@ -307,6 +461,16 @@ namespace DungeonGen
             // outward bearing (sideBias 1). This is what fans the crowd back AND aside.
             Vector3 blow = Vector3.Slerp(flatDir, toDir, sideBias).normalized;
 
+            // Inside the inner cone? Then this target is being CAPTURED rather than flung:
+            // it still takes the hit (the shield connected — flinch, grunt and impact VFX
+            // belong at this moment, not at the release), but the shove is held back for
+            // the caller to apply when the carry ends. The bearing test uses the same
+            // flat geometry as the outer cone, so the two can never disagree about who is
+            // "in front"; only the reach and angle differ.
+            bool captured = activeInner.Active
+                            && dist <= activeInner.range
+                            && Vector3.Dot(toDir, flatDir) >= activeInner.CosHalf;
+
             var info = new DamageInfo
             {
                 amount = damage,
@@ -314,14 +478,36 @@ namespace DungeonGen
                 direction = blow,
                 instigator = gameObject,
                 type = DamageType.Melee,
-                impulse = knockback,
+                impulse = captured ? activeInner.impulse : knockback,
                 poiseDamage = poiseDamage,
             };
+
+            // A target can be damageable AND pushable — a barrel has Health for
+            // DestructibleProp and a Rigidbody for shoving — and its knockback would
+            // otherwise vanish, because Health.TakeDamage does NOT act on info.impulse. On an
+            // NPC that's fine (NpcHitReactions listens to OnDamaged and applies it), but a
+            // prop has no such component, so the impulse is dropped and the only thing moving
+            // it is the capsule's contact push — which scales by ACHIEVED velocity and so
+            // collapses the instant a heavy prop stalls the charge. That's why a 45kg barrel
+            // stopped a bash dead while still making an impact noise.
+            //
+            // SHOVE BEFORE DAMAGE, because TakeDamage can destroy the target inside this very
+            // call: Health fires OnDied synchronously, DestructibleProp.Break spawns the
+            // debris and retires the prop. A push applied afterwards lands on a body that is
+            // already gone. (NB the ordering alone does NOT let the debris inherit the shove —
+            // AddForce QUEUES until the next physics step, so linearVelocity is unchanged for
+            // the rest of this frame. DestructibleProp derives the throw from the killing blow
+            // instead; see its inheritBlowSpeed.)
+            // alreadyDeduped: this root is in hitThisSwing from the check above.
+            ShoveProp(c, origin, flatDir, sideBias, alreadyDeduped: true);
+
             damageable.TakeDamage(info);
             landedThisSwing++;
             OnHitLanded?.Invoke(damageable, info);
+            if (captured) OnConeInnerHit?.Invoke(damageable, blow);
 
-            if (debugAttack) Debug.Log($"[Melee] {name}: cone hit '{root.name}' for {damage:0.#}.", this);
+            if (debugAttack)
+                Debug.Log($"[Melee] {name}: cone {(captured ? "CAPTURED" : "hit")} '{root.name}' for {damage:0.#}.", this);
         }
 
         /// <summary>
