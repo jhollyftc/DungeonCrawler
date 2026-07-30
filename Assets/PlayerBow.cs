@@ -37,6 +37,12 @@ namespace DungeonGen
         [Tooltip("Aim source. Left empty, FirstPersonController's camera — so arrows fly where you LOOK, not where the bow model happens to point.")]
         public Transform aimSource;
 
+        [Header("Nocked arrow (visual)")]
+        [Tooltip("Arrow MESH parented to the bow's 'string' bone in the viewmodel prefab — purely cosmetic, so the bow visibly holds an arrow while drawn. Shown when a draw starts and hidden the instant the real projectile spawns, so there's never a frame with two arrows.\n\nParent it in the prefab rather than having this spawn it: the string bone may carry the non-uniform scale an FBX axis conversion leaves behind, and authoring it means you can see and correct any distortion in the editor instead of fighting it at runtime.")]
+        public GameObject nockedArrow;
+        [Tooltip("Keep an arrow on the string even at rest, so the bow always looks ready. It reappears once the shot cooldown elapses, which reads as drawing a fresh arrow. Off = the string is empty until you start a draw.")]
+        public bool showNockedWhileIdle = false;
+
         [Header("Arrow")]
         public GameObject arrowPrefab;
         [Tooltip("Launch speed (m/s) at a FULL draw. Scaled by the draw actually achieved.")]
@@ -77,6 +83,8 @@ namespace DungeonGen
         FirstPersonController controller;
         PlayerCarry carry;
         bool hasDraw, hasDrawAmount, hasRelease;
+        bool releaseIsTrigger;          // see the parameter scan in Awake
+        bool clearReleaseNextUpdate;    // bool-authored Release needs manual clearing
 
         bool drawing;
         float draw;
@@ -102,7 +110,18 @@ namespace DungeonGen
                 {
                     if (p.nameHash == DrawParam) hasDraw = true;
                     if (p.nameHash == DrawAmountParam) hasDrawAmount = true;
-                    if (p.nameHash == ReleaseParam) hasRelease = true;
+                    if (p.nameHash == ReleaseParam)
+                    {
+                        hasRelease = true;
+                        // Release works authored as EITHER a Trigger or a Bool, because
+                        // the two behave very differently and the failure is silent:
+                        // SetTrigger on a BOOL sets it true and nothing ever clears it,
+                        // since only real triggers auto-consume when a transition takes
+                        // them. A stuck-true Release then blocks any transition
+                        // conditioned on Release == false — which is how a bow animates
+                        // once and never again. Bools are cleared manually below.
+                        releaseIsTrigger = p.type == AnimatorControllerParameterType.Trigger;
+                    }
                 }
             }
             else if (debugBow)
@@ -124,6 +143,16 @@ namespace DungeonGen
 
         void Update()
         {
+            // One frame after a bool-authored Release was raised — long enough for the
+            // Animator to have evaluated the transition, so it doesn't latch true and
+            // block anything conditioned on Release == false.
+            if (clearReleaseNextUpdate) ClearRelease();
+
+            // Derived from state every frame rather than toggled at each transition —
+            // Update has several early returns (carrying, not drawing, still holding), so
+            // an event-driven toggle would miss paths and leave the mesh stuck on.
+            SyncNockedArrow();
+
             if (Input.GetMouseButtonUp(fireMouseButton)) suppressUntilRelease = false;
 
             // Hands full: PlayerCarry owns LMB for throwing while carrying.
@@ -160,6 +189,14 @@ namespace DungeonGen
         {
             drawing = true;
             draw = 0f;
+
+            // Clear any STALE Release. A Unity trigger that no transition consumed stays
+            // armed indefinitely, so a shot whose Release was never picked up (wrong
+            // condition, no transition out of the fire state) leaves it primed — and the
+            // NEXT draw then fires it the instant a valid transition appears, which reads
+            // as "the draw animation only worked the first time".
+            ClearRelease();
+
             if (hasDraw) animator.SetBool(DrawParam, true);
             if (hasDrawAmount) animator.SetFloat(DrawAmountParam, 0f);
             OnDrawStarted?.Invoke();
@@ -169,10 +206,20 @@ namespace DungeonGen
         void Shoot()
         {
             float d = draw;
+
+            // Trigger BEFORE clearing Draw. Both land in the same frame either way, but
+            // if the draw state also has a "Draw == false -> idle" transition, having
+            // Release already set means the fire transition is available to win rather
+            // than the graph having any chance to fall through to idle.
+            FireRelease();
+
             CancelDraw(relax: false);
             readyAt = Time.time + shotCooldown;
 
-            if (hasRelease) animator.SetTrigger(ReleaseParam);
+            // Immediately, not on the next Update's sync — a frame showing the nocked
+            // mesh alongside the projectile that just left is exactly the artifact this
+            // whole thing exists to avoid.
+            SyncNockedArrow();
             OnShot?.Invoke(d);
 
             if (arrowPrefab == null) return;
@@ -192,6 +239,45 @@ namespace DungeonGen
             else if (go.TryGetComponent(out Rigidbody rb)) rb.linearVelocity = dir * speed;
 
             if (debugBow) Debug.Log($"[PlayerBow] shot at draw {d:0.00} ({speed:0.#} m/s).", this);
+        }
+
+        /// <summary>
+        /// Show the cosmetic arrow on the string while it should be there. Hidden the
+        /// moment a shot leaves, so the nocked mesh and the real projectile are never
+        /// both visible; with showNockedWhileIdle it returns once the cooldown elapses,
+        /// which reads as pulling a fresh arrow.
+        /// </summary>
+        void SyncNockedArrow()
+        {
+            if (nockedArrow == null) return;
+
+            bool show = drawing || (showNockedWhileIdle && Time.time >= readyAt);
+            if (nockedArrow.activeSelf != show) nockedArrow.SetActive(show);
+        }
+
+        /// <summary>Signal the loose, whichever way Release is authored.</summary>
+        void FireRelease()
+        {
+            if (!hasRelease || animator == null) return;
+
+            if (releaseIsTrigger) animator.SetTrigger(ReleaseParam);
+            else
+            {
+                // A Bool has to be cleared by hand, and NOT this frame — the Animator
+                // needs to see it true once to take the transition. Cleared at the top of
+                // the next Update.
+                animator.SetBool(ReleaseParam, true);
+                clearReleaseNextUpdate = true;
+            }
+        }
+
+        /// <summary>Drop a stale Release so it can't fire the next draw prematurely.</summary>
+        void ClearRelease()
+        {
+            if (!hasRelease || animator == null) return;
+            if (releaseIsTrigger) animator.ResetTrigger(ReleaseParam);
+            else animator.SetBool(ReleaseParam, false);
+            clearReleaseNextUpdate = false;
         }
 
         void CancelDraw(bool relax)
