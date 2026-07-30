@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1 &3439502814843953851
+--- !u!1 &5052819091325766735
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -8,8 +8,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 6649866215195172639}
-  - component: {fileID: 7732762723021406801}
+  - component: {fileID: 22842276520960023}
+  - component: {fileID: 5658157936567240577}
   m_Layer: 9
   m_Name: DoorJam
   m_TagString: Untagged
@@ -17,13 +17,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &6649866215195172639
+--- !u!4 &22842276520960023
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3439502814843953851}
+  m_GameObject: {fileID: 5052819091325766735}
   serializedVersion: 2
   m_LocalRotation: {x: 0.5, y: -0.49999997, z: -0.5, w: 0.5}
   m_LocalPosition: {x: 0.00040000025, y: -0.0038499997, z: 0.0012999998}
@@ -32,13 +32,13 @@ Transform:
   m_Children: []
   m_Father: {fileID: 363687265338489311}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!65 &7732762723021406801
+--- !u!65 &5658157936567240577
 BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3439502814843953851}
+  m_GameObject: {fileID: 5052819091325766735}
   m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
@@ -243,13 +243,21 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -7511558181221131132, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
+      propertyPath: m_Materials.Array.size
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: -7511558181221131132, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 8a1113b3e76b07646b84d6465ac498f7, type: 2}
+      objectReference: {fileID: 2100000, guid: d9bc55175897e0348b0bb82d7a2b8b8c, type: 2}
+    - target: {fileID: -7511558181221131132, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 0e980d34d4b435c4baa20194794b6cc9, type: 2}
     - target: {fileID: -5754084199372789682, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: m_Mesh
       value: 
-      objectReference: {fileID: 5879053223375542538, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
+      objectReference: {fileID: -2950736277717647842, guid: a99174b395aef9d49bc1ab70b207e729, type: 3}
     - target: {fileID: 919132149155446097, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: m_Name
       value: Metal_Door
@@ -313,8 +321,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.000125, y: 0.0044414196, z: 0.009429786}
-  m_Center: {x: -0.00003804147, y: -0.000021685759, z: 0.00031822087}
+  m_Size: {x: 0.000125, y: 0.0044017187, z: 0.009360824}
+  m_Center: {x: -0.00003804147, y: -0.000001833439, z: 0.000283738}
 --- !u!54 &6164347188937228515
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -572,7 +580,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Size.y
-      value: 0.0027486933
+      value: 0.00272801
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Size.z
@@ -588,7 +596,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.y
-      value: -0.0036826301
+      value: -0.0036929743
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.z
@@ -676,7 +684,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Name
-      value: MetalDoor_Prefab_PhysicsBased
+      value: MagicalDoor_Prefab_PhysicsBased 1
       objectReference: {fileID: 0}
     - target: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Layer
@@ -694,14 +702,14 @@ PrefabInstance:
       addedObject: {fileID: 7147789692235433738}
     - targetCorrespondingSourceObject: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 6649866215195172639}
+      addedObject: {fileID: 22842276520960023}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       insertIndex: -1
       addedObject: {fileID: 8012827591853822094}
     - targetCorrespondingSourceObject: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 8099288299874516241}
+      addedObject: {fileID: 1922688190799804429}
   m_SourcePrefab: {fileID: 100100000, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
 --- !u!4 &363687265338489311 stripped
 Transform:
@@ -732,9 +740,9 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.0037768555, y: 0.010078452, z: 0.0017329892}
-  m_Center: {x: -1.5496863e-17, y: -0.000016863745, z: 0.004136819}
---- !u!65 &8099288299874516241
+  m_Size: {x: 0.0037768555, y: 0.010078452, z: 0.001732998}
+  m_Center: {x: -1.5496863e-17, y: -0.000016863745, z: 0.004136815}
+--- !u!65 &1922688190799804429
 BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -753,5 +761,5 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.0028381993, y: 0.0045652124, z: 0.0006087947}
-  m_Center: {x: -0.0000085385145, y: 0.00001940906, z: -0.0046956493}
+  m_Size: {x: 0.0026434541, y: 0.0045958124, z: 0.00065238954}
+  m_Center: {x: 0.000017731389, y: 0.000029641093, z: -0.0046738433}

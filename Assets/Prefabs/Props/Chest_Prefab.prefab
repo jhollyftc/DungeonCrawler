@@ -9,7 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 3148799300349984119}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: hinge
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -45,7 +45,7 @@ GameObject:
   - component: {fileID: 7750960314466531555}
   - component: {fileID: 8664307900813353069}
   - component: {fileID: 2771544768533349846}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: Chest_Prefab
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -163,6 +163,7 @@ MonoBehaviour:
   openAngle: 60
   rotationSpeed: 180
   startOpen: 0
+  audioSource: {fileID: 0}
   openClip: {fileID: 8300000, guid: ed998163c0490d44b9878407bf9516b7, type: 3}
   closeClip: {fileID: 0}
 --- !u!1001 &8605299162151888766
@@ -232,6 +233,10 @@ PrefabInstance:
     - target: {fileID: 919132149155446097, guid: 26b73fd63c2ce934991a1488aa4888de, type: 3}
       propertyPath: m_Name
       value: Chest_top
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 26b73fd63c2ce934991a1488aa4888de, type: 3}
+      propertyPath: m_Layer
+      value: 10
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
