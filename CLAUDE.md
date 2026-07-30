@@ -272,21 +272,38 @@ half of this fix. The stats overlay counts submissions (incl. shadow passes),
 not objects; the generator's `Instanced: N pieces` log is the true count. When
 a metric is implausible, interrogate the metric before optimizing against it.
 
-**SHADER WARMUP MUST BE SYNCHRONOUS (real field bug — cost several sessions):**
-NPCs were physically present (their CharacterController blocked movement) but
-INVISIBLE, then "popped" into view one at a time; worse with more NPCs, and it
-reproduced in a Player build. The cause was `m_WarmupAsync: 1` in
-GraphicsSettings: preloaded shader variants compile in the BACKGROUND, so the app
-starts rendering before warmup finishes and variants stream in over the first
-frames. Fix = `m_WarmupAsync: 0` (Project Settings > Graphics > Shader Loading),
-so warmup blocks until done. **Two capture attempts (14 then 25 variants) failed
-before this** — the collections were fine all along and the variant count was a
-red herring; the asynchrony was the whole bug. Preloaded collections live in
-`Assets/SharedVariantcollection*.shadervariants` and must stay listed in
-Graphics' Preloaded Shaders. NB: in-EDITOR the preload is tied to Editor process
-startup (adding a collection mid-session needs a full restart), but a Player
-build honors it immediately — which is what made "still broken in a build"
-the clue that pointed away from the capture and at the async flag.
+**"INVISIBLE NPCs THAT POP IN" WAS *TWO* BUGS WITH ONE SYMPTOM (cost several
+sessions — read the discriminator first).** Goblins were physically present (their
+CharacterController blocked movement, and later the `NpcPerceptionDebug` awareness
+bar floated over an empty patch of floor) but the mesh wasn't drawn, then "popped"
+in. BOTH causes got worse with more NPCs, which is exactly why one masked the other.
+**THE DISCRIMINATOR: does moving the CAMERA bring it back?** A compile-bound mesh
+appears once and never regresses — a variant compiles once, globally, and every
+renderer using that material draws from then on. A culling-bound mesh returns
+whenever you look away and look back. Check that FIRST; it separates them in
+seconds. Chasing shader-variant counts is the trap, because "worse at 100 NPCs"
+smells like a shader problem and isn't necessarily one.
+
+1. **Warmup asynchrony** (fixed first, and genuinely real): `m_WarmupAsync: 1` in
+   GraphicsSettings compiles preloaded variants in the BACKGROUND, so the app starts
+   rendering before warmup finishes and variants stream in over the first frames. Fix
+   = `m_WarmupAsync: 0` (Project Settings > Graphics > Shader Loading), so warmup
+   blocks until done. **Two capture attempts (14 then 25 variants) failed before
+   this** — the collections were fine and the variant count was a red herring.
+   Preloaded collections live in `Assets/SharedVariantcollection*.shadervariants` and
+   must stay listed in Graphics' Preloaded Shaders (which stores them by GUID, so an
+   untracked collection silently drops off the list on a fresh clone). NB: in-EDITOR
+   the preload is tied to Editor process startup (adding a collection mid-session
+   needs a full restart), but a Player build honors it immediately — which is what
+   made "still broken in a build" the clue pointing at the async flag.
+2. **Frustum culling from a bad root bone** (the remaining, larger half — see §10's
+   NPC model conventions for the rule). The `SkinnedMeshRenderer`'s root bone was the
+   HIPS, so the bind-pose AABB rode an animated bone and slid off the body. This is
+   the one that answers "yes" to the camera test.
+
+Correcting the record matters here: `m_WarmupAsync: 0` was believed to be the whole
+fix and was documented as such for a while, while the culling bug was still shipping.
+A confirmed improvement is not proof of a complete diagnosis.
 
 **Floors/ceilings between STACKED SPACES — `DungeonGenerator.NeedsSlabBetween`:**
 both the mesher and the kit placer once decided on a floor by asking "is the cell
@@ -368,6 +385,36 @@ textures too; we only want to band the *lighting*). Passes: ForwardLit, Outline
   **Normal map** type. Strong normals + razor-hard bands = crawling band edges;
   `_BumpScale` trades relief vs. band cleanliness.
 - Known API gotchas: `TransformObjectToHClip` (NOT `TransformObjectToWorldHClip`).
+
+**Sibling shaders that share ToonLit's conventions** (`_ShadowTint` ambient floor,
+`Ramp()` banding, Forward+ `LIGHT_LOOP_BEGIN/END` so torches light them) — they must,
+or they don't look like they belong to the same world:
+- **`Dungeon/ToonWater`** — wells and fountains. `_ColorBands` bands the depth ramp
+  the same way lighting is banded. Two authoring notes: it needs **Depth Texture ON
+  in the URP asset**, and the foam band's width is `_FoamDistance` — an early version
+  multiplied it by `_FoamCutoff` inside a `step()`, which made the visible band ~5cm
+  and read as "no foam at all". `_DebugDepth` draws 1m contour RINGS rather than a
+  saturating ramp, deliberately: the first debug view was a gradient whose legend
+  could be (and was) read backwards, and rings can't be misinterpreted.
+- **`Dungeon/GroundFog`** — ankle-height drifting mist, driven by an editor-authored
+  `ParticleSystem` (see `GroundFog.cs` in §10). **BILLBOARDS, and the reason is
+  structural, so don't "simplify" it back to planes:** floor-parallel planes read well
+  until they intersect a wall, pillar, crate or goblin, where they leave a HARD
+  horizontal line. Soft-particle depth fade is the standard fix and CANNOT work there —
+  a plane hugging the floor has only the floor behind it (~20cm), so there is no depth
+  RANGE to fade across, and the fade region is bounded by the fog's own height above
+  the floor no matter what the parameters say. Contact softness at 0 and at 1 looked
+  identical because both were imperceptible. Three fixes were tried and rejected first:
+  a bigger `_DepthFade` (the gap is smaller than any useful value), a world-space
+  "rising and horizontally close" test (blind to a wall directly beside the fragment),
+  and a screen-space depth ring written with the WRONG SIGN (it searched for occluders
+  NEARER than the fragment; the wall is behind). Camera-facing quads dissolve the
+  problem by construction — grazing intersections, no edge-on orientation, and no
+  visible waterline where stacked layers pool at eye height. Also: Forward+ light
+  accumulation was UNBOUNDED and several torches summed into a bright green band —
+  `_MaxLight` clamps it. Noise is world-XZ (so puffs stay put as you walk instead of
+  swimming with the camera) and vertex `COLOR` is respected so colour-over-lifetime
+  still works.
 
 ---
 
@@ -592,6 +639,26 @@ collider GameObject, so lifting a `StaticCollider` barrel would carry the collid
 away while the visible mesh stayed welded to the floor. Carryables are low-count
 by nature, so the batching loss is irrelevant. Barrel/crate/skull-style props get
 `Rigidbody` + `Carryable` (+ optional `PushableProp`, `ImpactAudio`).
+
+**Destructible props (`DestructibleProp` + `DebrisCleanup`)** — crates and barrels
+that break apart, built with loot drops in mind (the hook is the destruction event;
+nothing spawns yet). Same `FullGameObject` requirement as carryables, and for a
+stronger reason: `InstancedDungeonRenderer.Commit()` is additive with **NO REMOVAL
+PATH**, so an instanced mesh literally cannot be un-drawn when the prop dies.
+- Damage arrives through `ImpactAudio.OnImpact` rather than a second collision
+  handler, so the sound and the damage can never disagree about what counts as a
+  hit. **The retrigger gate `return`ed BEFORE firing `OnImpact`** (real bug), so a
+  suppressed impact dealt NO DAMAGE — a barrel destroyed by a throw was silent
+  because the destroying blow was the one being suppressed as a re-contact.
+  `alwaysAudibleForce` (0.7) exempts genuinely hard hits from suppression.
+- Fracture chunks need `EnsureConvexColliders`: a concave MeshCollider on a dynamic
+  Rigidbody is illegal in PhysX and Unity only complains at runtime.
+- Cleanup SCALES the chunks down rather than sinking them, and each shrinks about its
+  own **`VisualCentre`** (from renderer bounds), NOT its transform origin — the FBX
+  fracture export left every chunk's transform at the shared object origin, so scaling
+  about the pivot collapsed the whole pile toward one point instead of each piece
+  shrinking in place. `RetireAfterAudio`/`DestroyWhenQuiet` hold the object alive
+  until its impact sound finishes so cleanup can't cut the sound off.
 
 **Inspector UX:** PropSet entries and RoomStyle's nested lists have custom
 drawers (`Assets/Editor/`) — summary foldout labels instead of "Element N",
@@ -997,6 +1064,80 @@ Formula-driven with authored override points (the user's explicit choice).
   double-hit, casual shoving never hurts). Damage shares the `ImpactForce` curve with
   audio so they can't drift; knockback is MOMENTUM-derived (mass × speed), no per-prop
   tuning.
+  **LOS MUST NOT COUNT THE TARGET AS ITS OWN OCCLUDER (real bug that cost real
+  swings).** `IsLineBlocked` treated any collider between shoulder and hit point as
+  blocking — including the target's own capsule, so a barrel occluded ITSELF and the
+  swing was rejected as "no line of sight" while the reticle sat dead centre on it.
+  Nudging the aim a few pixels made it hit, which is why it read as an aim problem for
+  a long time. A hit only blocks if it **isn't the target** (plus `losSurfaceSkin` for
+  the surface the ray starts against). Same family as ViewmodelCollision's
+  `CheckSphere` lesson and the old flickering E-interaction sweep: at melee range you
+  are already touching what you're testing against, so any naive cast is wrong.
+  **`MeleeReticle`** (F6, `showReason`) exists because of this — `PreviewWouldHit(out
+  Transform, out string)` runs the REAL `CanHit` path and reports its rejection reason
+  live, so "did I miss or did the code refuse" is answerable instead of guessable.
+  `TryHit` delegates to the same `CanHit`, so the reticle can't drift from the swing.
+- **Player ranged attack (`PlayerLoadout`, `PlayerBow`, `Arrow`, `PlayerBowAudio`,
+  `Hitbox`)** — `1` = melee+shield, `2` = bow; hold LMB to draw, release to fire.
+  - **`PlayerLoadout` swaps by ENABLING only the active script**, not by spawning or
+    destroying anything — each weapon component owns its own input and stands down when
+    disabled, so adding a third weapon needs no dispatcher.
+  - **The bow is ANIMATOR-driven, unlike the procedural sword** (`PlayerMelee` poses
+    the viewmodel in code). Deliberate: a draw is a HELD pose parameterized by one
+    value, which an Animator expresses natively via `Draw`/`DrawAmount`/`Release`.
+    **`SetTrigger` ON A BOOL SETS IT TRUE AND NOTHING EVER CLEARS IT** (real bug — the
+    draw and fire played once, then the machine parked in `Bow_fire` forever, because
+    its only exit required `Release == false`). Only true Triggers auto-consume when a
+    transition takes them. `PlayerBow` now DETECTS the parameter type and drives it
+    accordingly (`SetTrigger`, or set-then-clear-next-frame for a Bool), and clears a
+    stale `Release` when a draw starts — a trigger no transition consumed stays armed
+    and would fire the instant a valid transition appeared. **Release SPEED is governed
+    by the TRANSITION duration, not the state's Speed**: a 0.25s `m_HasFixedDuration`
+    crossfade was the bottleneck, and raising state Speed made it worse (the clip
+    finished inside the crossfade).
+  - **Nocked arrow** is parented to the bow's `string` bone in the PREFAB, not from
+    code — the bone may carry the non-uniform scale an FBX axis conversion leaves
+    behind, and authoring it makes distortion visible in the editor. Visibility is
+    DERIVED from state every frame (`SyncNockedArrow`), never toggled at transitions:
+    `Update` has several early returns (carrying, not drawing, still holding) and an
+    event-driven toggle would miss one and leave the mesh stuck on.
+  - **`Arrow` sticking — four separate causes, all fixed, all worth knowing:**
+    (a) rotation was never set on stick at all; (b) **`body.linearVelocity` inside
+    `OnCollisionEnter` is POST-BOUNCE** — PhysX resolves the impact BEFORE the callback
+    runs, so the impact velocity (and position) read there are already wrong; the flight
+    direction is cached each `FixedUpdate` (`lastFlightDir`) and an explicit
+    `LookRotation(dir)` applied on stick, with `freezeRotation` to stop in-flight
+    tumbling; (c) the visible tip is not the pivot, so placement is
+    `point + dir * (embedDepth - tipAhead)`; (d) **`CollisionDetectionMode.ContinuousDynamic`
+    is mandatory above ~30 m/s** or the arrow tunnels and reports a hit point from the
+    wrong side.
+  - **Arrows FOLLOW their victim, they do NOT parent to it.** `SetParent(worldPositionStays)`
+    can only preserve world rotation when the parent's scale is UNIFORM, and rig bones
+    aren't (the goblin mesh sits at 175) — the resulting shear is not expressible as a
+    local rotation, so arrows stuck to NPCs came out at wild angles.
+    `followAnchor`/`followOffset`/`followRotation` in `LateUpdate` instead.
+  - **`DamageType.Projectile` exists because `Thrown` redirects part of the shove
+    UPWARD** (`NpcHitReactions.thrownVerticalPop`) — right for a hurled barrel where
+    being lifted sells the blow, wrong for a puncture: goblins shot from above flew
+    skyward. Appended to the enum so serialized indices are untouched.
+  - **`Hitbox`** marks one collider as a weak point (head sphere on the goblin's bone;
+    NPCs already carry dormant ragdoll bone colliders, so it's a valid target alive or
+    dead). A component read through a static helper, exactly like `Surface.Of` — a
+    damage source asks "what did I hit" without learning any anatomy, and a new
+    creature declares its own weak points by authoring them (bone-NAME matching breaks
+    on any rig rename; a layer would burn one of 32). **Lookup is `GetComponent`, NOT
+    `GetComponentInParent`** — walking up would let a Hitbox on the NPC root apply to
+    every collider beneath it, making every torso hit a headshot. Scales the damage
+    AMOUNT only; knockback stays unscaled. **Melee is deliberately NOT wired to this** —
+    a 2.5× head multiplier on the sword is a balance change to the combo/poise economy,
+    not a bug fix.
+  - `PlayerBowAudio` follows the house continuous-vs-one-shot split (§ PhysicsDoorAudio):
+    a LOOPING creak whose volume/pitch track live `Draw01` (so holding at full draw is
+    audibly tense, not silent) + one-shots for nock/loose/let-down scaled by the draw
+    they fired at. The loop is driven from `bow.IsDrawing` each frame rather than
+    started/stopped by events, so every exit path (fired, let down, weapon swapped,
+    picked up a barrel) fades it out without each needing to remember to; `OnDisable`
+    hard-stops it so swapping to melee mid-draw can't leave a creak looping forever.
 - **NPC reactions (`NpcHitReactions`, `NpcFlinch`, `NpcRagdollReaction`,
   `NpcCombatAudio`, `NpcAnimatorDriver`, `NpcHeadTrack`)** — how an NPC suffers, all
   as LateUpdate bone layers stacked on the Animator's pose so they blend with
@@ -1226,6 +1367,28 @@ Formula-driven with authored override points (the user's explicit choice).
   (0.008 × 160 ≈ 1.3m of hover). Fix the importer's Scale Factor, not the component
   values. Empirically, a Blender FBX **containing an armature** exports at correct
   units where the same static mesh did not.
+  **THE SKINNED MESH'S ROOT BONE MUST BE THE ARMATURE, NOT THE HIPS (real field bug,
+  cost several sessions, and it will recur on every new rig).** With
+  `updateWhenOffscreen` OFF — which is what we want, since recomputing bounds from
+  skinned vertices every frame is exactly the per-NPC native cost §10's perf work
+  removed — Unity frustum-culls a `SkinnedMeshRenderer` using its **bind-pose AABB
+  transformed through the ROOT BONE**, never from the actual animated vertices. The
+  goblin's root bone was the hips, an ANIMATED bone that bobs, shifts and rotates
+  every frame of a walk cycle, so the bounding box rode the hips instead of enclosing
+  the body and any hip displacement slid it off the silhouette — the renderer was
+  culled while the goblin stood in plain view. The Armature sits at the top of the rig
+  and barely moves relative to the NPC root, so the box stays over the character.
+  **Why it was so hard to see:** it needed the hip offset to clear the body AND the
+  frustum edge to fall in the gap, so it depended on animation phase and camera angle
+  *together* (hence "occasional"), and it worsened with NPC COUNT only because more
+  bodies sit near the screen edges at any moment — which is where a shifted box first
+  leaves the frustum. That count-scaling is what disguised it as a shader problem (§5).
+  **Nothing in the project validates this**, so a new rigged character can arrive with
+  the same defect and present as "occasionally invisible" all over again — check the
+  root bone when adding one. Residual risk: the bounds are still the FBX bind-pose box,
+  so a pose EXCEEDING it (a physics-driven ragdoll death is the likely one) could cull
+  again; the fix there is padding `localBounds` at spawn, NOT switching
+  `updateWhenOffscreen` on.
 - **DungeonFogController + FogSettings** (on DungeonVisualizer) — dynamic fog:
   `RenderSettings.fogColor` eases toward a room's torch color by the STRONGER
   of two terms per room: proximity (within `transitionDistance`, facing-
@@ -1237,6 +1400,23 @@ Formula-driven with authored override points (the user's explicit choice).
   controller holds a runtime generator reference, so regenerate in play mode
   to arm it. Fog itself must be enabled in Lighting > Environment — the
   controller only steers color.
+- **GroundFog** (on DungeonVisualizer, beside DungeonFogController) — ankle-height
+  drifting mist. The SHADER and the reason it's billboards are in §6; this component
+  owns only the two things the inspector can't know. The `ParticleSystem` itself is
+  **authored in the editor deliberately** — emission, size, lifetime and shape are art
+  decisions that want live preview, and setting particle modules blind from code is a
+  poor trade.
+  - Floor height comes from the player's **CELL, not their world Y**, so standing on a
+    stair tread or a crate doesn't lift the fog with you.
+  - The emitter **SNAPS** on a floor change rather than easing. With World simulation
+    space the existing puffs stay where they were, so there's no sheet of fog visibly
+    sliding vertically — which is what forced a fade-out on the earlier plane version —
+    and only the SPAWN point moves. Previous-floor puffs are `Clear`ed so they can't
+    hang in mid-air over a ledge or through a doorway.
+  - Tint reads `RenderSettings.fogColor`, which DungeonFogController already drives
+    from the room's torch palette (§7), so ground fog can't disagree with the distance
+    fog or the torchlight and there's no second copy of the room lookup. Applied via
+    `MaterialPropertyBlock` so it never instantiates a copy of the shared material.
 - **DungeonMapper** (on DungeonVisualizer) — fog-of-war automap. **The dungeon is
   ALREADY the map**: it's a typed integer grid, so this is a FILTER over the
   generator's output (a set of explored rooms/cells) painted into one `Texture2D`,
@@ -1371,6 +1551,21 @@ Cosmetic-first; combat is far off ("get the world together first").
     step-able geometry), worst after bash. Fixed by making it a TRIGGER rather than
     removing it — preserves `Physics.Overlap`/raycast queries for the still-open
     shield-block system above, while a trigger can't be climbed or block movement.
+    ✅ **Melee LOS self-occlusion** fixed (the target no longer occludes itself) +
+    `MeleeReticle` (F6) reporting the real `CanHit` rejection reason — see §10. This
+    had been costing genuine swings while reading as an aim problem.
+22b. ✅ **Player ranged attack** — `PlayerLoadout` (1 = melee+shield, 2 = bow),
+    `PlayerBow` (Animator-driven draw/release, unlike the procedural sword),
+    `Arrow` (sticks to world and NPCs, follows rather than parents), `PlayerBowAudio`,
+    and `Hitbox` weak points (headshots) + `DamageType.Projectile`. §10 has the detail
+    and the field lessons: SetTrigger-on-a-Bool, post-bounce `linearVelocity`,
+    `SetParent` under non-uniform bone scale, continuous collision above ~30 m/s.
+    ⏳ open: a distinct headshot SFX/VFX off `Arrow.OnWeakPointHit` (the hook exists,
+    nothing listens); arrow pickup/recovery; NPC archers reusing `Arrow`.
+22c. ✅ **Destructible props** — `DestructibleProp` + `DebrisCleanup` for crates and
+    barrels, damaged through `ImpactAudio.OnImpact` so sound and damage can't disagree.
+    §8 has the fracture-collider and shrink-about-visual-centre lessons. ⏳ open: loot
+    on destruction (the destruction event is the hook).
 23. ✅ **NPC hit reactions v2** — directional spring flinch (`NpcFlinch`, authored
     per-angle profiles, orbit debug tool) for living hits; full blended ragdoll
     (`NpcRagdollReaction`, gravity-off flinch / gravity-on death) for death, opt-in
@@ -1384,6 +1579,13 @@ Cosmetic-first; combat is far off ("get the world together first").
     stair/ladder/one-way-drop glyphs, room-type glyphs. See §10. Next passes if
     wanted: an authored tileset blitted per cell (the bitmask logic is unchanged —
     only the per-cell paint step swaps), and wiring it to a real UI `RawImage`.
+25b. ✅ **Atmosphere shaders** — `Dungeon/ToonWater` (wells, fountains) and
+    `Dungeon/GroundFog` (billboard ground mist, tinted from the torch palette via
+    `RenderSettings.fogColor`). Both share ToonLit's conventions so they read as the
+    same world; §6 has the authoring notes and the planes-vs-billboards lesson.
+    ⏳ open: interactive fog that WAKES as the player walks through it (the compute-
+    shader approach that started the conversation) — deliberately deferred, the cheap
+    version looks good enough that the cost isn't justified yet.
 26. ⏳ NPC AI remaining phases: **call for help** (shout = a loud `NoiseEvent`; the
     `NpcRegistry` and death cry already exist — rate-limit or it alert-loops);
     **disarm/rearm** (a dropped weapon is NOT a `Carryable`, whose `Interact()`
@@ -1442,6 +1644,17 @@ Cosmetic-first; combat is far off ("get the world together first").
 - **Two unrelated fixes in one file still get two commits.** Stage one, commit,
   restore the other, commit again — the history is what makes a field lesson findable
   later, and a combined commit buries one of them.
+- **A CONFIRMED IMPROVEMENT IS NOT PROOF OF A COMPLETE DIAGNOSIS.** The invisible-NPC
+  bug (§5) was declared fixed by `m_WarmupAsync: 0`, documented as settled, and kept
+  shipping — the async flag was genuinely one real cause, and the visible improvement
+  was enough to stop looking. The remaining half (a root bone, §10) was found only
+  because `NpcPerceptionDebug` happened to draw a bar over an invisible goblin months
+  later. When a symptom has a plausible cause AND a count-scaling that flatters that
+  cause, look for a **discriminating test** rather than a confirming one — here, "does
+  moving the camera bring it back?" would have separated the two in seconds. This is
+  the same discipline that resolved the crowd jitter (setting smoothing to 0.99 and
+  seeing NO change disproved the physics theory outright) and the separation perf work
+  (zeroing `separationStrength` before optimizing anything).
 - Design conversations (new systems, tradeoffs, "what's wrong with this
   screenshot") happen in the Claude chat interface; implementation and debugging
   happen here in the editor. Bring decisions in, take implementation out.
