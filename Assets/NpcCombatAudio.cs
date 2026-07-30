@@ -42,6 +42,15 @@ namespace DungeonGen
         [Tooltip("Chance (0..1) a hit plays a grunt at all — a grunt EVERY hit is too much. 0.4 ≈ grunts on roughly 2 of 5 hits. The impact SFX (SurfaceLibrary) still plays every hit; this only thins the VOICE. The killing blow's death cry is separate and always plays.")]
         [Range(0f, 1f)][SerializeField] private float hurtChance = 0.4f;
 
+        [Header("Attack voice")]
+        [Tooltip("Effort grunts / battle cries as the goblin swings. Lives HERE rather than in NpcMeleeAudio because this is the VOICE source — NpcFace follows its amplitude to open the jaw, so a grunt played through it moves the goblin's mouth for free, while the weapon whoosh (correctly) does not.")]
+        [SerializeField] private AudioClip[] attackClips;
+        [Range(0f, 1f)][SerializeField] private float attackVolume = 0.8f;
+        [Tooltip("Chance (0..1) a swing is vocalized. Same reasoning as hurtChance — a cry on EVERY swing is exhausting, and at the target population a crowd of attackers would be a wall of shouting. The whoosh still plays every swing; this only thins the voice.")]
+        [Range(0f, 1f)][SerializeField] private float attackChance = 0.35f;
+        [Tooltip("Minimum seconds between attack cries from this NPC.")]
+        [SerializeField] private float attackInterval = 1.2f;
+
         [Header("Death")]
         [Tooltip("The death cry, played the instant HP hits zero.")]
         [SerializeField] private AudioClip[] deathClips;
@@ -56,12 +65,14 @@ namespace DungeonGen
         [SerializeField] private Vector2 pitchRange = new Vector2(0.92f, 1.08f);
 
         Health health;
-        float nextHurtTime;
-        int lastHurtIndex = -1, lastDeathIndex = -1, lastFallIndex = -1;
+        MeleeAttack melee;      // optional — an unarmed NPC never cries out swinging
+        float nextHurtTime, nextAttackTime;
+        int lastHurtIndex = -1, lastDeathIndex = -1, lastFallIndex = -1, lastAttackIndex = -1;
 
         void Awake()
         {
             health = GetComponent<Health>();
+            melee = GetComponent<MeleeAttack>();
             if (source == null)
             {
                 source = gameObject.AddComponent<AudioSource>();
@@ -76,12 +87,29 @@ namespace DungeonGen
         {
             health.OnDamaged += HandleDamaged;
             health.OnDied += HandleDied;
+            if (melee != null) melee.OnSwingStart += HandleSwing;
         }
 
         void OnDisable()
         {
             health.OnDamaged -= HandleDamaged;
             health.OnDied -= HandleDied;
+            if (melee != null) melee.OnSwingStart -= HandleSwing;
+        }
+
+        /// <summary>
+        /// The effort grunt on a swing. Fired at OnSwingStart — the START of the windup —
+        /// which is right for a VOICE even though it would be wrong for the whoosh: you draw
+        /// breath as you begin the swing, not as the blade lands.
+        /// </summary>
+        void HandleSwing()
+        {
+            if (health.IsDead) return;
+            if (Time.time < nextAttackTime) return;
+            if (Random.value > attackChance) return;
+            nextAttackTime = Time.time + attackInterval;
+
+            PlayOneShot(attackClips, ref lastAttackIndex, attackVolume);
         }
 
         void HandleDamaged(DamageInfo info)
