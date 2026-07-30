@@ -60,6 +60,12 @@ namespace DungeonGen
         [Tooltip("Move-speed multiplier while drawn — drawing a bow should cost mobility, same as charging a heavy swing.")]
         [Range(0.1f, 1f)] public float drawMoveScale = 0.65f;
 
+        [Header("Aim FOV")]
+        [Tooltip("Degrees the WORLD FOV narrows at full draw — the archer's focus tightening. POSITIVE zooms IN, deliberately the opposite sign to PlayerMelee's bashFovBump, which widens: a lunge wants the world rushing at you, an aimed shot wants it pulled in and steady. 0 = off. Scales with the live draw, so letting down eases it back out. The viewmodel overlay camera keeps its own FOV, so the bow itself never distorts.")]
+        public float drawFovZoom = 9f;
+        [Tooltip("FOV change speed (deg/sec) in and out of the aim zoom. Slower than the draw itself reads as the focus settling; faster than it reads as a snap-zoom.")]
+        public float drawFovSpeed = 70f;
+
         [Header("Input")]
         public int fireMouseButton = 0;
 
@@ -82,6 +88,9 @@ namespace DungeonGen
 
         FirstPersonController controller;
         PlayerCarry carry;
+        Camera fovCam;      // WORLD camera, never the viewmodel overlay — see TickDrawFov
+        float baseFov;
+        bool haveBaseFov;
         bool hasDraw, hasDrawAmount, hasRelease;
         bool releaseIsTrigger;          // see the parameter scan in Awake
         bool clearReleaseNextUpdate;    // bool-authored Release needs manual clearing
@@ -103,6 +112,11 @@ namespace DungeonGen
             if (animator == null && bowRoot != null) animator = bowRoot.GetComponentInChildren<Animator>(true);
             if (aimSource == null && controller != null && controller.cam != null) aimSource = controller.cam;
             if (muzzle == null) muzzle = aimSource;
+
+            // Same resolution order PlayerMelee uses for its bash FOV kick, so both find the
+            // same WORLD camera and can't end up driving different ones.
+            if (controller != null && controller.cam != null) fovCam = controller.cam.GetComponent<Camera>();
+            if (fovCam == null && aimSource != null) fovCam = aimSource.GetComponent<Camera>();
 
             if (animator != null && animator.runtimeAnimatorController != null)
             {
@@ -139,7 +153,18 @@ namespace DungeonGen
             suppressUntilRelease = Input.GetMouseButton(fireMouseButton);
         }
 
-        void OnDisable() => CancelDraw(relax: true);
+        void OnDisable()
+        {
+            CancelDraw(relax: true);
+
+            // Restore the FOV IMMEDIATELY, not by easing. A loadout swap disables this
+            // component, so Update stops running and a zoomed FOV would be stranded — and
+            // PlayerMelee captures its own baseFov lazily, so it would then adopt the zoomed
+            // value as "base" and every bash after that would be measured from the wrong
+            // number. PlayerLoadout happens to disable this in the same call that enables
+            // melee, and OnDisable fires synchronously, so this runs first either way.
+            if (fovCam != null && haveBaseFov) fovCam.fieldOfView = baseFov;
+        }
 
         void Update()
         {
@@ -152,6 +177,12 @@ namespace DungeonGen
             // Update has several early returns (carrying, not drawing, still holding), so
             // an event-driven toggle would miss paths and leave the mesh stuck on.
             SyncNockedArrow();
+
+            // Same reason as SyncNockedArrow, and the same trap: this MUST sit above the
+            // early returns. Driven from the live draw rather than from draw/release events,
+            // so every exit path (fired, let down, weapon swapped, picked up a barrel) eases
+            // the FOV home without each one needing to remember to.
+            TickDrawFov();
 
             if (Input.GetMouseButtonUp(fireMouseButton)) suppressUntilRelease = false;
 
@@ -247,6 +278,36 @@ namespace DungeonGen
         /// both visible; with showNockedWhileIdle it returns once the cooldown elapses,
         /// which reads as pulling a fresh arrow.
         /// </summary>
+        /// <summary>
+        /// NARROW the world FOV as the string comes back — the archer's focus tightening.
+        /// Deliberately the opposite sign to the shield bash's FOV WIDEN (PlayerMelee's
+        /// bashFovBump): a lunge wants the world rushing at you, an aimed shot wants it
+        /// pulled in and steady, so the two reads stay distinct rather than both meaning
+        /// "something is happening".
+        ///
+        /// Tracks Draw01 CONTINUOUSLY instead of snapping between two states, the same
+        /// choice PlayerBowAudio's draw creak makes for the same reason — the tension is in
+        /// the ramp, and a binary zoom would pop.
+        ///
+        /// WORLD CAMERA ONLY. The viewmodel renders through a separate overlay camera that
+        /// keeps its own FOV (see ViewmodelCamera), so the bow itself must not distort while
+        /// the world dollies — the same rule the bash FOV follows.
+        /// </summary>
+        void TickDrawFov()
+        {
+            if (fovCam == null || drawFovZoom == 0f) return;
+
+            // Captured lazily on first use, not in Awake: the camera's FOV can legitimately
+            // be authored or changed before the first draw.
+            if (!haveBaseFov) { baseFov = fovCam.fieldOfView; haveBaseFov = true; }
+
+            // Subtracted, so a POSITIVE drawFovZoom zooms IN. Scaled by the live draw, so
+            // letting down eases the FOV back out on its own.
+            float target = baseFov - drawFovZoom * (drawing ? draw : 0f);
+            fovCam.fieldOfView = Mathf.MoveTowards(fovCam.fieldOfView, target,
+                                                   drawFovSpeed * Time.deltaTime);
+        }
+
         void SyncNockedArrow()
         {
             if (nockedArrow == null) return;
