@@ -659,6 +659,32 @@ PATH**, so an instanced mesh literally cannot be un-drawn when the prop dies.
   about the pivot collapsed the whole pile toward one point instead of each piece
   shrinking in place. `RetireAfterAudio`/`DestroyWhenQuiet` hold the object alive
   until its impact sound finishes so cleanup can't cut the sound off.
+- **Debris inherits motion from TWO sources, because neither covers both cases.**
+  (1) The prop's own velocity, for something already moving — but read from a
+  **`FixedUpdate` cache, never live** (see the post-bounce rule below). (2) The KILLING
+  BLOW (`inheritBlowSpeed`, along `DamageInfo.direction`), for a prop standing STILL that
+  a hit destroys outright. Case 2 cannot be solved by ordering: **every `AddForce`
+  overload QUEUES until the next physics step**, so a shove applied earlier in the same
+  frame is invisible to a break happening later in it, and the prop is destroyed before
+  that step ever runs. The blow term FADES OUT as the prop's own speed rises
+  (`inheritBlowFadeSpeed`) because the two are ALTERNATIVES, not addends — and because for
+  an IMPACT break `direction` points at the surface just struck, so adding it to a barrel
+  already flying into a wall would kick the debris back into the wall. Chunks get the
+  rigid-body POINT velocity **`v + ω × r`**, not a flat copy of `v`: a flat copy gives
+  every chunk identical motion so the debris drifts as a loose clump, while the spin term
+  throws outer chunks wider than those near the axis, so a tumbling prop comes apart along
+  its spin. `ForceMode.VelocityChange`, since every part of a rigid body genuinely shares
+  one velocity.
+- **RECURRING TRAP (three times now) — VELOCITY READ IN A COLLISION CALLBACK IS
+  POST-BOUNCE.** PhysX resolves the impact BEFORE `OnCollisionEnter` runs, so
+  `body.linearVelocity` (and position) read there describe the state AFTER the bounce:
+  pointing back the way the body came, and much smaller. Bitten `Arrow` (stuck at wild
+  angles until `lastFlightDir` was cached each `FixedUpdate`) and `DestructibleProp`
+  (debris would have been flung backwards out of the wall it hit — and note the break path
+  runs from `ImpactAudio.OnImpact`, which is driven by `OnCollisionEnter`, so it inherits
+  the trap indirectly). **The fix is always the same: cache the value each `FixedUpdate`
+  and use the cached one.** If you need a body's velocity at the moment of an impact, you
+  cannot ask for it after the impact.
 
 **Inspector UX:** PropSet entries and RoomStyle's nested lists have custom
 drawers (`Assets/Editor/`) — summary foldout labels instead of "Element N",
@@ -800,6 +826,40 @@ Formula-driven with authored override points (the user's explicit choice).
   prop (the wooden table) SHOULD resist and slow you (achieved, collapses → stubborn).
   Making intent global was a regression that made every heavy prop shove easily. Doors
   return true; props (and plain Rigidbodies, and NPCs without `IMoveIntent`) use achieved.
+  **`Push()` is for CONTINUOUS CONTACT; a deliberate one-shot blow uses `PushBurst()`.**
+  `Push` refuses outright once the prop is already moving at `maxPushSpeed`, which is
+  essential for contact — that fires every frame you lean on something and would
+  otherwise accelerate it without limit. A one-shot blow (the shield bash's cone shove)
+  fires ONCE per attack thanks to sweep dedupe, so the cap protects nothing and instead
+  silently EATS the blow: the capsule's contact push has usually already pushed the prop
+  past the cap by the time the attack's cone resolves, so the bash appeared to do nothing
+  EXCEPT on the rare occasions the cone reached the prop before the player did. That
+  intermittency is the tell. `PushBurst` defaults to `Push`, so an implementer that
+  doesn't care (a door — hinge torque has its own clamps) needs no change.
+  **`Health.TakeDamage` does NOT act on `DamageInfo.impulse` — only `NpcHitReactions`
+  does** (it subscribes to `OnDamaged`). So knockback set on a DamageInfo aimed at
+  anything WITHOUT that component is silently discarded. A destructible prop is exactly
+  that case: a barrel carries `Health` (for `DestructibleProp`) and so reads as
+  `IDamageable`, but nothing on it consumes the impulse. Cost real debugging time — the
+  symptom is "I set impulse and it didn't move", with no error anywhere. Props must be
+  shoved through `IPushable`, separately from being damaged.
+  **KNOCKBACK IS A VELOCITY; A PROP SHOVE IS AN IMPULSE — different QUANTITIES, never
+  share the number.** `MeleeAttack.knockback` becomes `NpcLocomotion.AddImpulse(blow *
+  knockback)`, i.e. m/s. `IPushable.Push`'s `force` is an impulse in N·s that
+  `PushableProp` applies with `ForceMode.Impulse`, so Δv = J/m. That's the whole mass
+  story and why it needs no per-prop tuning (same philosophy as `ThrownDamage`'s
+  momentum-derived knockback) — but it also means feeding one number to both presents as
+  "props barely twitch" or "props explode" purely as a function of their mass, which
+  reads as a tuning problem rather than a category error. Size a prop impulse as
+  **mass × desired launch speed** (the barrel is 45kg, so useful values are in the
+  HUNDREDS), and note it must also exceed `mass × the player's dash speed` or the prop
+  cannot outrun the lunge and you simply keep colliding with it.
+  **Aim a shove through the CENTRE-OF-MASS HEIGHT.** `PushableProp` defaults to
+  `AddForceAtPosition`, and a melee/cone origin sits at EYE height while props are low —
+  so `Collider.ClosestPoint` lands near a barrel's top rim and the lever arm turns the
+  shove into mostly TORQUE. The barrel tips over in place while still making a contact
+  noise, which reads as "the push did nothing". Keep the lateral offset (a shoved barrel
+  should tumble); remove only the vertical one.
 - **DEPENETRATION LAUNCH (real field bug — THE "door flies open with zero push"):** a
   dynamic door (mass 20) ejects from an overlapping collider at up to
   `Rigidbody.maxDepenetrationVelocity` — Unity's default ~10 m/s. The player's
@@ -966,6 +1026,24 @@ Formula-driven with authored override points (the user's explicit choice).
   checking `agent.isOnNavMesh` alone does NOT catch it, because `nextPosition` is
   force-synced to the falling body so the agent believes it's on the mesh all the
   way down.
+  **EXTERNAL SYSTEMS MOVE AN NPC THROUGH A DECLARED CHANNEL, NEVER THE TRANSFORM.**
+  `RejectUnwantedPush` clamps any horizontal displacement beyond
+  `(want + sep) * dt + (impulse + plow) * udt` straight back out — that's what stops the
+  player shoving NPCs through walls, and it CANNOT tell a deliberate drive from an
+  accidental capsule shove unless the drive declares itself. Two channels exist and the
+  distinction is real: **`AddImpulse` is a one-shot that DECAYS** (which is what makes a
+  hit read as a hit), while **`SetPlowVelocity` is SUSTAINED** — the shield bash's
+  windshield carry, where a captured NPC is driven along in front of the charging player.
+  Faking the sustained case by re-triggering `AddImpulse` every frame would silently reset
+  `impulseDecay` forever and read as a bug to whoever found it. While plowed, the NPC's own
+  `want` is ZEROED (its approach would otherwise crawl against the carry — same principle
+  as `facingLockedFrame`: while an external system owns the motion, the local one yields),
+  and `IsBlocked` is measured against the PLOW rather than `want`, because the bash needs
+  it to spot a body pinned against geometry and let go — the player passes through NPCs, so
+  a pinned one would otherwise end up BEHIND the shield. **The plow expires on a TIMEOUT,
+  not an explicit clear**, because the driver can vanish mid-carry (a loadout swap disables
+  PlayerMelee, the player dies, the dungeon regenerates) and a latched flag would leave a
+  body driven forever.
   **PERF — separation was 58% of the whole component** (profiled at 100 NPCs:
   `Update()` 24.11ms, of which ~14ms was `Separation()`). The cost was NOT the O(n²)
   arithmetic — it was reading `other.transform.position` inside the inner loop, a
@@ -1131,6 +1209,25 @@ Formula-driven with authored override points (the user's explicit choice).
     AMOUNT only; knockback stays unscaled. **Melee is deliberately NOT wired to this** —
     a 2.5× head multiplier on the sword is a balance change to the combo/poise economy,
     not a bug fix.
+  - **Aim FOV** (`drawFovZoom`) NARROWS the world FOV with the draw — an archer's focus
+    tightening — deliberately the OPPOSITE sign to the shield bash's `bashFovBump`, which
+    WIDENS: a lunge wants the world rushing at you, an aimed shot wants it pulled in, and
+    if both widened the two would stop meaning different things. Tracks `Draw01`
+    continuously (same reasoning as the draw creak below), and because the target is
+    DERIVED from the live draw rather than set by draw/release events, every exit path eases
+    it home — which is also why `TickDrawFov` must sit ABOVE `Update`'s early returns, the
+    same placement rule as `SyncNockedArrow`. **WORLD camera only**: the viewmodel overlay
+    keeps its own FOV so the bow itself never distorts (§10 ViewmodelCamera).
+    **FOV OWNERSHIP IS BY CONVENTION, NOT STRUCTURE — the one thing here to watch.**
+    `PlayerBow` and `PlayerMelee` each cache their own `baseFov` LAZILY, which is safe only
+    because `PlayerLoadout` guarantees exactly one is enabled and disables the bow in the
+    same call that enables melee (with `OnDisable` firing synchronously, so the bow restores
+    first). `PlayerBow.OnDisable` therefore restores the FOV IMMEDIATELY rather than easing:
+    a stranded zoom would be adopted as melee's "base" and every bash after that measured
+    from the wrong number. **A THIRD consumer** (a spyglass, a sprint kick, a cutscene) is
+    the point to extract a single FOV owner both request offsets from — same shape as
+    `ViewmodelCollision` being invoked from `ViewmodelSway` rather than running its own
+    `LateUpdate`. Don't add a third one without doing that first.
   - `PlayerBowAudio` follows the house continuous-vs-one-shot split (§ PhysicsDoorAudio):
     a LOOPING creak whose volume/pitch track live `Draw01` (so holding at full draw is
     audibly tense, not silent) + one-shots for nock/loose/let-down scaled by the draw
@@ -1551,6 +1648,24 @@ Cosmetic-first; combat is far off ("get the world together first").
     step-able geometry), worst after bash. Fixed by making it a TRIGGER rather than
     removing it — preserves `Physics.Overlap`/raycast queries for the still-open
     shield-block system above, while a trigger can't be climbed or block movement.
+    ✅ **Bash v2 — it now physically MOVES things.** A narrow `InnerCone` nested inside the
+    wide cone marks whoever is dead ahead for the **PLOW**: carried on the windshield for
+    the lunge and flung at the end, rather than flung on contact (velocity-matched to the
+    player's live `ExternalVelocity` with a weak spring toward a PLAYER-LOCAL capture
+    offset, so turning the mouse swings them round with you — same "mostly physical,
+    lightly corrected, never a rigid weld" philosophy as `PlayerCarry`'s hold point). The
+    wide cone still fans the flanks aside, so one bash does both; plow angle 0 restores the
+    old behaviour exactly. A separate `ConePush` cone **shoves PROPS** (`bashPropImpulse`),
+    routed through `IPushable` so per-prop tuning and hinge torque still apply — bashing a
+    physics door open falls out for free, and a barrel driven into a wall breaks itself via
+    the existing `ImpactAudio` → `DestructibleProp` seam. See §10 for the four separate
+    reasons props initially didn't move at all (impulse discarded by `Health`,
+    `maxPushSpeed` eating one-shot blows, eye-height contact point becoming torque, and an
+    impulse sized ~30× too small), and the NPC plow channel's rules.
+    Order matters: **the shove runs BEFORE `TakeDamage`**, because `TakeDamage` can destroy
+    the target inside that very call (`Health` fires `OnDied` synchronously →
+    `DestructibleProp.Break` → debris + retire), so a push applied after lands on a body
+    that is already gone.
     ✅ **Melee LOS self-occlusion** fixed (the target no longer occludes itself) +
     `MeleeReticle` (F6) reporting the real `CanHit` rejection reason — see §10. This
     had been costing genuine swings while reading as an aim problem.
@@ -1560,11 +1675,13 @@ Cosmetic-first; combat is far off ("get the world together first").
     and `Hitbox` weak points (headshots) + `DamageType.Projectile`. §10 has the detail
     and the field lessons: SetTrigger-on-a-Bool, post-bounce `linearVelocity`,
     `SetParent` under non-uniform bone scale, continuous collision above ~30 m/s.
+    ✅ aim FOV zoom on the draw (see §10 — and the FOV-ownership caveat there).
     ⏳ open: a distinct headshot SFX/VFX off `Arrow.OnWeakPointHit` (the hook exists,
     nothing listens); arrow pickup/recovery; NPC archers reusing `Arrow`.
 22c. ✅ **Destructible props** — `DestructibleProp` + `DebrisCleanup` for crates and
     barrels, damaged through `ImpactAudio.OnImpact` so sound and damage can't disagree.
-    §8 has the fracture-collider and shrink-about-visual-centre lessons. ⏳ open: loot
+    §8 has the fracture-collider and shrink-about-visual-centre lessons, plus debris
+    velocity inheritance (the prop's own motion + the killing blow). ⏳ open: loot
     on destruction (the destruction event is the hook).
 23. ✅ **NPC hit reactions v2** — directional spring flinch (`NpcFlinch`, authored
     per-angle profiles, orbit debug tool) for living hits; full blended ragdoll
