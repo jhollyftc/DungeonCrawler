@@ -40,6 +40,14 @@ namespace DungeonGen
         public float burstTorque = 1.5f;
         [Tooltip("Extra rotation (Euler deg) for the debris, applied after the fractured prefab's own root rotation. Should be ZERO if the fracture asset was exported on the same axes as the intact prop — reach for it only when the two were authored differently.")]
         public Vector3 debrisRotationOffset;
+        [Tooltip("How much of the prop's own motion the chunks carry with them. 1 = the debris continues exactly where the prop was going, so a bashed barrel bursts FORWARD down the charge instead of exploding in place and dropping. Slightly under 1 reads as the impact having absorbed some of the energy. 0 = the old behaviour (burst only). The velocity used is the one from BEFORE the collision was resolved — see FixedUpdate.")]
+        [Range(0f, 1.5f)] public float inheritVelocity = 0.9f;
+        [Tooltip("How much of the prop's SPIN the chunks carry. Also feeds the w x r term, which throws chunks on the outside of the spin wider than those near the axis — that's what makes a tumbling prop come apart along its rotation rather than as a clump. Lower it if debris reads as confetti.")]
+        [Range(0f, 1.5f)] public float inheritAngularVelocity = 0.6f;
+        [Tooltip("Speed (m/s) the debris is thrown along the KILLING BLOW's direction. This is what makes bashing a STANDING-STILL prop look right: the prop never gets to move, so there is no velocity to inherit — the shove that would have launched it is queued for the next physics step and the prop is already destroyed by then. Deriving the throw from the blow sidesteps that timing entirely. Set it near the launch speed the same blow would have given the intact prop.")]
+        public float inheritBlowSpeed = 5f;
+        [Tooltip("The blow throw above FADES OUT as the prop's own speed approaches this (m/s). The two are alternatives, not addends: either the prop was already moving (inherit that) or it wasn't (inherit the blow). Without the fade, a barrel already flying into a wall gets an extra kick along info.direction — which for an impact break points at the wall it just hit.")]
+        public float inheritBlowFadeSpeed = 3f;
 
         [Header("Cleanup")]
         [Tooltip("Seconds the debris lies there before shrinking away.")]
@@ -78,12 +86,35 @@ namespace DungeonGen
 
         Health health;
         ImpactAudio impactAudio;
+        Rigidbody body;
         bool broken;   // guards a second break from a simultaneous hit
+
+        // Velocity as of the last physics step BEFORE any collision was resolved — see
+        // FixedUpdate. This, not the live value, is what the debris inherits.
+        Vector3 lastVelocity;
+        Vector3 lastAngularVelocity;
 
         void Awake()
         {
             health = GetComponent<Health>();
             impactAudio = GetComponent<ImpactAudio>();
+            body = GetComponent<Rigidbody>();
+        }
+
+        /// <summary>
+        /// Cache the pre-impact velocity every step. The debris CANNOT read
+        /// body.linearVelocity at break time: the usual way a prop dies is hitting something
+        /// hard, that path runs from ImpactAudio.OnImpact which is driven by
+        /// OnCollisionEnter, and PhysX has already resolved the bounce before that callback
+        /// runs — so the live value is the POST-bounce velocity, pointing back the way the
+        /// prop came and much smaller. Inheriting it would fling the chunks backwards out of
+        /// a wall. Same trap, same fix as Arrow.lastFlightDir.
+        /// </summary>
+        void FixedUpdate()
+        {
+            if (body == null || broken) return;
+            lastVelocity = body.linearVelocity;
+            lastAngularVelocity = body.angularVelocity;
         }
 
         void OnEnable()
@@ -268,6 +299,27 @@ namespace DungeonGen
             // damage carried no usable point (environment/impact damage at the origin).
             Vector3 origin = info.point.sqrMagnitude > 0.0001f ? info.point : transform.position;
 
+            // What the prop was doing when it died — see FixedUpdate for why this is the
+            // CACHED value and not the live one.
+            Vector3 inheritV = lastVelocity * inheritVelocity;
+
+            // Plus the killing blow, for the case the cached velocity CANNOT cover: a prop
+            // standing still that a bash destroys outright never moves at all, and the shove
+            // that would have launched it is queued for the next physics step while the prop
+            // is destroyed during this one. Faded out as the prop's own motion takes over,
+            // because the two are alternatives rather than addends — and because for an
+            // IMPACT break info.direction points at the surface just struck, so adding it to
+            // a barrel already flying into a wall would kick the debris back into the wall.
+            float lastSpeed = lastVelocity.magnitude;
+            if (inheritBlowSpeed > 0f && info.direction.sqrMagnitude > 1e-4f)
+            {
+                float blowWeight = 1f - Mathf.Clamp01(lastSpeed / Mathf.Max(0.01f, inheritBlowFadeSpeed));
+                inheritV += info.direction.normalized * (inheritBlowSpeed * blowWeight);
+            }
+
+            Vector3 inheritW = lastAngularVelocity * inheritAngularVelocity;
+            Vector3 sourceCom = body != null ? body.worldCenterOfMass : transform.position;
+
             foreach (var rb in debris.GetComponentsInChildren<Rigidbody>())
             {
                 Vector3 away = rb.worldCenterOfMass - origin;
@@ -277,6 +329,16 @@ namespace DungeonGen
                 Vector3 dir = Vector3.Lerp(away, Vector3.up, burstUpBias).normalized;
                 rb.AddForce(dir * burstForce, ForceMode.VelocityChange);
                 rb.AddTorque(Random.insideUnitSphere * burstTorque, ForceMode.VelocityChange);
+
+                // Carry the parent's motion into every chunk, as the RIGID-BODY POINT
+                // VELOCITY v + w x r rather than a flat copy of v. That extra term is what
+                // makes a tumbling prop matter: chunks on the outside of the spin are thrown
+                // wider than chunks near the axis, so a barrel bashed while rotating comes
+                // apart along its spin instead of drifting as a loose clump all moving
+                // identically. Free — the numbers are already to hand.
+                Vector3 r = rb.worldCenterOfMass - sourceCom;
+                rb.AddForce(inheritV + Vector3.Cross(inheritW, r), ForceMode.VelocityChange);
+                rb.AddTorque(inheritW, ForceMode.VelocityChange);
             }
 
             var cleanup = debris.AddComponent<DebrisCleanup>();
