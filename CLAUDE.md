@@ -772,6 +772,27 @@ Formula-driven with authored override points (the user's explicit choice).
   authored rotation. `proceduralWeight` hook for future attack suppression.
   Future: extract tuning to `SwayProfile` ScriptableObjects per weapon/shield
   when the equipment system lands.
+  **`SetAttackPose` IS A LATCH, NOT A FRAME COMMAND.** It stores what it was last given and
+  keeps it until something writes again — so any pose a system applies must be actively
+  driven back to rest by that same system; nothing clears it for you. The SHIELD survives
+  this because `TickShield` eases toward a persistent `shieldTargetPos` that defaults to
+  zero, so it returns to rest on its own. The SWORD has no such loop on the ordinary path
+  (`swordTarget*`/`TickSword` exist but are wired only into the BASH path) — it is written
+  directly by `SetHandPoses` during a swing and zeroed once at `EndSwing`. So posing the
+  sword directly for a block both POPPED (no ease-in) and then stuck there forever, because
+  no idle code path writes the sword again. Any new hand pose needs its own smoothed layer
+  written EVERY frame, standing down while the swing system owns the hand.
+  **ADD IMPACT SHAKE AFTER THE SMOOTHING, NEVER INTO THE TARGET.** A target is what a lerp
+  eases TOWARD, so an oscillation written there is damped into nothing by the very smoothing
+  that makes the pose feel solid — you wind the amplitude up and up and still see almost no
+  movement, with nothing obviously wrong. Same rule as HeadBob composing additively on the
+  camera. (The shield's block jolt is directional, converted into viewmodel space via
+  `InverseTransformDirection`; a symmetric wobble reads as a rumble effect, not an impact.)
+  **`shieldCounterEuler`/`swordCounterPosition` are SCALES, not offsets** — they multiply
+  the other hand's swing euler to derive counter-motion. Authoring a POSE into one (e.g.
+  pasting block-pose eulers into `shieldCounterEuler`) multiplies the swing by tens, so the
+  off-hand rotates wildly for the whole swing and only during swings. Field-reported and
+  looked exactly like a code bug.
 - **ViewmodelCollision** — the third pose layer: rest → sway → **collision
   clamp**. Invoked from the END of ViewmodelSway's LateUpdate (never its own
   LateUpdate — two systems pushing the pose independently oscillate).
@@ -1235,6 +1256,95 @@ Formula-driven with authored override points (the user's explicit choice).
     started/stopped by events, so every exit path (fired, let down, weapon swapped,
     picked up a barrel) fades it out without each needing to remember to; `OnDisable`
     hard-stops it so swapping to melee mid-draw can't leave a creak looping forever.
+- **NPC MELEE IS ANIMATION-DRIVEN (`sweepFromAnimationEvent`).** `MeleeAttack` holds NO
+  Animator reference at all — it decides WHEN a swing happens and knows nothing about how
+  it looks, the same one-way rule the AI follows; `NpcAnimatorDriver` remains the single
+  seam (`Attack`/`CancelAttack` triggers, fired from `OnSwingStart`/`OnSwingCancelled`).
+  With the flag on, the hit comes from an **Animation Event calling `AnimationSweep`** on
+  the clip's impact frame instead of the `windup` timer — `DoSweep()` was public and
+  decoupled from `TryAttack()` for exactly this. **Why it matters beyond tidiness:** a
+  fixed delay cannot match a per-weapon clip's impact frame, and a hit landing when the
+  blade VISUALLY connects is what makes a parry feel fair — otherwise players learn an
+  invisible timer rather than the animation, and every new weapon needs its windup
+  hand-synced. Three guards, all protecting against silent failures:
+  a **failsafe timeout** (a missing/misnamed event would leave `IsSwinging` true forever,
+  so `CanAttack` never returns true again and the NPC silently stops fighting);
+  `AnimationSweep` is **gated on `IsSwinging`** (a looping attack state would sweep
+  repeatedly, and `DoSweep` CLEARS its dedupe set each call, so every repeat is a fresh
+  full-damage hit); and `CancelAttack` exists because **cancelling in code cannot pull the
+  Animator out of a state** — the event would still fire on schedule.
+  **Animator authoring:** an UPPER-BODY masked override layer (an attack state on the base
+  layer replaces the locomotion blend tree and the NPC freezes mid-stride to swing),
+  resting in an **empty default state** — an override layer at weight 1 drives its masked
+  bones whatever state it is in, so without an empty state the upper body is permanently
+  posed by it. `Any State → Swing` on `Attack` with **Can Transition To Self OFF** (Any
+  State includes the current state, and a restarted clip re-fires its event).
+- **`LandSweep` MUST clear its state AFTER `DoSweep()`, never before (real bug).** A
+  victim's guard mitigates inside `Health.TakeDamage`, which runs inside `DoSweep`, and it
+  answers by halting the attacker's swing (`Blocked`/`Parried` → `CancelSwing`). With
+  `IsSwinging` cleared up front, `CancelSwing` hit its own early-return and did nothing —
+  the punish was silently inert and the attacker played out the rest of its swing as if it
+  had connected. `LandSweep` now also SKIPS its normal resolution if something cancelled
+  mid-sweep, so one swing can't report as both completed and abandoned.
+- **TWO SWEEP BUGS THAT ONLY EXIST FROM THE NPC'S SIDE** (the code was written from the
+  player's, see §12's perspective rule):
+  - **Gather buffers were sized for the wrong attacker.** `overlapScratch`/`castScratch`
+    were 16 — fine for a player whose 1.6m sweep holds one or two enemies. A goblin
+    swinging from INSIDE a crowd is surrounded by neighbours at separation radius, each
+    bringing a capsule plus ~15 dormant ragdoll bone colliders, and **`hitMask` is NOT
+    auto-stripped of the NPC layer** (only `losBlockMask` is) — so those all get gathered,
+    consume slots, and are only rejected by the faction check AFTERWARDS. Overflow
+    truncates silently and the dropped collider can be the player: swings that land in
+    duels and whiff only in crowds, with nothing in the log. Now 64 (the lesson
+    `coneScratch` already carried), plus an ungated warning when the buffer fills.
+  - **LOS excluded the victim but never the ATTACKER.** With an `aimSource` the origin is
+    pushed clear by `aimForwardOffset`; an NPC has none, so its origin sits inside its own
+    chest and every collider it owns is a candidate occluder. It worked only because the
+    goblin's colliders are all on the NPC layer, which `Awake` strips — layer hygiene on
+    every rig, and this project has already shipped a character left on Default. Now
+    excluded structurally. (Still set new rigs to the NPC layer: `hitMask`, NPC-NPC
+    collision and crowd separation all depend on it.)
+- **GUARDING — block and parry (`IDamageMitigator`, `PlayerGuard`)**. RMB guards; heavy
+  attacks moved to MMB.
+  - **Mitigation lives on the VICTIM, consulted inside `Health.TakeDamage`** — never in the
+    attacker. Same split as `IPushable`: attacker supplies force, victim decides meaning.
+    So blocking works against melee, arrows, thrown props and environmental damage at once,
+    and no damage source ever learns guarding exists. Putting it in `MeleeAttack` would mean
+    adding "is the victim blocking?" to every damage source forever, and the ones added
+    later would quietly forget. The blow is COPIED and mitigators edit the copy, so
+    `OnDamaged` listeners (`NpcCombatAudio` volume, `NpcHitReactions` knockback, `NpcFace`
+    shock) react to what actually landed rather than what was thrown.
+  - **The parry window is measured from the DEFENDER'S input and evaluated AT impact** —
+    "was the guard raised within the last `parryWindow` seconds?" That is what makes it
+    compatible with animation-event sweeps, which genuinely cannot publish an impact time in
+    advance. The alternative framing ("parry if you press within ±X of the impact frame")
+    would have forced every attacker to predict itself. The window is CONSUMED on use and an
+    expired one starts a cooldown, so one raise can't parry a volley and mashing gets you
+    blocking but never free parries.
+  - **The punish reuses existing machinery**: a parry calls `MeleeAttack.Parried()` (halting
+    the swing) plus `Poise.Break()`, so it produces the same major stagger `NpcHitReactions`
+    already generates — no bespoke stun state, and high poise becomes a free "resists
+    parries" difficulty lever. `Poise` gained public `Chip`/`Break` for this; it previously
+    had no methods at all, only its `OnDamaged` subscription. The attacker is reached
+    through `DamageInfo.instigator`, so **no interface needed a return value** and each
+    attacker still decides what being parried costs it.
+  - **Both block and parry HALT the swing** (`Blocked()`/`Parried()`), so the blade stops
+    dead instead of following through as though it cut flesh — the main tell that a block
+    registered.
+  - **A blocked hit reports the SHIELD's surface** (`Mitigation.overrideSurface`), because
+    the blow never touched the victim. Without it `MeleeHitEffects` resolves
+    `Surface.Of(victim)` and sprays blood for a hit that rang off metal. The mitigator is
+    the only thing that knows what interposed itself, so `SurfaceImpact.Spawn` stays one
+    seam rather than growing a guard special-case. Safe to read in `OnHitLanded` — that
+    fires after `TakeDamage` returns.
+  - **Named GUARD, not Shield**: the shield's hold-vs-time behaviours and the eventual
+    weapon parry are one mechanism with different numbers (tighter window, worse chip
+    mitigation), so naming it after the shield would mean renaming it.
+  - **`PlayerGuard` holds STATE only — `PlayerMelee` still owns both hands.** One owner per
+    transform, as with `ViewmodelCollision` and `facingLockedFrame`.
+  - Blocking costs poise at `blockPoiseCost` (>1 on purpose): that pressure is what makes
+    turtling lose to a crowd, and the reason a guard BREAK exists at all. **`Poise` is now
+    on the PLAYER**, not just NPCs; without it a block costs nothing and can never break.
 - **NPC reactions (`NpcHitReactions`, `NpcFlinch`, `NpcRagdollReaction`,
   `NpcCombatAudio`, `NpcAnimatorDriver`, `NpcHeadTrack`)** — how an NPC suffers, all
   as LateUpdate bone layers stacked on the Animator's pose so they blend with
@@ -1330,6 +1440,17 @@ Formula-driven with authored override points (the user's explicit choice).
     the good one: it stares at where the barrel landed while you slip past behind it.
     `suspicionLookHeight` lifts the gaze off the floor (noise positions are often ground
     level, and staring down reads as confusion). An honest detection tell either way.
+    **AUDIO IS SPLIT BY SOURCE, NOT BY SITUATION.** `NpcCombatAudio`'s AudioSource is the
+    VOICE — `NpcFace` follows its amplitude to open the jaw — so anything played through it
+    moves the goblin's mouth. That decides placement on its own: the swing WHOOSH gets its
+    own component and source (`NpcMeleeAudio`; a sword whoosh coming out of a goblin's face
+    would be wrong), while the attack EFFORT GRUNT belongs in `NpcCombatAudio` beside the
+    hurt and death voices, where it should move the mouth and does so for free. Ask "what
+    is making this sound", not "when does it happen". NPC sources are 3D (a position you
+    locate by ear) unlike `PlayerMeleeAudio`'s 2D one (your own arm); the whoosh rolls off
+    shorter than the voice and hard-CULLS by distance, since inaudible sources still consume
+    voice slots at crowd sizes. Both voice lines are thinned by chance + interval like
+    `hurtChance` already was — a cry on every swing from 25 roamers is a wall of shouting.
     `NpcCombatAudio`: hurt grunts scaled by impulse, death cry + delayed body-fall
     thud (house audio pattern, § PhysicsDoorAudio).
 - **NPC crowd spacing** — three separate mechanisms, learned the hard way:
@@ -1628,8 +1749,15 @@ Cosmetic-first; combat is far off ("get the world together first").
     (mirror of the shield counter-motion). GOTCHA: the cone's OverlapSphere needs a
     BIG buffer (128) — each goblin carries its capsule + all dormant ragdoll bone
     colliders, so a crowd overflows a 16-slot NonAlloc buffer and drops most targets.
-    ⏳ still open: shield BLOCK (`IDamageMitigator`) — needs a binding since RMB is now
-    heavy; non-damageable surface hits (wall/prop swing sparks).
+    ✅ **shield BLOCK and PARRY** (`IDamageMitigator` + `PlayerGuard`) — RMB guards, heavy
+    moved to MMB. Hold = damage/knockback reduced at a poise cost; tap inside `parryWindow`
+    = negated, no poise cost, attacker halted and poise-BROKEN. Blocked hits spark off the
+    shield's surface and stop the attacker's swing dead. See §10 for the architecture and
+    why mitigation lives on the victim.
+    ⏳ still open: the no-shield WEAPON parry (same component, tighter window, worse chip
+    mitigation — needs the loadout to report whether a shield is equipped); NPCs guarding
+    (`IDamageMitigator` is faction-agnostic and would work as-is, but needs AI to decide
+    when); non-damageable surface hits (wall/prop swing sparks).
     **Field lessons from tuning the light combo's HOLD-to-attack** (`GetMouseButton`
     instead of `GetMouseButtonDown`, so mashing isn't required to keep chaining):
     a buffered continuation must be **re-checked live at the moment of consumption**
@@ -1733,10 +1861,13 @@ Cosmetic-first; combat is far off ("get the world together first").
     player is the first consumer of that seam; animated NPCs are the second). Pick
     the weapon from a HASH STREAM, not `UnityEngine.Random` — loadout is part of
     spawning, which is deterministic (rule 4). No collider on the weapon (the sweep
-    is its own cast). NOTE: `MeleeAttack` is not yet on the goblin prefab, so NPCs
-    currently never swing; `engageDistance` (3) will need to sit under the equipped
-    weapon's `range` (default 1.6) once it is. `RandomMeshSelector` is a temporary
-    visual stand-in this supersedes.
+    is its own cast). UPDATE: `MeleeAttack` IS now on the goblin and NPCs swing —
+    animation-driven via `sweepFromAnimationEvent` (§10), which is the seam this item's
+    per-weapon clips were always meant to use, so a `WeaponDefinition` supplies the clip and
+    the impact frame comes with it. `engageDistance` must sit UNDER the weapon's `range` or
+    the NPC stops outside its own reach and swings at air — the brain's own tooltip says so,
+    and it is the first thing that goes wrong when a weapon's range changes.
+    `RandomMeshSelector` is a temporary visual stand-in this supersedes.
 28. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material) —
     mostly Blender/texture work; toon shader packed-mask already ready.
 29. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit → home
@@ -1758,6 +1889,17 @@ Cosmetic-first; combat is far off ("get the world together first").
   prefab reference — the same class of failure as the `EmissiveController`/
   `EmissionController` rename (rule 3). `git status` shows untracked `.meta` files
   right beside the script; they're easy to skip when staging by name.
+- **CODE WRITTEN FROM ONE ACTOR'S PERSPECTIVE BREAKS FOR THE OTHER — re-read it as the
+  other actor before shipping.** `MeleeAttack` was built player-first and worked perfectly
+  for years of player swings; the moment NPCs started attacking, TWO latent bugs opened at
+  once (a 16-collider gather buffer sized for a player's one-or-two targets vs a goblin
+  standing inside a crowd of ragdoll colliders, and an LOS test that excluded the victim
+  but not the attacker, which only mattered because NPCs have no `aimSource` pushing the
+  origin clear of their own chest). Neither produced an error; both present as "swings
+  sometimes silently whiff". The same shape appeared in the bash work — buffers, contact
+  points and impulse magnitudes all sized for the player's case. When a shared system gains
+  a second kind of user, walk its assumptions from the new user's position deliberately;
+  the defaults will be wrong in ways that never surface as exceptions.
 - **Two unrelated fixes in one file still get two commits.** Stage one, commit,
   restore the other, commit again — the history is what makes a field lesson findable
   later, and a combined commit buries one of them.
