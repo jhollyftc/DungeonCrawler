@@ -63,5 +63,35 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 10f3f6a72b6befe42926105a151bf39e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4366104845556585029}
   m_SourcePrefab: {fileID: 100100000, guid: 10f3f6a72b6befe42926105a151bf39e, type: 3}
+--- !u!1 &648554235091625533 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 10f3f6a72b6befe42926105a151bf39e, type: 3}
+  m_PrefabInstance: {fileID: 414693411383876460}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &4366104845556585029
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 648554235091625533}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 96ddec2455f1df340a088bd75c5d1424, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EmissionController
+  targetRenderer: {fileID: 1297279496689911784}
+  materialIndex: 1
+  emissionColor: {r: 1, g: 0, b: 0.7719126, a: 1}
+  intensity: 2.4
+  emissionProperty: _EmissionColor
+--- !u!23 &1297279496689911784 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: -7511558181221131132, guid: 10f3f6a72b6befe42926105a151bf39e, type: 3}
+  m_PrefabInstance: {fileID: 414693411383876460}
+  m_PrefabAsset: {fileID: 0}

@@ -3,7 +3,47 @@ guid: ccec73f6eefbaf74ea92aa848c16051b
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: BlackBars.003
+    second: {fileID: 2100000, guid: 05aa5c6e9aae7804aaf9b6ae0a44bbe7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Stone_Wall_03_MAT.001
+    second: {fileID: 2100000, guid: 4f432a2fb314d08499f9d2ca9cf34ca4, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: cell_background2
+    second: {fileID: 2100000, guid: b0f6d52e286eb134188c50579e831cff, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: cobweb_material.001
+    second: {fileID: 2100000, guid: 0649ed14de5854e4dbd1ee20e9a9dc6f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: cobweb_material.002
+    second: {fileID: 2100000, guid: 0649ed14de5854e4dbd1ee20e9a9dc6f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: cobweb_material.003
+    second: {fileID: 2100000, guid: 0649ed14de5854e4dbd1ee20e9a9dc6f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: dark gray stone.001
+    second: {fileID: 2100000, guid: 0a41120931dd6864eaa47be662b6ffd6, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: stonewall_window.001
+    second: {fileID: 2100000, guid: 2c40bf1a1d7d6fa42b9f4c98e32a99ed, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

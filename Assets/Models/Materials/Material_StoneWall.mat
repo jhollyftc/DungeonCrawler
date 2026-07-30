@@ -130,8 +130,8 @@ Material:
     - _RimThreshold: 0.72
     - _Smoothness: 0.5
     - _SmoothnessTextureChannel: 0
-    - _SpecPower: 14.1
-    - _SpecSoftness: 0.2537
+    - _SpecPower: 9
+    - _SpecSoftness: 0.3
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
@@ -147,6 +147,6 @@ Material:
     - _OutlineColor: {r: 0.02, g: 0.02, b: 0.03, a: 1}
     - _RimColor: {r: 0.86336803, g: 0.8679245, b: 0.5199359, a: 1}
     - _ShadowTint: {r: 0.3962264, g: 0.3962264, b: 0.3962264, a: 1}
-    - _SpecColor: {r: 0.46226418, g: 0.46226418, b: 0.46226418, a: 1}
+    - _SpecColor: {r: 0.26415092, g: 0.26415092, b: 0.26415092, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
