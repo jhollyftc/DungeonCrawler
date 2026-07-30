@@ -18,11 +18,11 @@ TagManager:
   - Water
   - UI
   - NPC
-  - 
-  - 
-  - 
-  - 
-  - 
+  - Doors
+  - Player
+  - DoorJam
+  - Props
+  - Destructible
   - 
   - 
   - 
