@@ -114,6 +114,9 @@ Order matters; several stages depend on earlier ones. Current order:
 8. **AssignRoomTypes** — see §4.
 9. **PlaceSatelliteRooms** — type-paired closets (see §4).
 10. **PlanInteriorColumns** — lattice-point column plans for grand rooms (see §4).
+10b. **PlacePits** — cuts chasms across room floors, carves the space beneath, spans them
+    with a bridge and mounts a climb-out ladder (see §4). Runs BEFORE `PlanInteriorColumns`,
+    or a column is planned on a lattice point over the hole.
 11. **WidenJunctions** — opens corridor JUNCTIONS AND BENDS into 2x2 plazas, optionally
     with a column at the centre (reusing `ColumnPoints`, so the kit's existing interior
     column slot renders them). Corridors are 1-wide **structurally**, not by policy — a
@@ -232,6 +235,51 @@ combined with wide prison cells and junction plazas, "no longer just straight ha
   host, Prison is not a legal alcove neighbour, so alcoves would silently eat prison sites
   if reordered) and **last** among rng-drawing stages (so appending shifted no existing
   seed's rooms, prisons, satellites or columns).
+
+**Pits (`PlacePits`, `Pit.cs`)** — chasms cut across a room's floor, with the space beneath
+carved out, a bridge across and a ladder out. **Rooms only, structurally:**
+`HallwayPathfinder.SurroundingsOk` demands solid rock above AND below every corridor cell,
+so open-under-open cannot exist in a hallway. A tall room is already a two-level open volume;
+a pit applies that to a SUBSET of one room's cells.
+- **THE WHOLE MECHANISM IS ONE LINE IN `NeedsSlabBetween`** (`if (IsPitOpening(upper))
+  return false;`). Because that method is already the single source of truth for the mesher,
+  the kit placer AND the automap, it reaches collision, visuals and the map together and they
+  cannot disagree about where the floor is. Everything else falls out of existing rules: the
+  pit floor appears because the cell below its bottom is Empty; its walls appear because its
+  neighbours are solid; a 2-deep pit reads as one shaft; the top pit cell gets no ceiling
+  because it is open to the room.
+- **PIT CELLS KEEP THEIR OWN REGISTRY — never `Room.Cells` or `Room.Bounds`.** Extending
+  Bounds downward is the obvious move and corrupts five systems that read `Bounds.yMin` as
+  "the room's floor": `InteriorFloorCell`, `AllocateInteriorStairs`, `AllocateLadders`,
+  `RecordDoor`'s `IsElevated`, and `ChooseStartAndExit`'s climb-out rule — the room would
+  read a storey deeper and the vertical Start/Exit pick would be wrong. Putting them in
+  `Cells` while leaving Bounds alone very nearly works (`NeedsSlabBetween` would then need no
+  change at all) but `Cells` is iterated by `ComputeZones`, `CellCount` and the prop placers,
+  all assuming one floor level. **`RoomAt` falls back through `PitAt`** so a pit is still
+  STYLED as part of its room; without it the kit puts generic walls down a hole in a themed
+  room.
+- **BRIDGES ARE GENERATOR-OWNED KIT PIECES, NOT PROPS** — the decision that makes it safe for
+  a pit to sever a room. The connectivity flood-fill counts bridge cells as walkable and
+  proves every doorway still reachable BEFORE committing the pit, which is only sound if the
+  crossing cannot fail to appear. A prop can decline to place, and cell-level connectivity
+  cannot see a prop at all (§10). The deck's collider does double duty: what you walk on, and
+  what bakes the span into the navmesh — so **NPCs cross bridges with no AI work**, the sharp
+  contrast with ladders, which are invisible to `NavMeshAgent` because climbing is scripted
+  rather than walkable geometry. If that collider is a MeshCollider its mesh must be
+  Read/Write Enabled or the bridge vanishes from the bake in a PLAYER BUILD only (§10).
+- Depth SHRINKS TO FIT (2 cells, 1 where the rock is thin), like prisons and alcoves.
+  Start/Exit/Merchant are never eligible. Climb-out reuses `LadderSpec` + `LadderClimbZone`
+  verbatim, so NPCs knocked in are stuck until `NpcLocomotion.CheckFall` recovers them.
+- **A PIT OPENING PASSES EVERY "IS THIS A ROOM CELL" TEST**, because it genuinely is one —
+  just floorless. See §12's category rule; `Room.Holes` is the flag, and it lives on `Room`
+  rather than only in the pit registry because `InteriorFloorCell` is a Room property with no
+  generator reference.
+- **A BRIDGE DECK IS A THRESHOLD, NOT A HOLE** (real bug). Decks were first marked in
+  `Room.Holes`, which removes a cell from `rz.Floor` and therefore from the prop system's
+  threshold FLOOD-FILL — so on a severing pit the flood-fill could not cross the bridge, every
+  blocking placement failed the connectivity check, and the room got NO props at all. "No
+  floor, nothing may stand here" and "walkable but don't decorate it" are different
+  properties; a deck is the second, exactly as doorways already are.
 
 ---
 
@@ -1966,12 +2014,14 @@ Cosmetic-first; combat is far off ("get the world together first").
     Field verdict: "no longer just straight hallways."
     ⏳ open: per-kind kit walls/floors for alcoves; an arch on the alcove mouth (pay the
     `BuildArchways` + `FrameFace` pair cost together, §7, or posts land through arches).
-    ⏳ **ROOM PITS AND BRIDGES** is the remaining big spatial idea and the one corridors
-    structurally CANNOT do: `HallwayPathfinder.SurroundingsOk` requires solid rock above
-    AND below every corridor cell, so open-under-open only exists in rooms (which is
-    already how tall rooms work). A tall room whose lower level is a pit rather than a
-    floor, crossed by a bridge and escaped by ladder, ties into the climb-out progression
-    — but `NeedsSlabBetween` and the mesher both have to learn about it.
+    ✅ **ROOM PITS AND BRIDGES** — chasms across room floors with the space beneath carved
+    out, a generator-owned bridge deck across and a ladder out (§4). Rooms only, structurally.
+    The whole mechanism turned out to be ONE line in `NeedsSlabBetween`; the work was the four
+    consumers that assumed a room cell has a floor (§12's category rule).
+    ⏳ open: loot in pit bottoms (a natural hiding place, and `DestructibleProp`'s OnDestroyed
+    hook is the model); fall damage (`DamageType.Fall` exists but is unwired); NPCs stranded
+    in a pit rely on `NpcLocomotion.CheckFall` recovering them, which is verified-by-play
+    rather than designed.
 30. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
     doored rooms = lockable set), difficulty gradient by graph depth, equipment
     + SwayProfiles.
@@ -1989,6 +2039,18 @@ Cosmetic-first; combat is far off ("get the world together first").
   prefab reference — the same class of failure as the `EmissiveController`/
   `EmissionController` rename (rule 3). `git status` shows untracked `.meta` files
   right beside the script; they're easy to skip when staging by name.
+- **ADDING A PROPERTY TO A SUBSET OF AN EXISTING CATEGORY MEANS AUDITING EVERY CONSUMER OF
+  THAT CATEGORY.** A pit opening is a room cell in every respect the code can test — it is in
+  `Room.Cells`, its `CellType` is `Room`, it sits at floor level — it simply has no floor. So
+  every system that had quietly assumed "room cell ⇒ something to stand on" broke, and each
+  broke SILENTLY and DIFFERENTLY: `RoomPropPlacer` dropped a chest into the void,
+  `InteriorFloorCell` handed a floorless cell to the player spawn / navmesh sample point /
+  path-debug endpoints, `PlanInteriorColumns` hung stacked segments over the chasm, and
+  `TorchPlacer` lit the inside of it. Four consumers, four unrelated-looking bugs, one cause.
+  When you give a subset of an existing category a new property, the work is not the feature —
+  it is grepping for everyone who reads that category and asking whether the new property
+  breaks their assumption. (`Room.Holes` is the flag here; the same shape will recur for any
+  future "room cell that isn't quite a room cell".)
 - **A PASS THAT WRITES THE CELLTYPE IT READS WILL FEED ON ITSELF.** Both new corridor
   features hit this, one stage apart, and it is a property of the shape rather than a slip.
   **Alcoves** are typed `Hallway` (that's what gets them free walls and floors), so an
