@@ -51,6 +51,24 @@ namespace DungeonGen
         [Tooltip("No prison may be placed within this many cells (XZ) of a staircase.")]
         public int prisonStairClearance = 2;
 
+        [Header("Room pits")]
+        [Tooltip("Cut chasms across room floors, carve the space below, span them with a bridge and mount a climb-out ladder. Rooms only — a corridor cell must have solid rock above AND below it, so open-under-open cannot exist in a hallway.")]
+        public bool placePits = true;
+        [Tooltip("Chance per eligible ROOM. Start, Exit and Merchant are never eligible.")]
+        [Range(0f, 1f)] public float pitChance = 0.25f;
+        [Tooltip("How deep, in cells (3m each). Shrinks to fit: a room with only one clear level of rock beneath it gets a 1-deep pit rather than none.")]
+        public int pitDepthCells = 2;
+        [Tooltip("Chance a pit is 2 cells WIDE rather than 1 — a wider chasm reads as more of an obstacle and needs a longer bridge.")]
+        [Range(0f, 1f)] public float pitWideChance = 0.35f;
+        [Tooltip("Smallest room edge (cells) that may take a pit. A chasm needs floor on both sides to be a crossing rather than a trap.")]
+        public int pitMinRoomEdge = 5;
+        [Tooltip("Fewest opening cells for a pit to be worth cutting.")]
+        public int pitMinCells = 3;
+        [Tooltip("Span pits with a bridge. OFF makes every pit a walk-around obstacle, which the connectivity check then has to satisfy without a crossing — expect far fewer pits.")]
+        public bool pitBridges = true;
+        [Tooltip("Hard ceiling on pits per run. 0 = unlimited.")]
+        public int pitMaxCount = 3;
+
         [Header("Junction plazas")]
         [Tooltip("Open corridor junctions and bends out into 2x2 plazas. Corridors are 1-wide structurally (a cell exists iff it is on an A* path), so this is a deliberate post-pass, not a width setting.")]
         public bool widenJunctions = true;
@@ -91,6 +109,20 @@ namespace DungeonGen
         /// Empty set = treat as a full box (legacy safety).</summary>
         public HashSet<Vector3Int> Cells = new HashSet<Vector3Int>();
 
+        /// <summary>
+        /// Floor cells with NO FLOOR — a pit's openings. They remain in <see cref="Cells"/>
+        /// (they are still part of the room, just floorless) so walls and styling resolve
+        /// normally, but ANYTHING THAT STANDS SOMETHING ON THE FLOOR MUST SKIP THEM: props,
+        /// zone classification, spawn points, navmesh sample points. Bridge cells are included
+        /// — a deck is walkable but is not somewhere to put a chest.
+        ///
+        /// Lives on Room rather than only in the generator's pit registry because
+        /// InteriorFloorCell is a Room property with no generator reference, and it feeds the
+        /// player spawn, DungeonNavBaker's sample point and DungeonPathDebug's endpoints —
+        /// all of which would otherwise happily pick a hole.
+        /// </summary>
+        public HashSet<Vector3Int> Holes = new HashSet<Vector3Int>();
+
         public bool Contains(Vector3Int c) =>
             Cells.Count > 0 ? Cells.Contains(c) : Bounds.Contains(c);
 
@@ -116,6 +148,7 @@ namespace DungeonGen
                 foreach (var cell in Cells)
                 {
                     if (cell.y != Bounds.yMin) continue;
+                    if (Holes.Contains(cell)) continue;   // never hand out a cell with no floor
                     float d = (new Vector3(cell.x + 0.5f, cell.y, cell.z + 0.5f) - c).sqrMagnitude;
                     if (d < bestD) { bestD = d; best = cell; }
                 }
@@ -177,6 +210,22 @@ namespace DungeonGen
         /// <summary>Carved recesses off corridors. Their CELLS are ordinary Hallway in the grid
         /// (see AlcoveSpec) — this list is the only thing that knows they're alcoves.</summary>
         public List<AlcoveSpec> Alcoves { get; } = new List<AlcoveSpec>();
+        /// <summary>Holes cut in room floors. See PitSpec for why these keep their own registry
+        /// instead of joining Room.Cells/Bounds.</summary>
+        public List<PitSpec> Pits { get; } = new List<PitSpec>();
+
+        // Opening -> pit (the hole you fall through) and carved cell -> pit (the interior).
+        readonly Dictionary<Vector3Int, PitSpec> pitOpenings = new Dictionary<Vector3Int, PitSpec>();
+        readonly Dictionary<Vector3Int, PitSpec> pitCells = new Dictionary<Vector3Int, PitSpec>();
+
+        /// <summary>This room-floor cell has NO floor — anything that stands things on a floor
+        /// must skip it, and NeedsSlabBetween suppresses the slab beneath it.</summary>
+        public bool IsPitOpening(Vector3Int c) => pitOpenings.ContainsKey(c);
+        /// <summary>The pit owning a carved interior cell, or null.</summary>
+        public PitSpec PitAt(Vector3Int c) => pitCells.TryGetValue(c, out var p) ? p : null;
+        /// <summary>A bridge spans this opening, so it IS walkable despite having no floor.</summary>
+        public bool IsBridgeCell(Vector3Int c) =>
+            pitOpenings.TryGetValue(c, out var p) && p.BridgeCells.Contains(c);
 
         // Cell -> alcove. A dictionary rather than RoomAt's linear scan because the prop pass
         // and the hallway pass both query it per cell.
@@ -219,6 +268,7 @@ namespace DungeonGen
             PlacePrisons();
             AssignRoomTypes();
             PlaceSatelliteRooms();
+            PlacePits();
             PlanInteriorColumns();
             WidenJunctions();
             PlaceAlcoves();
@@ -1187,7 +1237,13 @@ namespace DungeonGen
             foreach (var room in Rooms)
                 if (room.Contains(cell))
                     return room;
-            return null;
+
+            // A pit's carved cells are deliberately absent from Room.Cells (see PitSpec), so
+            // resolve them through the pit registry instead. Without this a pit interior has no
+            // room, and the kit places GENERIC walls and floor down there while the room above
+            // it is styled — a visible seam at exactly the place the player is looking.
+            var pit = PitAt(cell);
+            return pit?.Owner;
         }
 
         /// <summary>
@@ -1226,6 +1282,16 @@ namespace DungeonGen
             // on the old "is below solid?" test to skip StairUpper cells. Without this,
             // every corridor staircase gets a floor tile through its middle.
             if (Grid[lower] == CellType.StairLower && Grid[upper] == CellType.StairUpper) return false;
+
+            // A PIT OPENING is a hole: no slab beneath it, which is the entire mechanism. One
+            // line here reaches collision, visuals AND the automap, because DungeonMesher,
+            // DungeonKitPlacer and DungeonMapper all route their floor decision through this
+            // method — so they cannot disagree about where the floor is.
+            //
+            // Runs before the room test on purpose: the opening and the pit cell below it are
+            // NOT in the same room (pit cells keep their own registry, see PitSpec), so the
+            // room-identity rule would otherwise return true and floor the hole over.
+            if (IsPitOpening(upper)) return false;
 
             Room r = RoomAt(lower);
             return r == null || !ReferenceEquals(r, RoomAt(upper));
@@ -1407,6 +1473,12 @@ namespace DungeonGen
                         if (!room.Contains(c00) || !room.Contains(c10) ||
                             !room.Contains(c01) || !room.Contains(c11)) continue;
 
+                        // A pit opening is still in room.Cells (it IS a room cell, just
+                        // floorless), so Contains passes and the column would hang over the
+                        // chasm — stacked segments dangling in mid-air with no floor under them.
+                        if (room.Holes.Contains(c00) || room.Holes.Contains(c10) ||
+                            room.Holes.Contains(c01) || room.Holes.Contains(c11)) continue;
+
                         bool nearDoor =
                             doorCells.Contains(c00) || doorCells.Contains(c10) ||
                             doorCells.Contains(c01) || doorCells.Contains(c11);
@@ -1475,6 +1547,274 @@ namespace DungeonGen
         /// Validate and commit one candidate prison footprint. Split out of TryPlacePrison so
         /// the width-shrink loop can attempt several without duplicating the rules.
         /// </summary>
+        // ---------------- Stage 10b: room pits ----------------
+
+        /// <summary>
+        /// Cut a chasm across a room's floor, carve the space beneath it, span it with a
+        /// bridge and mount a ladder to climb out.
+        ///
+        /// PITS ARE A ROOMS-ONLY FEATURE and that is structural: HallwayPathfinder's
+        /// SurroundingsOk requires solid rock above AND below every corridor cell, so
+        /// open-under-open cannot exist in a hallway. A tall room is already a two-level open
+        /// volume; a pit applies the same idea to a SUBSET of one room's cells.
+        ///
+        /// RUNS BEFORE PlanInteriorColumns, because a column planned on a lattice point over
+        /// the hole would hang in mid-air. That means its rng draws shift columns, plazas and
+        /// alcoves — but NOT rooms, prisons or satellites, whose layouts are already committed.
+        /// </summary>
+        void PlacePits()
+        {
+            Pits.Clear();
+            pitOpenings.Clear();
+            pitCells.Clear();
+            if (!cfg.placePits || cfg.pitChance <= 0f) return;
+
+            // Thresholds: a hole in a doorway would drop you through the entrance, and the
+            // corner-post/archway classifiers assume a floor there.
+            var doorCells = new HashSet<Vector3Int>();
+            foreach (var d in Doors)
+            {
+                doorCells.Add(d.HallwayCell);
+                doorCells.Add(d.HallwayCell + d.Direction);
+            }
+
+            for (int i = 0; i < Rooms.Count; i++)
+            {
+                // Fixed draws per room whatever happens (golden rule 4).
+                double roll = rng.NextDouble();
+                double axisRoll = rng.NextDouble();
+                double posRoll = rng.NextDouble();
+                double widthRoll = rng.NextDouble();
+                double bridgeRoll = rng.NextDouble();
+
+                if (Pits.Count >= cfg.pitMaxCount && cfg.pitMaxCount > 0) break;
+                if (roll >= cfg.pitChance) continue;
+
+                Room room = Rooms[i];
+
+                // Never in the rooms the run depends on. Start and Exit must stay clean — a
+                // pit at the spawn point or the portal is a bad first and last impression —
+                // and the merchant is the one room the player is meant to reach easily.
+                if (room.Type == RoomType.Start || room.Type == RoomType.Exit ||
+                    room.Type == RoomType.Merchant) continue;
+
+                if (room.Bounds.size.x < cfg.pitMinRoomEdge || room.Bounds.size.z < cfg.pitMinRoomEdge)
+                    continue;
+
+                TryCutPit(room, i, axisRoll, posRoll, widthRoll, bridgeRoll, doorCells);
+            }
+
+            if (Pits.Count > 0 && cfg.debugAlcoves)
+                Debug.Log($"[Pits] {Pits.Count} pit(s) cut.");
+        }
+
+        void TryCutPit(Room room, int roomIndex, double axisRoll, double posRoll,
+                       double widthRoll, double bridgeRoll, HashSet<Vector3Int> doorCells)
+        {
+            int yFloor = room.Bounds.yMin;
+            var b = room.Bounds;
+
+            // The chasm runs ACROSS the room: pick which axis it spans, then a band position on
+            // the other one. A full-width strip is deliberate — a chasm you can walk around is
+            // scenery, one you must cross is a decision.
+            bool alongX = axisRoll < 0.5;                 // strip varies X, band fixed in Z
+            int bandMin = alongX ? b.zMin : b.xMin;
+            int bandMax = alongX ? b.zMax - 1 : b.xMax - 1;
+            if (bandMax - bandMin < 2) return;            // no room for floor either side
+
+            int width = widthRoll < cfg.pitWideChance ? 2 : 1;
+            // Inset by 1 so there is always floor on both sides to stand on.
+            int firstBand = bandMin + 1;
+            int lastBand = bandMax - width;
+            if (lastBand < firstBand) return;
+            int band = Mathf.Clamp(firstBand + (int)(posRoll * (lastBand - firstBand + 1)),
+                                   firstBand, lastBand);
+
+            // Collect the openings — every floor cell of this room in the band.
+            var openings = new List<Vector3Int>();
+            foreach (var c in room.Cells)
+            {
+                if (c.y != yFloor) continue;
+                if (Grid[c] != CellType.Room) continue;           // skip interior stairs etc.
+                int v = alongX ? c.z : c.x;
+                if (v < band || v >= band + width) continue;
+                if (doorCells.Contains(c)) return;                // hole in a threshold — abort
+                openings.Add(c);
+            }
+            if (openings.Count < cfg.pitMinCells) return;
+
+            // DEPTH SHRINKS TO FIT: two cells where the rock allows it, one where it doesn't —
+            // the same pattern prisons and alcoves use. Every cell for the full depth must be
+            // solid rock, or the pit would open into a corridor or another room below.
+            int depth = 0;
+            for (int d = cfg.pitDepthCells; d >= 1; d--)
+            {
+                if (RockClearBelow(openings, yFloor, d)) { depth = d; break; }
+            }
+            if (depth == 0) return;
+
+            // BRIDGE: one crossing, spanning the band at a chosen position along the strip.
+            // Generator-owned rather than a prop precisely so the connectivity test below can
+            // count on it — a prop could decline to place, and a cell-level flood-fill could
+            // never see it anyway (§10, cell connectivity != navmesh connectivity).
+            var bridge = new HashSet<Vector3Int>();
+            if (cfg.pitBridges)
+            {
+                var spanValues = new List<int>();
+                foreach (var c in openings)
+                {
+                    int s = alongX ? c.x : c.z;
+                    if (!spanValues.Contains(s)) spanValues.Add(s);
+                }
+                spanValues.Sort();
+                if (spanValues.Count > 0)
+                {
+                    int pick = spanValues[Mathf.Clamp((int)(bridgeRoll * spanValues.Count),
+                                                      0, spanValues.Count - 1)];
+                    foreach (var c in openings)
+                        if ((alongX ? c.x : c.z) == pick) bridge.Add(c);
+                }
+            }
+
+            // CONNECTIVITY: every doorway must still reach every other, treating openings as
+            // holes and bridge cells as walkable. Without this a seed can produce a room whose
+            // far half — and whatever door leads on from it — is unreachable.
+            if (!PitLeavesRoomConnected(room, roomIndex, yFloor, openings, bridge)) return;
+
+            // ---- Commit ----
+            // alongX means the chasm RUNS along X (varying x, fixed z band), so you cross it
+            // along Z — and vice versa. Recorded because the bridge has no other way to know
+            // which way to face.
+            var pit = new PitSpec
+            {
+                Owner = room,
+                FloorY = yFloor,
+                DepthCells = depth,
+                CrossDirection = alongX ? new Vector3Int(0, 0, 1) : new Vector3Int(1, 0, 0),
+            };
+            foreach (var c in bridge) pit.BridgeCells.Add(c);
+
+            foreach (var c in openings)
+            {
+                pit.Openings.Add(c);
+                pitOpenings[c] = pit;
+
+                // BRIDGE CELLS ARE NOT HOLES. Room.Holes means "no floor, nothing may stand
+                // here", and it removes a cell from rz.Floor entirely — which also removes it
+                // from the prop system's threshold FLOOD-FILL. Marking a deck as a hole
+                // therefore made the bridge impassable to that flood-fill, so on a severing pit
+                // every blocking placement failed the connectivity check and the room got no
+                // props at all (real bug). A deck is walkable; it just isn't somewhere to put a
+                // chest — which is what RESERVED means, and how doorways are already handled.
+                if (!pit.BridgeCells.Contains(c)) room.Holes.Add(c);
+            }
+
+            for (int d = 1; d <= depth; d++)
+                foreach (var c in openings)
+                {
+                    var p = new Vector3Int(c.x, yFloor - d, c.z);
+                    Grid[p] = CellType.Room;      // room VOLUME; RoomAt resolves it via PitAt
+                    pit.Cells.Add(p);
+                    pitCells[p] = pit;
+                }
+
+            Pits.Add(pit);
+
+            // Escape ladder, reusing the existing LadderSpec + LadderClimbZone machinery
+            // verbatim: a pit floor cell against a pit wall, climbing back to the room floor.
+            AddPitLadder(pit, alongX);
+        }
+
+        /// <summary>Every cell for `depth` levels beneath the openings must be solid rock, or
+        /// the pit would break into a corridor, a stair or another room below.</summary>
+        bool RockClearBelow(List<Vector3Int> openings, int yFloor, int depth)
+        {
+            foreach (var c in openings)
+                for (int d = 1; d <= depth; d++)
+                {
+                    var p = new Vector3Int(c.x, yFloor - d, c.z);
+                    if (!Grid.InBounds(p) || Grid[p] != CellType.Empty) return false;
+                }
+            return true;
+        }
+
+        /// <summary>
+        /// Flood-fill at room-floor level with the pit cut, checking every door threshold still
+        /// reaches every other. Same shape as GroundFloorConnected, with two differences: an
+        /// opening is impassable, and a BRIDGE cell is passable despite having no floor.
+        /// </summary>
+        bool PitLeavesRoomConnected(Room room, int roomIndex, int yFloor,
+                                    List<Vector3Int> openings, HashSet<Vector3Int> bridge)
+        {
+            var holes = new HashSet<Vector3Int>(openings);
+
+            var required = new List<Vector3Int>();
+            foreach (var d in Doors)
+            {
+                if (d.RoomIndex != roomIndex) continue;
+                Vector3Int t = d.HallwayCell + d.Direction;
+                if (t.y == yFloor && room.Contains(t) && Grid[t] == CellType.Room && !holes.Contains(t))
+                    required.Add(t);
+            }
+            if (required.Count <= 1) return true;
+
+            bool Walkable(Vector3Int c) =>
+                c.y == yFloor && room.Contains(c) && Grid[c] == CellType.Room &&
+                (!holes.Contains(c) || bridge.Contains(c));
+
+            var seen = new HashSet<Vector3Int> { required[0] };
+            var queue = new Queue<Vector3Int>();
+            queue.Enqueue(required[0]);
+            while (queue.Count > 0)
+            {
+                var c = queue.Dequeue();
+                foreach (var d in HorizontalDirs)
+                {
+                    var n = c + d;
+                    if (seen.Contains(n) || !Walkable(n)) continue;
+                    seen.Add(n);
+                    queue.Enqueue(n);
+                }
+            }
+            foreach (var c in required)
+                if (!seen.Contains(c)) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Mount a climb-out ladder on a pit wall. Reuses LadderSpec unchanged, so the kit's
+        /// existing ladder segments and LadderClimbZone handle it with no new machinery.
+        ///
+        /// NB NPCs cannot use it — ladders are invisible to NavMeshAgent (§10) — so a goblin
+        /// knocked into a pit is stuck there until NpcLocomotion.CheckFall warps it back. That
+        /// is a known limitation of ladders generally, not something pits introduce.
+        /// </summary>
+        void AddPitLadder(PitSpec pit, bool alongX)
+        {
+            // A pit-floor cell whose neighbour ACROSS the chasm's width is solid: that wall runs
+            // the length of the pit, so the ladder always has something to mount on.
+            Vector3Int wallDir = alongX ? new Vector3Int(0, 0, 1) : new Vector3Int(1, 0, 0);
+
+            foreach (var c in pit.Cells)
+            {
+                if (c.y != pit.BottomY) continue;                 // stand on the pit floor
+                foreach (var sign in new[] { 1, -1 })
+                {
+                    Vector3Int wd = wallDir * sign;
+                    Vector3Int against = c + wd;
+                    if (Grid.InBounds(against) && Grid[against] != CellType.Empty) continue;
+
+                    Ladders.Add(new LadderSpec
+                    {
+                        BaseCell = c,
+                        WallDir = wd,
+                        HeightCells = pit.DepthCells,
+                    });
+                    return;
+                }
+            }
+        }
+
         // ---------------- Stage 11: junction plazas ----------------
 
         /// <summary>
