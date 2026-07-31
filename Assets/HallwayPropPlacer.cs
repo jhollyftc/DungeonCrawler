@@ -46,9 +46,15 @@ namespace DungeonGen
                 (grid[p] == CellType.Hallway || grid[p] == CellType.StairLower || grid[p] == CellType.StairUpper);
 
             // All corridor floor cells, stable order.
+            //
+            // ALCOVE CELLS ARE EXCLUDED. They are typed Hallway so the kit gives them walls and
+            // floors for free, which means they would otherwise collect generic corridor debris
+            // on top of whatever AlcovePropPlacer put there — burying the statue the alcove
+            // exists to show. Alcove contents are per-KIND and belong to that pass alone.
             var cells = new List<Vector3Int>();
             for (int i = 0; i < grid.Length; i++)
-                if (grid[i] == CellType.Hallway) cells.Add(grid.Position(i));
+                if (grid[i] == CellType.Hallway && !gen.IsAlcoveCell(grid.Position(i)))
+                    cells.Add(grid.Position(i));
             if (cells.Count == 0) return root;
             cells.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.z != b.z ? a.z.CompareTo(b.z) : a.y.CompareTo(b.y));
 
@@ -57,6 +63,10 @@ namespace DungeonGen
             var doorCells = new HashSet<Vector3Int>();
             foreach (var d in gen.Doors) doorCells.Add(d.HallwayCell);
             var reserved = new HashSet<Vector3Int>(doorCells);
+
+            // The corridor tile in front of each alcove is reserved too: debris piled exactly
+            // where you'd stand to look into a niche hides the niche.
+            foreach (var a in gen.Alcoves) reserved.Add(a.HallCell);
 
             var usedFloor = new HashSet<Vector3Int>();
             var usedCeiling = new HashSet<Vector3Int>();

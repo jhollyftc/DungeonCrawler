@@ -110,9 +110,17 @@ namespace DungeonGen
 
                 Vector3Int c = grid.Position(i);
                 if (Open(c + Vector3Int.down)) continue;   // floor level only
+
+                // Torches respect an already-CLAIMED face. Nothing used to claim before this
+                // pass ran, so this was a no-op when written — it exists for AlcovePropPlacer,
+                // which runs first precisely because an alcove has ~3 faces and one hero prop
+                // and cannot afford to lose the right wall to a sconce. Regression test if you
+                // touch it: torch count and positions must be unchanged on a fixed seed with
+                // alcoves disabled.
                 foreach (var d in HDirs)
                     if (!Open(c + d) &&                     // solid wall to mount on
-                        (wallFaces == null || wallFaces.TorchAllowed(i, d))) // wall asset accepts a torch
+                        (wallFaces == null || (wallFaces.TorchAllowed(i, d) &&   // wall asset accepts a torch
+                                               !wallFaces.IsClaimed(i, d))))     // and nobody got there first
                         slots.Add((c, d, t));
             }
 

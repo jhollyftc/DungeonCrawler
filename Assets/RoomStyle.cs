@@ -375,6 +375,15 @@ namespace DungeonGen
             public PropSet props;
         }
 
+        /// <summary>One alcove kind's contents. Mirrors PropSetEntry — kind instead of room type.</summary>
+        [System.Serializable]
+        public class AlcoveStyleEntry
+        {
+            public AlcoveKind kind;
+            [Tooltip("Props for this kind. The Feature anchor works here: the alcove's Direction supplies the same back/left/right frame a room's entrance does, so WallSide.Back is the far face and FeatureFacing.Outward looks out at the corridor.")]
+            public PropSet props;
+        }
+
         [Header("Props (per room type; sets are shareable assets)")]
         public List<PropSetEntry> roomProps = new List<PropSetEntry>();
         [Tooltip("One global prop set for ALL corridors — debris, cobwebs, roots. Hallways have no zones, so zone/feature fields are ignored; scatter (snapToWall works), ceiling, and wall-mounted anchors apply. Empty = no hallway props.")]
@@ -391,5 +400,18 @@ namespace DungeonGen
 
         /// <summary>The global corridor prop set, or null.</summary>
         public PropSet HallwayProps() => hallwayProps;
+
+        [Header("Hallway alcoves (per KIND)")]
+        [Tooltip("Contents for each alcove kind. An alcove is a small recess carved off a corridor, and its KIND is what gives it an identity — a statue nook wants a Feature facing out, a collapsed dig wants scatter, a storage recess wants crates. Alcove cells are ordinary hallway in the grid, so they inherit hallway WALLS/floors/ceilings; only the props are per-kind. A kind with no entry here simply generates as an empty recess.")]
+        public List<AlcoveStyleEntry> alcoveStyles = new List<AlcoveStyleEntry>();
+
+        /// <summary>Prop set for an alcove kind, or null (an empty recess).</summary>
+        public PropSet AlcoveProps(AlcoveKind kind)
+        {
+            foreach (var e in alcoveStyles)
+                if (e.kind == kind)
+                    return e.props;
+            return null;
+        }
     }
 }
