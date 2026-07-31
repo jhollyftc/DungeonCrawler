@@ -80,8 +80,12 @@ namespace DungeonGen
 
             var rz = new RoomZones();
             int yFloor = room.Bounds.yMin;
+            // Pit openings are excluded from the floor set entirely, which propagates to every
+            // consumer of ComputeZones at once — zone classification, prop targets, the
+            // entrance-axis maths and the threshold flood-fill. Without this the placer
+            // cheerfully drops a chest into the void, and it fails SILENTLY.
             foreach (var c in room.Cells)
-                if (c.y == yFloor) rz.Floor.Add(c);
+                if (c.y == yFloor && !room.Holes.Contains(c)) rz.Floor.Add(c);
             rz.Floor.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.z.CompareTo(b.z));
             if (rz.Floor.Count == 0) return rz;
 
@@ -98,6 +102,24 @@ namespace DungeonGen
             }
             foreach (var ladder in gen.Ladders)
                 doorRoomCells.Add(ladder.BaseCell);
+
+            // A BRIDGE AND ITS LANDINGS ARE A DOORWAY. The deck is walkable — deliberately NOT
+            // in room.Holes, or the threshold flood-fill can't cross it — so it needs reserving
+            // like any other threshold, and so do the floor cells it lands on. A collider prop
+            // at either end blocks the only crossing of a pit that may legitimately sever the
+            // room, which is exactly why door thresholds are reserved: a doorway you can't walk
+            // through isn't decorated, it's broken.
+            foreach (var pit in gen.Pits)
+                foreach (var c in pit.BridgeCells)
+                {
+                    if (room.Contains(c)) doorRoomCells.Add(c);
+                    foreach (var d in HDirs)
+                    {
+                        Vector3Int landing = c + d;
+                        if (room.Contains(landing) && !room.Holes.Contains(landing))
+                            doorRoomCells.Add(landing);
+                    }
+                }
 
             foreach (var c in rz.Floor)
             {

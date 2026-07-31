@@ -111,6 +111,13 @@ namespace DungeonGen
                 Vector3Int c = grid.Position(i);
                 if (Open(c + Vector3Int.down)) continue;   // floor level only
 
+                // PIT INTERIORS get no torches. A pit's cells are CellType.Room and its floor
+                // reads as floor level, so they qualify on every other test — but a lit chasm
+                // reads as another room you can see into rather than a hole you shouldn't fall
+                // down, and it robs the pit of the one thing it has: being dark and unknown.
+                // (Remove this if you'd rather light them; nothing else depends on it.)
+                if (gen.PitAt(c) != null) continue;
+
                 // Torches respect an already-CLAIMED face. Nothing used to claim before this
                 // pass ran, so this was a no-op when written — it exists for AlcovePropPlacer,
                 // which runs first precisely because an alcove has ~3 faces and one hero prop

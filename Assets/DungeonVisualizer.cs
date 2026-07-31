@@ -56,6 +56,10 @@ namespace DungeonGen
         public Color prisonColor = new Color(0.85f, 0.55f, 0.15f, 0.9f);
         [Tooltip("Alcove cells. They are CellType.Hallway in the grid — the metadata list is the only thing that knows they're alcoves — so without this they are indistinguishable from corridor in the gizmo view.")]
         public Color alcoveColor = new Color(0.95f, 0.2f, 0.75f, 0.95f);
+        [Tooltip("Pit interiors, and (darker) the floorless openings above them. Like alcoves these are ordinary cell types in the grid — the pit registry is the only thing that knows — so without this a chasm is invisible in the gizmo view.")]
+        public Color pitColor = new Color(0.15f, 0.15f, 0.2f, 0.95f);
+        [Tooltip("Bridge decks spanning a pit.")]
+        public Color bridgeColor = new Color(0.8f, 0.6f, 0.25f, 0.95f);
         public Color boundsColor = new Color(1f, 1f, 1f, 0.25f);
         public Color delaunayColor = new Color(1f, 0.85f, 0.2f, 0.8f);
         public Color mstColor = new Color(0.3f, 0.95f, 0.95f, 1f);
@@ -77,6 +81,11 @@ namespace DungeonGen
             "DungeonDoors", "DungeonArchways", "DungeonColumns", "DungeonLadders",
             "DungeonKitColliders", "DungeonProps", "DungeonHallwayProps", "DungeonFog",
             "DungeonNpcs",
+            // EVERY placer's root must be listed here or its output accumulates on each
+            // regenerate — F1 would stack a second dungeon's worth of props on the first.
+            // "DungeonAlcoveProps" was missed when alcoves landed (already shipped);
+            // "DungeonBridges" arrives with pits.
+            "DungeonAlcoveProps", "DungeonBridges",
         };
 
         void Start()
@@ -168,7 +177,7 @@ namespace DungeonGen
             Debug.Log($"[Dungeon] seed {seed} depth {config.depth}: {gen.Rooms.Count}/{config.roomCount} rooms, " +
                       $"{edgeTotal - gen.FailedEdges}/{edgeTotal} edges carved, " +
                       $"{gen.Stairs.Count / 4} staircases, {gen.PrisonCells.Count} prison cells, " +
-                      $"{gen.Alcoves.Count} alcoves | " +
+                      $"{gen.Alcoves.Count} alcoves, {gen.Pits.Count} pits | " +
                       $"types: {string.Join(", ", typeSummary)}");
 
             if (buildMeshOnGenerate)
@@ -201,6 +210,7 @@ namespace DungeonGen
                 DungeonKitPlacer.BuildArchways(gen, kit, cellSize, transform, null, roomStyle);
                 DungeonKitPlacer.BuildInteriorColumns(gen, kit, cellSize, transform);
                 DungeonKitPlacer.BuildLadders(gen, kit, cellSize, transform);
+                DungeonKitPlacer.BuildBridges(gen, kit, cellSize, transform);
             }
             else if (geometryMode == GeometryMode.InstancedKit)
             {
@@ -270,6 +280,7 @@ namespace DungeonGen
                 DungeonKitPlacer.BuildArchways(gen, kit, cellSize, transform, ir, roomStyle);
                 DungeonKitPlacer.BuildInteriorColumns(gen, kit, cellSize, transform, ir);
                 DungeonKitPlacer.BuildLadders(gen, kit, cellSize, transform, ir);
+                DungeonKitPlacer.BuildBridges(gen, kit, cellSize, transform, ir);
 
                 ir.Commit(); // idempotent — bakes kit + archway instances together
 
@@ -350,6 +361,11 @@ namespace DungeonGen
                     case CellType.Room:
                     {
                         Vector3Int cellPos = grid.Position(i);
+                        // Pits first: an opening and its interior are both CellType.Room, so the
+                        // registry is the only way to see a chasm at all.
+                        if (gen.IsBridgeCell(cellPos)) { Gizmos.color = bridgeColor; break; }
+                        if (gen.IsPitOpening(cellPos)) { Gizmos.color = pitColor * 0.6f; break; }
+                        if (gen.PitAt(cellPos) != null) { Gizmos.color = pitColor; break; }
                         if (zoneMap != null && zoneMap.TryGetValue(cellPos, out var zone))
                             Gizmos.color = ZoneColor(zone);
                         else

@@ -41,6 +41,10 @@ namespace DungeonGen
         public GameObject[] ladderPrefabs; // optional — skipped if empty
         [Tooltip("Nudge applied in the LADDER'S OWN frame, not world space: Z = away from the mounting wall, X = along it, Y = up. Wall-relative because that's the only way one value can be correct on all four wall directions — a world-space offset embeds the ladder in the masonry on the opposite wall.")]
         public Vector3 ladderOffset;
+        [Tooltip("Bridge deck spanning a room PIT, one cell long, laid flat at the room's floor level. A KIT piece rather than a prop deliberately: the generator's connectivity check counts on the crossing existing, and a prop could decline to place while a cell-level flood-fill could never see it either way. MUST have a solid collider — that collider is what makes the deck walkable AND what bakes it into the runtime navmesh so NPCs cross it. If the collider is a MeshCollider its mesh MUST be Read/Write Enabled, or the bridge is silently skipped from the bake in a PLAYER BUILD while working perfectly in the editor (the same trap that once removed stairs from builds). Optional — skipped if empty, which leaves pits uncrossable.")]
+        public GameObject[] bridgePrefabs; // optional — skipped if empty
+        [Tooltip("Nudge applied to a bridge deck in world space (Y is the useful axis — sink or raise the deck relative to the floor plane). Unlike ladderOffset this is NOT rotated: a bridge lies flat and is placed axis-aligned, so there is no wall frame to be relative to.")]
+        public Vector3 bridgeOffset;
         [Header("Per-room emissive tinting (optional)")]
         [Tooltip("The GLOWING material used by kit pieces with an emissive element (candle walls, braziers). When set, every instanced kit piece using this exact material gets a cached variant tinted to its room's TORCH COLOUR — so a shrine's candles burn the same cold blue as its torches, exactly like the fog and flame VFX already do. Leave empty to disable tinting entirely (pieces render with the authored material).\n\nThis is needed because a MaterialPropertyBlock can't work on the instanced path: nothing renders through the prefab's MeshRenderer, so an EmissionController on a kit wall does nothing. Cost is one extra batch per distinct colour in use — bounded by the palette, not by instance count.")]
         public Material emissiveMaterial;
@@ -1124,6 +1128,72 @@ namespace DungeonGen
 
             if (count > 0)
                 Debug.Log($"[Dungeon] {count} ladder(s) placed.");
+            return root;
+        }
+
+        /// <summary>
+        /// Bridge decks spanning room pits, at the room's floor level.
+        ///
+        /// A KIT PIECE, not a prop, and that distinction is the whole reason a pit is allowed
+        /// to sever a room. The generator's connectivity flood-fill treats bridge cells as
+        /// walkable and proves every doorway still reachable BEFORE committing the pit — which
+        /// is only sound if the crossing cannot fail to appear. A prop routes through the
+        /// occupancy system and can decline; worse, cell-level connectivity can never see a
+        /// prop at all (§10, cell connectivity != navmesh connectivity), so the generator would
+        /// be reasoning about a crossing it has no model of.
+        ///
+        /// The deck's COLLIDER does double duty: it is what the player walks on, and it is what
+        /// bakes the span into the runtime navmesh, so NPCs cross bridges with no AI work at
+        /// all. That is the sharp difference from ladders, which are invisible to NavMeshAgent
+        /// because climbing is scripted rather than walkable geometry.
+        /// </summary>
+        public static GameObject BuildBridges(DungeonGenerator gen, DungeonKit kit, float cellSize, Transform parent,
+                                              InstancedDungeonRenderer instancer = null)
+        {
+            var root = new GameObject("DungeonBridges");
+            root.transform.SetParent(parent, false);
+            if (kit.bridgePrefabs == null || kit.bridgePrefabs.Length == 0) return root;
+            if (gen.Pits.Count == 0) return root;
+
+            int count = 0;
+            foreach (var pit in gen.Pits)
+            {
+                foreach (var c in pit.BridgeCells)
+                {
+                    GameObject prefab = kit.bridgePrefabs[Hash(c, 149) % kit.bridgePrefabs.Length];
+                    if (prefab == null) continue;
+
+                    // Flat at the room's floor plane, centred on the cell. NO globalVisualOffset:
+                    // a bridge is placed at nominal grid coordinates like a prop, not like a kit
+                    // wall (golden rule 2 — the offset is a kit-mesh quirk everything else must
+                    // ignore, and double-correcting puts the deck 1.5m in the air).
+                    Vector3 pos = new Vector3((c.x + 0.5f) * cellSize,
+                                              c.y * cellSize,
+                                              (c.z + 0.5f) * cellSize)
+                                  + kit.bridgeOffset + parent.position;
+
+                    // Oriented ACROSS the chasm. Placed with identity it was correct only when
+                    // the pit happened to run the right way and lay parallel to the gap
+                    // otherwise — author the deck facing +Z and this puts it right on all four
+                    // orientations.
+                    Quaternion rot = Quaternion.LookRotation((Vector3)pit.CrossDirection);
+
+                    if (instancer != null)
+                    {
+                        PropInstancer.PlaceProps(instancer, prefab,
+                            new[] { new PropPlacement { position = pos, rotation = rot } },
+                            PropTier.StaticCollider, cellSize, root.transform);
+                    }
+                    else
+                    {
+                        Object.Instantiate(prefab, pos, rot * prefab.transform.rotation, root.transform);
+                    }
+                    count++;
+                }
+            }
+
+            if (count > 0)
+                Debug.Log($"[Dungeon] {count} bridge deck(s) placed across {gen.Pits.Count} pit(s).");
             return root;
         }
     }
