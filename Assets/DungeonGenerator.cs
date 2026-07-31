@@ -51,6 +51,16 @@ namespace DungeonGen
         [Tooltip("No prison may be placed within this many cells (XZ) of a staircase.")]
         public int prisonStairClearance = 2;
 
+        [Header("Junction plazas")]
+        [Tooltip("Open corridor junctions and bends out into 2x2 plazas. Corridors are 1-wide structurally (a cell exists iff it is on an A* path), so this is a deliberate post-pass, not a width setting.")]
+        public bool widenJunctions = true;
+        [Tooltip("Chance per JUNCTION OR BEND — not per corridor cell. Straight runs are never candidates, so this is a small denominator and the value can be high without flooding the dungeon.")]
+        [Range(0f, 1f)] public float junctionPlazaChance = 0.35f;
+        [Tooltip("Chance a plaza gets a column at its centre. Reuses the interior-column system (ColumnPoints), so it renders through the kit's existing column slot with no new authoring. A pillared junction reads as deliberate architecture; an open one reads as a wide spot.")]
+        [Range(0f, 1f)] public float junctionPlazaPillarChance = 0.5f;
+        [Tooltip("Hard ceiling on plazas per run. 0 = unlimited.")]
+        public int junctionPlazaMaxCount = 0;
+
         [Header("Hallway alcoves")]
         [Tooltip("Carve small recesses off corridors — statue nooks, shrine niches, collapsed digs, storage. Frequency, legal kinds and sizes come from the DepthProfile when one is assigned; the values below are the no-profile fallback.")]
         public bool placeAlcoves = true;
@@ -210,6 +220,7 @@ namespace DungeonGen
             AssignRoomTypes();
             PlaceSatelliteRooms();
             PlanInteriorColumns();
+            WidenJunctions();
             PlaceAlcoves();
         }
 
@@ -1464,7 +1475,155 @@ namespace DungeonGen
         /// Validate and commit one candidate prison footprint. Split out of TryPlacePrison so
         /// the width-shrink loop can attempt several without duplicating the rules.
         /// </summary>
-        // ---------------- Stage 11: hallway alcoves ----------------
+        // ---------------- Stage 11: junction plazas ----------------
+
+        /// <summary>
+        /// Open corridor JUNCTIONS AND BENDS out into small 2x2 plazas, optionally with a
+        /// column at the centre. Corridors are 1-wide structurally — a cell exists iff it sits
+        /// on an A* path and Commit writes exactly that cell — so there is no thickness dial to
+        /// turn; widening has to be a deliberate post-pass.
+        ///
+        /// JUNCTIONS AND BENDS ONLY, deliberately. Widening straight runs just makes corridors
+        /// feel like rooms and eats the rock that prisons and alcoves need. Widening where
+        /// routes MEET is what reads as "this is a place" rather than "the corridor got fat" —
+        /// the same effect the prison vestibule produced, for the same reason: it rewards
+        /// turning a corner.
+        ///
+        /// POSITION IN THE PIPELINE is chosen so it costs as little as possible:
+        /// - AFTER PlacePrisons/Satellites/Columns, so its rng draws shift none of them and
+        ///   every existing seed keeps its rooms, prisons, satellites and columns.
+        /// - BEFORE PlaceAlcoves, so alcoves can hang off a plaza's new walls. That does shift
+        ///   the alcove stream, which is acceptable: alcoves are new and still being tuned.
+        /// </summary>
+        void WidenJunctions()
+        {
+            if (!cfg.widenJunctions || cfg.junctionPlazaChance <= 0f) return;
+
+            // Snapshot the corridor cells FIRST. Widening writes new Hallway cells, and a live
+            // scan would then treat those as junction candidates and grow plazas outward
+            // indefinitely — the same self-hosting trap alcoves have, which is worth stating
+            // because the two features are one stage apart and the failure looks identical
+            // (a creeping blob instead of a place).
+            var corridor = new List<Vector3Int>();
+            for (int i = 0; i < Grid.Length; i++)
+                if (Grid[i] == CellType.Hallway) corridor.Add(Grid.Position(i));
+
+            var plazaCells = new HashSet<Vector3Int>();
+            int placed = 0, pillars = 0;
+
+            foreach (var c in corridor)
+            {
+                if (cfg.junctionPlazaMaxCount > 0 && placed >= cfg.junctionPlazaMaxCount) break;
+
+                // Fixed draws per candidate, whatever happens next (golden rule 4).
+                double roll = rng.NextDouble();
+                double quadRoll = rng.NextDouble();
+                double pillarRoll = rng.NextDouble();
+
+                if (!IsJunctionOrBend(c)) continue;
+                if (roll >= cfg.junctionPlazaChance) continue;
+                if (plazaCells.Contains(c)) continue;   // already absorbed into a neighbouring plaza
+
+                // Four 2x2 blocks contain c; try them from a rolled starting quadrant so the
+                // plaza isn't always biased to the same side of a junction.
+                int start = Mathf.Clamp((int)(quadRoll * 4), 0, 3);
+                for (int q = 0; q < 4; q++)
+                {
+                    int quad = (start + q) & 3;
+                    int ox = (quad & 1) == 0 ? 0 : -1;
+                    int oz = (quad & 2) == 0 ? 0 : -1;
+                    Vector3Int min = new Vector3Int(c.x + ox, c.y, c.z + oz);
+
+                    if (!PlazaBlockFits(min, out List<Vector3Int> newCells)) continue;
+
+                    foreach (var n in newCells)
+                    {
+                        Grid[n] = CellType.Hallway;
+                        plazaCells.Add(n);
+                    }
+                    plazaCells.Add(c);
+                    placed++;
+
+                    // The lattice point shared by the block's four cells is (min + 1) in XZ —
+                    // see PlanInteriorColumns for the convention. Reuses ColumnPoints wholesale,
+                    // so the kit's existing interior-column path renders it with no new slot.
+                    if (pillarRoll < cfg.junctionPlazaPillarChance)
+                    {
+                        ColumnPoints.Add((new Vector3Int(min.x + 1, c.y, min.z + 1), c.y, 1));
+                        pillars++;
+                    }
+                    break;
+                }
+            }
+
+            if (placed > 0 && cfg.debugAlcoves)
+                Debug.Log($"[Plazas] {placed} junction plaza(s) opened from {corridor.Count} corridor cell(s), " +
+                          $"{pillars} with a central column.");
+        }
+
+        /// <summary>A corridor cell where routes MEET — 3+ open neighbours, or a genuine corner
+        /// (exactly 2 that aren't opposite each other). A straight run has 2 collinear
+        /// neighbours and is deliberately not a candidate.</summary>
+        bool IsJunctionOrBend(Vector3Int c)
+        {
+            int open = 0;
+            bool xOpen = false, zOpen = false;
+            foreach (var d in HorizontalDirs)
+            {
+                Vector3Int n = c + d;
+                if (!Grid.InBounds(n) || Grid[n] == CellType.Empty) continue;
+                open++;
+                if (d.x != 0) xOpen = true; else zOpen = true;
+            }
+            if (open >= 3) return true;
+            return open == 2 && xOpen && zOpen;   // a bend, not a straight run
+        }
+
+        /// <summary>
+        /// Can the 2x2 block with this min corner become a plaza? Reports the cells that would
+        /// need carving (already-corridor cells cost nothing).
+        /// </summary>
+        bool PlazaBlockFits(Vector3Int min, out List<Vector3Int> newCells)
+        {
+            newCells = new List<Vector3Int>();
+
+            for (int dx = 0; dx < 2; dx++)
+                for (int dz = 0; dz < 2; dz++)
+                {
+                    Vector3Int p = new Vector3Int(min.x + dx, min.y, min.z + dz);
+                    if (!Grid.InBounds(p)) return false;
+
+                    CellType t = Grid[p];
+                    if (t == CellType.Hallway) continue;      // already corridor, free
+                    if (t != CellType.Empty) return false;    // room/prison/stair — never carve
+
+                    // Solid above and below, and legal beside any staircase. Reusing the
+                    // pathfinder's own predicate rather than restating it means a widened cell
+                    // obeys exactly the rule every carved corridor cell already does — including
+                    // the sealed stair envelope, which is the thing most easily broken here.
+                    if (!HallwayPathfinder.SurroundingsOk(Grid, Stairs, p)) return false;
+
+                    // A new cell must not open into anything that already validated its own
+                    // boundaries against the OLD grid:
+                    //   - Room: would punch a doorway with no door, no arch and no reserved
+                    //     threshold, bypassing RecordDoor entirely.
+                    //   - Prison: its one-opening rule was checked before this ran, so a second
+                    //     opening here silently turns a cell into a through-passage.
+                    foreach (var d in HorizontalDirs)
+                    {
+                        Vector3Int n = p + d;
+                        if (!Grid.InBounds(n)) continue;
+                        CellType nt = Grid[n];
+                        if (nt == CellType.Room || nt == CellType.Prison) return false;
+                    }
+
+                    newCells.Add(p);
+                }
+
+            return newCells.Count > 0;   // nothing to do if the block is already all corridor
+        }
+
+        // ---------------- Stage 12: hallway alcoves ----------------
 
         /// <summary>
         /// Carve small recesses off corridors — a statue nook, a shrine niche, a collapsed dig,
