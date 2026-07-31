@@ -54,6 +54,8 @@ namespace DungeonGen
         public Color hallwayColor = new Color(0.2f, 0.45f, 0.95f, 0.9f);
         public Color stairColor = new Color(0.25f, 0.85f, 0.35f, 0.9f);
         public Color prisonColor = new Color(0.85f, 0.55f, 0.15f, 0.9f);
+        [Tooltip("Alcove cells. They are CellType.Hallway in the grid — the metadata list is the only thing that knows they're alcoves — so without this they are indistinguishable from corridor in the gizmo view.")]
+        public Color alcoveColor = new Color(0.95f, 0.2f, 0.75f, 0.95f);
         public Color boundsColor = new Color(1f, 1f, 1f, 0.25f);
         public Color delaunayColor = new Color(1f, 0.85f, 0.2f, 0.8f);
         public Color mstColor = new Color(0.3f, 0.95f, 0.95f, 1f);
@@ -165,7 +167,8 @@ namespace DungeonGen
             foreach (var kv in typeCounts) typeSummary.Add($"{kv.Value} {kv.Key}");
             Debug.Log($"[Dungeon] seed {seed} depth {config.depth}: {gen.Rooms.Count}/{config.roomCount} rooms, " +
                       $"{edgeTotal - gen.FailedEdges}/{edgeTotal} edges carved, " +
-                      $"{gen.Stairs.Count / 4} staircases, {gen.PrisonCells.Count} prison cells | " +
+                      $"{gen.Stairs.Count / 4} staircases, {gen.PrisonCells.Count} prison cells, " +
+                      $"{gen.Alcoves.Count} alcoves | " +
                       $"types: {string.Join(", ", typeSummary)}");
 
             if (buildMeshOnGenerate)
@@ -279,6 +282,13 @@ namespace DungeonGen
                 DungeonMesher.Build(gen, cellSize, transform, wallMargin);
             }
 
+            // ALCOVES FIRST, before torches. §8's most-constrained-first rule taken to its
+            // conclusion: an alcove has about three wall faces and one authored hero prop, so it
+            // is the tightest consumer of wall real estate in the dungeon and must claim its
+            // face before a sconce can take it. Everything after this honours those claims.
+            if (roomStyle != null)
+                AlcovePropPlacer.Build(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
+
             if (torches != null && torches.placeTorches)
                 TorchPlacer.Build(gen, torches, cellSize, transform, sharedInstancer, roomStyle, wallFaces);
 
@@ -346,7 +356,11 @@ namespace DungeonGen
                             Gizmos.color = colorRoomsByType ? RoomTypeColor(cellPos) : roomColor;
                         break;
                     }
-                    case CellType.Hallway:    Gizmos.color = hallwayColor; break;
+                    // Alcove cells ARE Hallway cells — the metadata list is the only thing that
+                    // distinguishes them — so this has to be a lookup, not a CellType case.
+                    case CellType.Hallway:
+                        Gizmos.color = gen.IsAlcoveCell(grid.Position(i)) ? alcoveColor : hallwayColor;
+                        break;
                     case CellType.StairLower:
                     case CellType.StairUpper: Gizmos.color = stairColor;   break;
                     case CellType.Prison:     Gizmos.color = prisonColor;  break;
@@ -373,6 +387,26 @@ namespace DungeonGen
                 Gizmos.color = loopColor;
                 foreach (var e in gen.LoopEdges)
                     DrawEdge(e);
+            }
+
+            // Alcove mouths: a line from the corridor cell you turn off, into the recess, plus
+            // the kind as a label. The DIRECTION is worth seeing — it's what orients the hero
+            // prop, so a statue facing the wrong way is a direction bug, not a prop bug.
+            if (gen.Alcoves != null && gen.Alcoves.Count > 0)
+            {
+                Gizmos.color = alcoveColor;
+                foreach (var a in gen.Alcoves)
+                {
+                    Vector3 from = transform.position + ((Vector3)a.HallCell + Vector3.one * 0.5f) * cellSize;
+                    Vector3 to = transform.position + ((Vector3)a.MouthCell + Vector3.one * 0.5f) * cellSize;
+                    Gizmos.DrawLine(from, to);
+                    Gizmos.DrawWireSphere(to, cellSize * 0.18f);
+#if UNITY_EDITOR
+                    UnityEditor.Handles.color = alcoveColor;
+                    UnityEditor.Handles.Label(to + Vector3.up * cellSize * 0.4f,
+                                              $"{a.Kind} {a.Width}x{a.Depth}{(a.IsEnterable ? "" : " (shallow)")}");
+#endif
+                }
             }
         }
 
