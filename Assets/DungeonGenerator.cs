@@ -44,10 +44,32 @@ namespace DungeonGen
         public bool placePrisonCells = true;
         [Tooltip("Chance per eligible hallway wall slot. Long hallways have more slots, so they naturally collect more cells.")]
         [Range(0f, 0.5f)] public float prisonChance = 0.06f;
+        [Tooltip("Cell width in tiles, across the doorway. Anything above 1 gets a 1x1 DOORWAY tile with the cell widening behind it — a wide mouth on a corridor is geometrically impossible (it would touch the hallway along its whole length, which the one-opening rule forbids and the mesher would render as an open side). Width is rolled once and SHRINKS to fit, so a site that can't take the rolled width falls back to a narrower cell instead of producing no prison at all.")]
         public Vector2Int prisonWidthRange = new Vector2Int(1, 2); // across the door
+        [Tooltip("Cell depth in tiles, away from the hallway. For a WIDE cell this is the depth of the room BEHIND the doorway tile, so total depth is this + 1; for a width-1 cell it is the whole depth. Kept meaning 'how deep is the cell you stand in' rather than 'how far from the corridor', so the number reads the same either way.")]
         public Vector2Int prisonDepthRange = new Vector2Int(1, 2); // away from the hallway
         [Tooltip("No prison may be placed within this many cells (XZ) of a staircase.")]
         public int prisonStairClearance = 2;
+
+        [Header("Hallway alcoves")]
+        [Tooltip("Carve small recesses off corridors — statue nooks, shrine niches, collapsed digs, storage. Frequency, legal kinds and sizes come from the DepthProfile when one is assigned; the values below are the no-profile fallback.")]
+        public bool placeAlcoves = true;
+        [Tooltip("FALLBACK chance per VIABLE corridor face when no DepthProfile is assigned. Viable = the cell behind the face is solid rock, so directions running along the corridor are never rolled. 1 = consider every such face — still subject to door clearance, spacing and the one-opening rule, which reject roughly half in a dense dungeon. Unlike prisonChance this is NOT capped at 0.5: prisons roll per compass direction (most of them doomed), alcoves roll per real candidate.")]
+        [Range(0f, 1f)] public float alcoveChance = 0.3f;
+        [Tooltip("FALLBACK width range when no DepthProfile is assigned.")]
+        public Vector2Int alcoveWidthRange = new Vector2Int(1, 2);
+        [Tooltip("FALLBACK depth range when no DepthProfile is assigned.")]
+        public Vector2Int alcoveDepthRange = new Vector2Int(1, 2);
+        [Tooltip("FALLBACK maximum alcoves per run when no DepthProfile is assigned.")]
+        public int alcoveMaxCount = 10;
+        [Tooltip("No alcove within this many cells (XZ) of a staircase — same guard prisons use, since the stair envelope is the most fragile geometry in the dungeon.")]
+        public int alcoveStairClearance = 2;
+        [Tooltip("Minimum cells between one alcove's bounding box and the next, so they don't cluster into a honeycomb. Measured as a CHEBYSHEV box, so the excluded area grows as the square — 3 already covers 49 cells around each alcove.")]
+        public int alcoveMinSpacing = 3;
+        [Tooltip("An alcove mouth must be this many cells from any room DOORWAY — a recess in a threshold fights the reserved-threshold rule and the corner-post classifier. Also a CHEBYSHEV box, so this is brutally expensive: at 2 it excludes 25 cells around EVERY door, and since corridors are short and mostly run between doorways that was measured eating 45% of all candidate sites. 1 is enough to keep a mouth out of a threshold and its immediate neighbours; 0 still blocks the threshold cell itself.")]
+        public int alcoveDoorClearance = 1;
+        [Tooltip("Log the per-rule rejection tally every generate, so you can see WHICH rule is eating alcove sites while tuning. The tally is logged unconditionally when ZERO alcoves are carved (that's a fault worth reporting on its own); this adds it for the ordinary case where some succeeded but you want more.")]
+        public bool debugAlcoves = false;
     }
 
     public class Room
@@ -142,6 +164,19 @@ namespace DungeonGen
         /// <summary>Lattice points (cell-corner coords) + floor level + height where interior columns go.</summary>
         public List<(Vector3Int latticePoint, int yFloor, int heightCells)> ColumnPoints { get; }
             = new List<(Vector3Int, int, int)>();
+        /// <summary>Carved recesses off corridors. Their CELLS are ordinary Hallway in the grid
+        /// (see AlcoveSpec) — this list is the only thing that knows they're alcoves.</summary>
+        public List<AlcoveSpec> Alcoves { get; } = new List<AlcoveSpec>();
+
+        // Cell -> alcove. A dictionary rather than RoomAt's linear scan because the prop pass
+        // and the hallway pass both query it per cell.
+        readonly Dictionary<Vector3Int, AlcoveSpec> alcoveCells = new Dictionary<Vector3Int, AlcoveSpec>();
+
+        /// <summary>The alcove owning this cell, or null.</summary>
+        public AlcoveSpec AlcoveAt(Vector3Int c) => alcoveCells.TryGetValue(c, out var a) ? a : null;
+        /// <summary>True if this cell was carved as part of an alcove. Note the cell's CellType is
+        /// Hallway either way — this is the only way to tell them apart.</summary>
+        public bool IsAlcoveCell(Vector3Int c) => alcoveCells.ContainsKey(c);
 
         readonly DungeonConfig cfg;
         readonly Random rng;
@@ -175,6 +210,7 @@ namespace DungeonGen
             AssignRoomTypes();
             PlaceSatelliteRooms();
             PlanInteriorColumns();
+            PlaceAlcoves();
         }
 
         // ---------------- Stage 4: hallway carving ----------------
@@ -1398,24 +1434,408 @@ namespace DungeonGen
 
             int w = rng.Next(cfg.prisonWidthRange.x, cfg.prisonWidthRange.y + 1);
             int depth = rng.Next(cfg.prisonDepthRange.x, cfg.prisonDepthRange.y + 1);
-            int offset = rng.Next(0, w); // where the door column sits within the width
+            // Offset drawn as a NORMALIZED roll, not rng.Next(0, w). The shrink loop below
+            // retries at smaller widths, and re-rolling per attempt would make the number of
+            // RNG draws depend on how many attempts a site happened to need — which shifts
+            // the stream for every later placement and breaks (seed, depth) determinism
+            // (golden rule 4). Three draws, always, whatever happens below.
+            double offsetRoll = rng.NextDouble();
 
-            Vector3Int door = h + d;                    // footprint cell behind the doorway
-            Vector3Int start = door - perp * offset;    // min corner along the width axis
-            if (d.x < 0 || d.z < 0) start += d * (depth - 1); // min corner along the depth axis
-
-            var fp = new BoundsInt(start, dAbs * depth + perp * w + up);
-
-            // --- Validate ---
-            foreach (var pos in fp.allPositionsWithin)
+            // WIDTH SHRINKS TO FIT rather than failing outright. The one-opening rule below
+            // demands every footprint neighbour except the door cell be Empty, because two
+            // adjacent OPEN cells get no wall between them (the mesher only walls an
+            // open/solid boundary) — a prison alongside a corridor would be open to it down
+            // its whole length. But `perp`, the width axis, is frequently the CORRIDOR'S OWN
+            // run direction: a prison hanging off the side of an east-west hallway spans
+            // east-west too, so every cell past the door sits against another hallway cell and
+            // is rejected. Wide cells therefore only ever fit at dead ends and corners, and
+            // authoring a width range above 2 silently produced NO prisons at all rather than
+            // wider ones (field-reported). Trying narrower widths keeps the wide cells where
+            // the geometry genuinely allows them and falls back to a narrow cell where it
+            // doesn't, instead of throwing the whole site away.
+            for (; w >= cfg.prisonWidthRange.x; w--)
             {
-                if (!Grid.InBounds(pos) || Grid[pos] != CellType.Empty) return;
+                int offset = Mathf.Clamp((int)(offsetRoll * w), 0, w - 1);
+                if (TryPlacePrisonAt(h, d, perp, dAbs, up, w, depth, offset)) return;
+            }
+        }
+
+        /// <summary>
+        /// Validate and commit one candidate prison footprint. Split out of TryPlacePrison so
+        /// the width-shrink loop can attempt several without duplicating the rules.
+        /// </summary>
+        // ---------------- Stage 11: hallway alcoves ----------------
+
+        /// <summary>
+        /// Carve small recesses off corridors — a statue nook, a shrine niche, a collapsed dig,
+        /// a storage pocket. The same validated shape prisons use (see RecessFits), typed as
+        /// ordinary Hallway so the kit and mesher need no changes at all.
+        ///
+        /// RUNS LAST, AND THAT ORDERING IS LOAD-BEARING IN TWO WAYS:
+        ///
+        /// 1. DETERMINISM. Nothing draws from `rng` after this point, so appending the stage
+        ///    shifts no existing stream — every seed keeps the rooms, prisons, satellites and
+        ///    columns it had before alcoves existed, and merely gains alcoves (golden rule 4).
+        ///
+        /// 2. PRISONS GET FIRST REFUSAL. Alcove cells are typed Hallway, which IS a legal prison
+        ///    host, whereas Prison is not a legal alcove neighbour (the one-opening rule rejects
+        ///    it). So prisons-then-alcoves is safe, and alcoves-then-prisons would silently let
+        ///    alcoves eat prison sites. Do not reorder these.
+        /// </summary>
+        void PlaceAlcoves()
+        {
+            Alcoves.Clear();
+            alcoveCells.Clear();
+            if (!cfg.placeAlcoves) return;
+
+            var profile = cfg.depthProfile;
+            float chance = profile != null ? profile.AlcoveChanceAt(cfg.depth) : cfg.alcoveChance;
+            int maxCount = profile != null ? profile.alcoveMaxCount : cfg.alcoveMaxCount;
+            var kinds = profile != null ? profile.AlcoveKindsAt(cfg.depth) : null;
+
+            // Say WHY nothing was carved rather than producing a silent zero. Every one of these
+            // is a config fault with no other symptom, and the commonest by far is a DepthProfile
+            // asset that predates these fields: the generator then reads the profile (not the
+            // DungeonVisualizer fallbacks, which are ignored whenever a profile is assigned) and
+            // finds an unconfigured, all-zero alcove budget.
+            if (chance <= 0f || maxCount <= 0 || (profile != null && (kinds == null || kinds.Count == 0)))
+            {
+                Debug.LogWarning(
+                    $"[Alcoves] placeAlcoves is ON but none can be carved at depth {cfg.depth}: " +
+                    $"chance={chance:0.###}, maxCount={maxCount}, legalKinds={(kinds == null ? "n/a (no profile)" : kinds.Count.ToString())}. " +
+                    (profile != null
+                        ? $"A DepthProfile IS assigned ({profile.name}), so its alcove fields are what count — the " +
+                          "alcoveChance/alcoveWidthRange/alcoveMaxCount on the DungeonVisualizer are FALLBACKS used " +
+                          "only when no profile is set. Check alcoveBaseChance, alcoveMaxCount and the alcoveKinds " +
+                          "list on the profile asset; a profile created before alcoves existed may have them all at zero/empty."
+                        : "No DepthProfile assigned, so the DungeonVisualizer's alcove fields are in use — raise alcoveChance/alcoveMaxCount."));
+                return;
+            }
+
+            // Doorway cells are off limits — an alcove mouth in or beside a threshold fights the
+            // reserved-threshold rule and the corner-post classifier.
+            var doorCells = new HashSet<Vector3Int>();
+            foreach (var door in Doors) doorCells.Add(door.HallwayCell);
+
+            // Per-kind tallies for AlcoveRule.maxPerRun.
+            var placedPerKind = new Dictionary<AlcoveKind, int>();
+
+            int attempts = 0, viableFaces = 0;
+            var rejects = new int[System.Enum.GetValues(typeof(AlcoveReject)).Length];
+
+            // Same per-wall-slot roll as prisons, and for the same reason: density then scales
+            // with corridor LENGTH for free, because a long hallway simply exposes more slots.
+            for (int i = 0; i < Grid.Length; i++)
+            {
+                if (Alcoves.Count >= maxCount) break;
+                if (Grid[i] != CellType.Hallway) continue;
+
+                Vector3Int h = Grid.Position(i);
+                foreach (var d in HorizontalDirs)
+                {
+                    if (Alcoves.Count >= maxCount) break;
+
+                    // ONLY ROLL AGAINST A SOLID FACE. Of the four directions off a corridor cell,
+                    // the ones running ALONG the corridor lead to more corridor — so on a straight
+                    // run half the rolls were doomed before TryPlaceAlcove saw them, and at a
+                    // junction three of four were. Those wasted rolls were being counted as
+                    // "no room in the rock", which is how a measured 100 rejections looked like a
+                    // geometry problem when it was really an accounting one.
+                    //
+                    // Filtering first makes `chance` mean what an author expects — per wall face
+                    // an alcove could actually occupy — and roughly doubles the density a given
+                    // setting produces. Safe to change the number of draws here ONLY because
+                    // alcoves are the last stage and nothing downstream reads the stream.
+                    Vector3Int behind = h + d;
+                    if (!Grid.InBounds(behind) || Grid[behind] != CellType.Empty) continue;
+                    viableFaces++;
+
+                    if (rng.NextDouble() < chance)
+                    {
+                        attempts++;
+                        var why = TryPlaceAlcove(h, d, kinds, doorCells, placedPerKind);
+                        if (why != AlcoveReject.None) rejects[(int)why]++;
+                    }
+                }
+            }
+
+            // A valid budget that still carves nothing is a DIFFERENT fault from an empty budget,
+            // and the two are indistinguishable from the outside — so always warn on zero, and
+            // report the same tally on demand (debugAlcoves) when SOME were carved, which is the
+            // case you actually tune against. Reporting only on zero would go quiet exactly when
+            // you start asking "why so few?".
+            if (attempts > 0 && (Alcoves.Count == 0 || cfg.debugAlcoves))
+                Debug.Log(
+                    $"[Alcoves] {Alcoves.Count} carved{(Alcoves.Count >= maxCount ? $" — HIT THE CAP (alcoveMaxCount {maxCount}); remaining faces were never rolled, raise it for more" : "")}. " +
+                    $"{viableFaces} solid corridor face(s) available, " +
+                    $"{attempts} rolled at chance {chance:0.###}. Rejected by — " +
+                    $"chained-off-another-alcove: {rejects[(int)AlcoveReject.Chained]}, " +
+                    $"too near a doorway (alcoveDoorClearance {cfg.alcoveDoorClearance}): {rejects[(int)AlcoveReject.DoorClearance]}, " +
+                    $"too near another alcove (alcoveMinSpacing {cfg.alcoveMinSpacing}): {rejects[(int)AlcoveReject.Spacing]}, " +
+                    $"kind budget full: {rejects[(int)AlcoveReject.KindBudget]}, " +
+                    $"no room in the rock / too near a stair (alcoveStairClearance {cfg.alcoveStairClearance}): {rejects[(int)AlcoveReject.Geometry]}. " +
+                    $"DOMINANT: {DominantRejectAdvice(rejects)}");
+        }
+
+        enum AlcoveReject { None, Chained, DoorClearance, Spacing, KindBudget, Geometry }
+
+        /// <summary>
+        /// Name the rule that actually ate the most sites, and what to do about it. Written
+        /// because the first version of this message ASSERTED geometry was the usual culprit and
+        /// the very first real run disagreed — door clearance was 45%. A tally that guesses its
+        /// own conclusion is worse than one that just reports.
+        /// </summary>
+        static string DominantRejectAdvice(int[] rejects)
+        {
+            int worst = 0;
+            for (int i = 1; i < rejects.Length; i++)
+                if (rejects[i] > rejects[worst]) worst = i;
+            if (rejects[worst] == 0) return "nothing — every rolled site was carved.";
+
+            switch ((AlcoveReject)worst)
+            {
+                case AlcoveReject.DoorClearance:
+                    return "doorway clearance. It's a Chebyshev box around EVERY door, so cost grows as the " +
+                           "square — try alcoveDoorClearance 1, or 0 if mouths beside thresholds look fine.";
+                case AlcoveReject.Spacing:
+                    return "alcove spacing — lower alcoveMinSpacing, or accept that alcoves are meant to be rare.";
+                case AlcoveReject.Geometry:
+                    return "no room in the rock. Note this is measured on faces that ARE solid, so it is mostly " +
+                           "STRUCTURAL rather than tunable: the one-opening rule needs the cells behind and beside " +
+                           "the recess empty too, and wherever the rock between two corridors is only one cell " +
+                           "thick, carving would join them into a shortcut with no wall between. Expect roughly " +
+                           "half of all solid faces to fail this in a dense dungeon. Only worth chasing if " +
+                           "alcoveStairClearance is above 1 (1 already keeps alcoves off every stair flank, which " +
+                           "is all the sealed envelope needs) or a kind's depthRange minimum is 2+.";
+                case AlcoveReject.Chained:
+                    return "chaining off existing alcoves — expected at high chance, and the guard is doing its job.";
+                case AlcoveReject.KindBudget:
+                    return "per-kind maxPerRun budgets on the DepthProfile are full.";
+                default:
+                    return "n/a";
+            }
+        }
+
+        AlcoveReject TryPlaceAlcove(Vector3Int h, Vector3Int d, List<AlcoveRule> kinds,
+                                    HashSet<Vector3Int> doorCells, Dictionary<AlcoveKind, int> placedPerKind)
+        {
+            // ---- Draws happen FIRST and UNCONDITIONALLY ----
+            // Four draws every attempt, whatever the geometry turns out to be. Making the count
+            // depend on which rejections fired would tie the RNG stream to layout and break
+            // (seed, depth) reproducibility — the same discipline PlacePrisons' offsetRoll
+            // comment describes.
+            double kindRoll = rng.NextDouble();
+            double widthRoll = rng.NextDouble();
+            double depthRoll = rng.NextDouble();
+            double offsetRoll = rng.NextDouble();
+
+            // ---- Alcove-only rejections ----
+
+            // THE CRITICAL ONE. Alcove cells are typed Hallway, so an alcove is itself a legal
+            // host for another alcove — and this pass carves DURING a single grid scan, so later
+            // flat indices would see freshly-carved cells and chain recess off recess. The result
+            // is branching tunnels, not niches. Prisons never hit this because they carve Prison,
+            // which their own one-opening rule then rejects.
+            if (IsAlcoveCell(h)) return AlcoveReject.Chained;
+
+            if (doorCells.Contains(h)) return AlcoveReject.DoorClearance;
+            int doorClear = Mathf.Max(0, cfg.alcoveDoorClearance);
+            foreach (var dc in doorCells)
+            {
+                if (dc.y != h.y) continue;
+                if (Mathf.Abs(dc.x - h.x) <= doorClear && Mathf.Abs(dc.z - h.z) <= doorClear) return AlcoveReject.DoorClearance;
+            }
+
+            // Spacing, so alcoves read as occasional discoveries rather than a honeycomb.
+            int spacing = Mathf.Max(0, cfg.alcoveMinSpacing);
+            foreach (var a in Alcoves)
+            {
+                if (Mathf.Abs(a.MouthCell.y - h.y) > 1) continue;
+                Vector3 c = a.Bounds.center;
+                if (Mathf.Abs(c.x - h.x) <= spacing && Mathf.Abs(c.z - h.z) <= spacing) return AlcoveReject.Spacing;
+            }
+
+            // ---- Kind, and its size envelope ----
+            AlcoveKind kind;
+            Vector2Int widthRange, depthRange;
+            if (kinds != null && kinds.Count > 0)
+            {
+                if (!PickAlcoveKind(kinds, kindRoll, placedPerKind, out AlcoveRule rule)) return AlcoveReject.KindBudget;
+                kind = rule.kind;
+                widthRange = rule.widthRange;
+                depthRange = rule.depthRange;
+            }
+            else
+            {
+                // No profile: one generic kind and the fallback ranges, so the feature still
+                // works for quick config-only testing.
+                kind = AlcoveKind.CollapsedDig;
+                widthRange = cfg.alcoveWidthRange;
+                depthRange = cfg.alcoveDepthRange;
+            }
+
+            int wMax = Mathf.Max(1, widthRange.y);
+            int wMin = Mathf.Clamp(widthRange.x, 1, wMax);
+            int dMax = Mathf.Max(1, depthRange.y);
+            int dMin = Mathf.Clamp(depthRange.x, 1, dMax);
+
+            int w = wMin + (int)(widthRoll * (wMax - wMin + 1));
+            w = Mathf.Clamp(w, wMin, wMax);
+            int depth = dMin + (int)(depthRoll * (dMax - dMin + 1));
+            depth = Mathf.Clamp(depth, dMin, dMax);
+
+            Vector3Int up = Vector3Int.up;
+            Vector3Int perp = new Vector3Int(Mathf.Abs(d.z), 0, Mathf.Abs(d.x));
+            Vector3Int dAbs = new Vector3Int(Mathf.Abs(d.x), 0, Mathf.Abs(d.z));
+
+            // SHRINK BOTH DIMENSIONS to fit, not just width — the rock between two parallel
+            // corridors is often only a cell or two thick, so a deep recess that can't fit
+            // degrades to a shallow one instead of nothing.
+            //
+            // Honest note on why this exists: it was added believing depth was the dominant
+            // cause of failed sites. It measurably was NOT (rejections went 100 -> 101). The
+            // real cause was rolling against corridor-facing directions that were never solid,
+            // fixed in PlaceAlcoves. This is kept because it's correct and costs nothing, but
+            // don't infer from its presence that depth is what's limiting placement.
+            //
+            // DEPTH IS PRESERVED LONGEST (outer loop), because depth is what makes an alcove
+            // somewhere you turn into rather than a dent in the wall. Width is spent first.
+            // Costs at most widthRange x depthRange RecessFits calls — single digits — and draws
+            // nothing further, so the RNG stream is unaffected however many shapes are tried.
+            for (int tryDepth = depth; tryDepth >= dMin; tryDepth--)
+            {
+                for (int tryW = w; tryW >= wMin; tryW--)
+                {
+                    int offset = Mathf.Clamp((int)(offsetRoll * tryW), 0, tryW - 1);
+                    if (!RecessFits(h, d, perp, dAbs, up, tryW, tryDepth, offset, cfg.alcoveStairClearance,
+                                    out BoundsInt bbox, out List<Vector3Int> cells))
+                        continue;
+
+                    var spec = new AlcoveSpec
+                    {
+                        Kind = kind,
+                        Bounds = bbox,
+                        HallCell = h,
+                        Direction = d,
+                        MouthCell = h + d,
+                        Width = tryW,
+                        Depth = tryDepth,
+                    };
+                    foreach (var c in cells)
+                    {
+                        Grid[c] = CellType.Hallway;
+                        spec.Cells.Add(c);
+                        alcoveCells[c] = spec;
+                    }
+                    Alcoves.Add(spec);
+                    placedPerKind.TryGetValue(kind, out int n);
+                    placedPerKind[kind] = n + 1;
+                    return AlcoveReject.None;
+                }
+            }
+
+            // No width/depth combination down to the minimums fits here.
+            return AlcoveReject.Geometry;
+        }
+
+        /// <summary>
+        /// Weighted pick among the kinds legal at this depth, skipping any that has hit its
+        /// maxPerRun. Takes the roll as a PARAMETER rather than drawing — the caller already
+        /// drew it unconditionally, so a full budget rejects the attempt without changing how
+        /// many numbers came off the stream.
+        /// </summary>
+        bool PickAlcoveKind(List<AlcoveRule> kinds, double roll,
+                            Dictionary<AlcoveKind, int> placedPerKind, out AlcoveRule picked)
+        {
+            picked = default;
+
+            float total = 0f;
+            foreach (var r in kinds)
+            {
+                placedPerKind.TryGetValue(r.kind, out int used);
+                if (r.maxPerRun > 0 && used >= r.maxPerRun) continue;
+                total += Mathf.Max(0f, r.weight);
+            }
+            if (total <= 0f) return false;
+
+            double t = roll * total;
+            foreach (var r in kinds)
+            {
+                placedPerKind.TryGetValue(r.kind, out int used);
+                if (r.maxPerRun > 0 && used >= r.maxPerRun) continue;
+                t -= Mathf.Max(0f, r.weight);
+                if (t <= 0d) { picked = r; return true; }
+            }
+            picked = kinds[kinds.Count - 1];   // float drift on the last bucket
+            return true;
+        }
+
+        bool TryPlacePrisonAt(Vector3Int h, Vector3Int d, Vector3Int perp, Vector3Int dAbs,
+                              Vector3Int up, int w, int depth, int offset)
+        {
+            if (!RecessFits(h, d, perp, dAbs, up, w, depth, offset, cfg.prisonStairClearance,
+                            out BoundsInt bbox, out List<Vector3Int> cells))
+                return false;
+
+            foreach (var c in cells) Grid[c] = CellType.Prison;
+            PrisonCells.Add(bbox);
+            return true;
+        }
+
+        /// <summary>
+        /// Can a validated RECESS — a dead-end pocket hanging off one hallway cell — be carved
+        /// here? Shared by prisons and alcoves so the two can't drift apart on rules that took
+        /// several passes to get right.
+        ///
+        /// Reports the cells and bounding box; commits NOTHING and draws NOTHING from `rng`, so
+        /// a caller may probe several shapes without perturbing the stream (golden rule 4) and
+        /// then writes whatever CellType it wants.
+        /// </summary>
+        /// <param name="h">The hallway cell the recess opens off. Not part of the footprint.</param>
+        /// <param name="d">Direction from `h` into the recess.</param>
+        /// <param name="stairClearance">XZ radius (and ±1 level) that must contain no stair cell.</param>
+        bool RecessFits(Vector3Int h, Vector3Int d, Vector3Int perp, Vector3Int dAbs,
+                        Vector3Int up, int w, int depth, int offset, int stairClearance,
+                        out BoundsInt bbox, out List<Vector3Int> cells)
+        {
+            bbox = default;
+            cells = null;
+
+            Vector3Int door = h + d;                    // the DOORWAY tile, always 1x1
+
+            // A WIDE recess gets a 1x1 doorway tile and widens BEHIND it. This is what makes
+            // wide pockets possible at all: the one-opening rule forbids any footprint cell
+            // touching an open cell other than `h`, and the width axis `perp` is usually the
+            // CORRIDOR'S own run direction — so a wide mouth on a straight corridor always has
+            // cells sitting against more corridor and is always rejected. Set back by one tile,
+            // the wide part's near neighbours are `door ± perp`, the solid rock either side of
+            // the doorway, so it never touches the hallway and a straight corridor becomes a
+            // perfectly good host. It also simply looks right: a narrow door opening into a
+            // larger cell, with the bars spanning one tile.
+            //
+            // Width 1 keeps the old plain rectangle — no vestibule, nothing about narrow
+            // prisons changes.
+            bool wide = w > 1;
+            Vector3Int slabFront = wide ? door + d : door;
+
+            Vector3Int start = slabFront - perp * offset;      // min corner along the width axis
+            if (d.x < 0 || d.z < 0) start += d * (depth - 1);  // min corner along the depth axis
+            var slab = new BoundsInt(start, dAbs * depth + perp * w + up);
+
+            // The full footprint is the slab plus (when wide) the doorway tile. Membership has
+            // to consider BOTH, or the one-opening rule below would treat the vestibule as an
+            // intruding open cell and reject every wide prison it just enabled.
+            bool InFootprint(Vector3Int p) => slab.Contains(p) || (wide && p == door);
+
+            bool CellOk(Vector3Int pos)
+            {
+                if (!Grid.InBounds(pos) || Grid[pos] != CellType.Empty) return false;
 
                 // Cells directly above/below must be solid, or the mesher would
                 // leave a hole in the prison's floor/ceiling.
                 Vector3Int above = pos + up, below = pos - up;
-                if (Grid.InBounds(above) && Grid[above] != CellType.Empty) return;
-                if (Grid.InBounds(below) && Grid[below] != CellType.Empty) return;
+                if (Grid.InBounds(above) && Grid[above] != CellType.Empty) return false;
+                if (Grid.InBounds(below) && Grid[below] != CellType.Empty) return false;
 
                 // One-opening rule: the only open cell the footprint may touch
                 // is its own door hallway cell. This single check keeps prisons
@@ -1424,28 +1844,47 @@ namespace DungeonGen
                 foreach (var hd in HorizontalDirs)
                 {
                     Vector3Int nb = pos + hd;
-                    if (nb == h || fp.Contains(nb)) continue;
-                    if (Grid.InBounds(nb) && Grid[nb] != CellType.Empty) return;
+                    if (nb == h || InFootprint(nb)) continue;
+                    if (Grid.InBounds(nb) && Grid[nb] != CellType.Empty) return false;
                 }
+                return true;
             }
+
+            // --- Validate ---
+            foreach (var pos in slab.allPositionsWithin)
+                if (!CellOk(pos)) return false;
+            if (wide && !CellOk(door)) return false;
+
+            // Bounding box of the whole shape. Callers keep ONE entry per recess so consumers
+            // work — the kit placer's `FindIndex(b => b.Contains(p))` for a marker's prison
+            // index, and the visualizer's count. For a wide shape the bbox also covers the two
+            // solid corners beside the doorway, which is harmless: nothing queries solid cells,
+            // and recesses are separated by rock so boxes don't overlap.
+            Vector3Int bbMin = Vector3Int.Min(slab.min, door);
+            Vector3Int bbMax = Vector3Int.Max(slab.max, door + Vector3Int.one);
+            bbox = new BoundsInt(bbMin, bbMax - bbMin);
 
             // --- Stair clearance: no stair cell within the configured XZ radius
             // (and one level up/down) of the footprint. The door cell h sits
             // inside this expansion, so its surroundings are covered too.
-            int c = cfg.prisonStairClearance;
+            int c = stairClearance;
             var check = new BoundsInt(
-                fp.position - new Vector3Int(c, 1, c),
-                fp.size + new Vector3Int(2 * c, 2, 2 * c));
+                bbox.position - new Vector3Int(c, 1, c),
+                bbox.size + new Vector3Int(2 * c, 2, 2 * c));
             foreach (var pos in check.allPositionsWithin)
             {
                 if (!Grid.InBounds(pos)) continue;
                 CellType t = Grid[pos];
-                if (t == CellType.StairLower || t == CellType.StairUpper) return;
+                if (t == CellType.StairLower || t == CellType.StairUpper) return false;
             }
 
-            // --- Commit ---
-            Fill(fp, CellType.Prison);
-            PrisonCells.Add(fp);
+            // The exact footprint. Order is irrelevant — every cell gets the same type — but the
+            // SET must match what Fill(slab) plus the doorway tile used to write, or the grid
+            // this produces differs from the pre-extraction version.
+            cells = new List<Vector3Int>();
+            foreach (var pos in slab.allPositionsWithin) cells.Add(pos);
+            if (wide) cells.Add(door);
+            return true;
         }
     }
 }

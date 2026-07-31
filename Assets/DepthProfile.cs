@@ -57,6 +57,27 @@ namespace DungeonGen
     /// Only the typing-relevant fields exist now; loot tier, enemy budget, and
     /// torch palette will join here so every system reads one depth source.
     /// </summary>
+    /// <summary>
+    /// One alcove kind's legality, frequency and size. Same shape as CategoryBudget and
+    /// SatelliteRule: a minDepth gate plus authored numbers, so the progression curve stays
+    /// readable in one inspector rather than spread across code.
+    /// </summary>
+    [System.Serializable]
+    public struct AlcoveRule
+    {
+        public AlcoveKind kind;
+        [Tooltip("Run depth below which this kind is never picked.")]
+        public int minDepth;
+        [Tooltip("Relative pick weight among the kinds legal at the current depth. Normalized at pick time, so these are ratios, not probabilities.")]
+        public float weight;
+        [Tooltip("Hard ceiling on this kind per run. Enforced by REJECTING after the pick, never by skipping the draw — skipping would make the RNG draw count depend on what was already placed and break (seed, depth) determinism.")]
+        public int maxPerRun;
+        [Tooltip("Cell width across the mouth. Above 1 gets a 1x1 doorway tile with the space widening behind it, exactly like a wide prison cell.")]
+        public Vector2Int widthRange;
+        [Tooltip("Cell depth away from the corridor. 1 = a shallow look-in recess (decor only, nothing blocking); 2+ = enterable.")]
+        public Vector2Int depthRange;
+    }
+
     [CreateAssetMenu(fileName = "DepthProfile", menuName = "Dungeon/Depth Profile")]
     public class DepthProfile : ScriptableObject
     {
@@ -111,6 +132,49 @@ namespace DungeonGen
 
         public bool ThroneLegal(int depth) => depth >= throneMinDepth;
         public bool MerchantLegal(int depth) => depth >= merchantMinDepth;
+
+        [Header("Hallway alcoves")]
+        [Tooltip("Run depth below which no alcoves are carved at all.")]
+        public int alcoveMinDepth = 1;
+        [Tooltip("Chance per VIABLE corridor face at alcoveMinDepth. Viable = the cell behind the face is solid rock, so directions running along a corridor are never rolled — this is a real candidate count, not a raw cell sweep, which is why it can sensibly go to 1. Roughly half of viable faces are then rejected anyway by the one-opening rule (rock only one cell thick between corridors), so even 1.0 yields occasional alcoves, not a honeycomb.")]
+        [Range(0f, 1f)] public float alcoveBaseChance = 0.3f;
+        [Tooltip("Added to the chance per depth above alcoveMinDepth. This is what makes deeper runs feel structurally busier rather than just larger.")]
+        public float alcoveChancePerDepth = 0.05f;
+        [Tooltip("Ceiling on the per-face chance, however deep the run gets.")]
+        [Range(0f, 1f)] public float alcoveMaxChance = 0.8f;
+        [Tooltip("Hard ceiling on alcoves per run, so a long-corridor seed can't fill with them.")]
+        public int alcoveMaxCount = 12;
+
+        [Tooltip("Which alcove kinds are legal, how often each is picked, and how big it is. A kind whose depthRange minimum is 1 is a shallow look-in recess; 2+ is enterable and may hold blocking props.")]
+        public List<AlcoveRule> alcoveKinds = new List<AlcoveRule>
+        {
+            new AlcoveRule { kind = AlcoveKind.StatueNook,    minDepth = 1, weight = 1f,   maxPerRun = 4,
+                             widthRange = new Vector2Int(1, 2), depthRange = new Vector2Int(1, 2) },
+            new AlcoveRule { kind = AlcoveKind.ShrineNiche,   minDepth = 2, weight = 0.8f, maxPerRun = 3,
+                             widthRange = new Vector2Int(1, 1), depthRange = new Vector2Int(1, 1) },
+            new AlcoveRule { kind = AlcoveKind.CollapsedDig,  minDepth = 1, weight = 1.2f, maxPerRun = 5,
+                             widthRange = new Vector2Int(1, 3), depthRange = new Vector2Int(2, 3) },
+            new AlcoveRule { kind = AlcoveKind.StorageRecess, minDepth = 2, weight = 1f,   maxPerRun = 4,
+                             widthRange = new Vector2Int(2, 3), depthRange = new Vector2Int(2, 3) },
+        };
+
+        /// <summary>Per-face alcove chance at a depth. 0 below alcoveMinDepth.</summary>
+        public float AlcoveChanceAt(int depth)
+        {
+            if (depth < alcoveMinDepth) return 0f;
+            return Mathf.Clamp(alcoveBaseChance + (depth - alcoveMinDepth) * alcoveChancePerDepth,
+                               0f, alcoveMaxChance);
+        }
+
+        /// <summary>Kinds legal at this depth, in authored order. Empty = carve no alcoves.</summary>
+        public List<AlcoveRule> AlcoveKindsAt(int depth)
+        {
+            var legal = new List<AlcoveRule>();
+            if (alcoveKinds == null) return legal;
+            foreach (var r in alcoveKinds)
+                if (depth >= r.minDepth && r.weight > 0f) legal.Add(r);
+            return legal;
+        }
 
         [Header("Satellite (closet) rooms")]
         [Tooltip("Host room types that ALWAYS get a satellite (setpieces).")]
