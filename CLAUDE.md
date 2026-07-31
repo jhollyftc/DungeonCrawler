@@ -114,6 +114,21 @@ Order matters; several stages depend on earlier ones. Current order:
 8. **AssignRoomTypes** — see §4.
 9. **PlaceSatelliteRooms** — type-paired closets (see §4).
 10. **PlanInteriorColumns** — lattice-point column plans for grand rooms (see §4).
+11. **WidenJunctions** — opens corridor JUNCTIONS AND BENDS into 2x2 plazas, optionally
+    with a column at the centre (reusing `ColumnPoints`, so the kit's existing interior
+    column slot renders them). Corridors are 1-wide **structurally**, not by policy — a
+    cell exists iff it sits on an A* path and `Commit` writes exactly that cell — so
+    there is no width dial and widening must be a post-pass. **Junctions and bends only,
+    deliberately:** widening straight runs makes corridors read as rooms and eats the rock
+    prisons and alcoves need, whereas widening where routes MEET rewards turning a corner.
+    Three guards, each from a real failure shape: the corridor list is SNAPSHOT first (see
+    §12's self-hosting rule); carvability defers to `HallwayPathfinder.SurroundingsOk`
+    rather than restating it, so a widened cell obeys the sealed 13-cell stair envelope
+    like every other corridor cell; and a new cell may never open into a **Room** (would
+    punch a doorway with no door, arch or reserved threshold, bypassing `RecordDoor`) or a
+    **Prison** (would give a validated one-opening cell a second opening).
+12. **PlaceAlcoves** — small validated recesses off corridors with an authored KIND
+    (statue nook / shrine niche / collapsed dig / storage recess). See §4.
 
 > The stage-number comments in code (`Stage 5`, `Stage 6`…) are historical and
 > out of order after several insertions. Trust the `Generate()` call order, not
@@ -186,6 +201,37 @@ rooms:
   Spacing (default every 2 lattice pts) and wall inset configurable. Skips
   lattice points adjacent to doorways and any point whose 4 cells aren't all real
   footprint cells (no columns in an L-bite).
+
+**Alcoves (`PlaceAlcoves`, `Alcove.cs`)** — recesses carved off corridors, each with an
+`AlcoveKind` that decides its contents. The feature that made corridors worth walking:
+combined with wide prison cells and junction plazas, "no longer just straight hallways."
+- **GRID-INVISIBLE, and that is the whole design.** Alcove cells are written as ordinary
+  `CellType.Hallway`, so walls, floors, ceilings and corridor wall-sets come free from the
+  existing kit and mesher paths with **zero changes to either**. A dedicated `CellType`
+  would be read as solid-adjacent by every `!= CellType.Empty` test across the mesher and
+  kit and would render as nothing. Identity lives in `DungeonGenerator.Alcoves` +
+  `AlcoveAt`/`IsAlcoveCell`, the same shape as `PrisonCells`/`Ladders`/`ColumnPoints`.
+  **The cost of that choice is the self-hosting trap — see §12.**
+- **`RecessFits` is shared with prisons.** Extracted from `TryPlacePrisonAt`, it carries the
+  rules that took several passes to settle: all cells Empty, solid above and below, the
+  one-opening rule, the 1x1 vestibule for wide shapes, stair clearance. It commits nothing
+  and draws nothing from `rng`, so a caller can probe several shapes without perturbing the
+  stream. Both callers shrink to fit rather than failing outright.
+- **`AlcoveSpec.Direction` is load-bearing**: it gives the recess an intrinsic
+  back/left/right frame, which is what lets the existing `Feature` anchor work with no new
+  authoring concepts (`WallSide.Back` = the far wall, `FeatureFacing.Outward` = looking out
+  at the corridor). Without it an alcove has no zones, centroid or entrance axis and
+  `RoomPropPlacer`'s machinery is unusable — it hard-gates on `CellType.Room` anyway.
+- **Blocking props are legal at ANY depth, including a 1x1.** A guard once refused them in
+  shallow alcoves reasoning "there is nowhere to stand" — wrong, and it contradicted the
+  no-flood-fill rule: an alcove is a DEAD END, nothing routes through it, so a collider
+  inside one severs nothing however shallow. The symptom was a recessed statue you could
+  walk through, which is the exact case the shallow kind exists for. `IsEnterable` survives
+  as an informational property only.
+- Pipeline position is load-bearing twice: **after** prisons (Hallway is a legal prison
+  host, Prison is not a legal alcove neighbour, so alcoves would silently eat prison sites
+  if reordered) and **last** among rng-drawing stages (so appending shifted no existing
+  seed's rooms, prisons, satellites or columns).
 
 ---
 
@@ -484,6 +530,11 @@ One RoomStyle asset defines a room type's whole look. What it holds:
   categories 1 > Generic 0). Highest-scoring adjacent room's pillar wins; hallway
   contributes nothing.
 - **Props** (`PropSetEntry` per type — shareable PropSet assets). See §8.
+- **Alcove styles** (`alcoveStyles`: one PropSet per `AlcoveKind`). Alcove cells are typed
+  Hallway, so they inherit hallway WALLS/floors/ceilings — only the contents are per-kind.
+  A kind with no entry generates as an empty recess, degrading gracefully like every other
+  slot here. Per-kind kit walls/floors are a deliberate v2: skipping them kept
+  `DungeonKitPlacer` untouched.
 
 Fallback philosophy throughout: empty/unauthored → kit generic; incomplete
 authoring degrades gracefully, never renders wall-less. **Keep at least one
@@ -599,6 +650,29 @@ scatter just places nothing.
   hanging lantern on the same tile. Bypasses only the one-prop-per-tile visual
   rule; physical blocking (collider tiers, flood-fill) still applies.
 
+**Alcoves (AlcovePropPlacer + `RoomStyle.alcoveStyles`)** — one PropSet per `AlcoveKind`.
+Its own pass because neither existing one fits: `RoomPropPlacer` hard-gates on
+`CellType.Room` and needs zones/entrance/centroid; `HallwayPropPlacer` scatters ONE global
+set over every corridor cell, where an alcove needs per-kind content and a hero prop.
+Everything else is reused unchanged (`PropSet`, anchors, `PropTier`, `PropInstancer`,
+`PropSnap`, `WallFaceRegistry`).
+- **Runs BEFORE TorchPlacer** — §8's most-constrained-first rule taken to its conclusion:
+  an alcove has ~3 wall faces and one authored hero prop, making it the tightest consumer
+  of wall real estate in the dungeon, and it must claim its feature face before a sconce
+  takes it. That needed one line in `TorchPlacer` (respect an already-CLAIMED face).
+  Nothing claimed before torches previously, so it was a behavioural no-op — which is what
+  made it verifiable: identical torch counts on fixed seeds with alcoves off.
+- **`HallwayPropPlacer` excludes alcove cells** and reserves the corridor tile in front of
+  each mouth. Alcove cells are typed Hallway, so without this they collect generic debris
+  on top of their authored contents — burying the thing the alcove exists to show — and
+  rubble piles exactly where you stand to look in.
+- **No flood-fill, deliberately.** A dead-end pocket off one corridor cell cannot sever
+  anything. Do NOT add alcove cells to the hallway BFS "for safety" — it would let a
+  blocking prop veto itself for nothing.
+- Own salt block **12101-12104**, never a shared counter, so tuning this pass can't shift
+  hallway (12002/12003/12005) or room (110xx) placements.
+- `snapToInsideCorner` pays off unusually well here: an alcove is nearly all inside corners.
+
 **Hallways (HallwayPropPlacer + RoomStyle.hallwayProps):** one GLOBAL corridor
 PropSet — debris, cobwebs, roots. Corridors aren't rooms (no zones/centroid/
 entrance), so it's a separate pass scanning CellType.Hallway cells. Supports
@@ -712,6 +786,18 @@ Formula-driven with authored override points (the user's explicit choice).
 - When a profile is assigned, the generator derives room count + grid size from
   `depth` at construction. Without a profile, explicit config values are used and
   some type-driven features (satellites, columns) are skipped.
+- **Alcove budget:** `alcoveMinDepth`, `alcoveBaseChance`/`alcoveChancePerDepth`/
+  `alcoveMaxChance`, `alcoveMaxCount`, and an `AlcoveRule` list (kind, minDepth, weight,
+  maxPerRun, widthRange, depthRange). Kind pick is ONE weighted draw against the legal
+  kinds; `maxPerRun` is enforced by **rejecting after the draw**, never by skipping it, so
+  the draw count can't depend on what was already placed.
+- **WHEN A PROFILE IS ASSIGNED IT WINS OUTRIGHT, and the DungeonVisualizer's mirrored
+  fields are dead.** Cost real debugging time on alcoves: `alcoveChance` was turned up on
+  the visualizer with no effect whatsoever, because the profile — created before those
+  fields existed, so reading as all-zero — was what the generator consulted. **A
+  ScriptableObject asset that predates a new field does not get its C# initializer
+  reliably**; check the asset in the inspector, not the code default. `PlaceAlcoves` now
+  warns naming the exact cause rather than silently carving none.
 
 ---
 
@@ -1872,6 +1958,20 @@ Cosmetic-first; combat is far off ("get the world together first").
     mostly Blender/texture work; toon shader packed-mask already ready.
 29. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit → home
     base → depth increment → sell/replenish). Design chat first.
+29b. ✅ **Corridor spatial variety** — the pass that made hallways worth walking. Wide
+    PRISON cells via a 1x1 vestibule (a wide mouth on a corridor is geometrically
+    impossible — the one-opening rule forbids it — so the cell widens BEHIND a doorway
+    tile); **hallway ALCOVES** with per-kind contents; **junction PLAZAS** with optional
+    central pillars reusing the interior-column system. See §3 stages 11-12, §4, §8, §9.
+    Field verdict: "no longer just straight hallways."
+    ⏳ open: per-kind kit walls/floors for alcoves; an arch on the alcove mouth (pay the
+    `BuildArchways` + `FrameFace` pair cost together, §7, or posts land through arches).
+    ⏳ **ROOM PITS AND BRIDGES** is the remaining big spatial idea and the one corridors
+    structurally CANNOT do: `HallwayPathfinder.SurroundingsOk` requires solid rock above
+    AND below every corridor cell, so open-under-open only exists in rooms (which is
+    already how tall rooms work). A tall room whose lower level is a pit rather than a
+    floor, crossed by a bridge and escaped by ladder, ties into the climb-out progression
+    — but `NeedsSlabBetween` and the mesher both have to learn about it.
 30. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
     doored rooms = lockable set), difficulty gradient by graph depth, equipment
     + SwayProfiles.
@@ -1889,6 +1989,38 @@ Cosmetic-first; combat is far off ("get the world together first").
   prefab reference — the same class of failure as the `EmissiveController`/
   `EmissionController` rename (rule 3). `git status` shows untracked `.meta` files
   right beside the script; they're easy to skip when staging by name.
+- **A PASS THAT WRITES THE CELLTYPE IT READS WILL FEED ON ITSELF.** Both new corridor
+  features hit this, one stage apart, and it is a property of the shape rather than a slip.
+  **Alcoves** are typed `Hallway` (that's what gets them free walls and floors), so an
+  alcove is a legal HOST for another alcove; carving during a single grid scan meant later
+  flat indices saw fresh cells and chained recess off recess — branching tunnels, not
+  niches. **Junction plazas** widen `Hallway` cells, and widening creates new junctions, so
+  a live scan grows plazas outward indefinitely. Prisons are immune only by accident: they
+  carve `Prison`, which their own one-opening rule then rejects. Two fixes, both needed:
+  **snapshot the input set before mutating**, and **guard membership explicitly**
+  (`IsAlcoveCell`, `plazaCells`). The failure looks the same either way — a creeping blob
+  instead of a place — and is invisible until you crank the chance up.
+- **A CONSTANT THAT IS CORRECT FOR ONE SYSTEM IS NOT PORTABLE TO ANOTHER WHOSE DENOMINATOR
+  DIFFERS.** Alcove tuning burned several rounds on this, three times over, all from
+  copying prison values: (1) `chance` was rolled per COMPASS DIRECTION off every corridor
+  cell, but the directions running ALONG a corridor lead to more corridor — so half the
+  rolls on a straight run were doomed before validation, and every one was tallied as "no
+  room in the rock". A measured 100 rejections looked like a geometry problem and was an
+  accounting one; rolling only against genuinely solid faces made `chance` mean what an
+  author expects and doubled density at the same setting. (2) `alcoveDoorClearance` copied
+  a value of 2, which is a CHEBYSHEV box — 25 cells around EVERY door, eating 45% of all
+  sites. (3) The `[Range(0f, 0.5f)]` slider cap encoded the old per-direction denominator
+  and silently prevented the fix from being tuned. When porting a working system's numbers,
+  ask what the denominator IS, not what the value was.
+- **INSTRUMENT BEFORE HYPOTHESISING — the tally beat the theory every time.** Across the
+  alcove work: the per-rule rejection counter identified the real cause on all three
+  rounds, while confident diagnoses (door clearance, then depth) were wrong twice, and a
+  depth-shrink built on the second one moved rejections 100 → 101. Same pattern as the
+  invisible-NPC hunt and the crowd jitter. A cheap counter that reports which rule fired
+  beats any amount of reading the code. Corollary: **do not let the diagnostic assert its
+  own conclusion** — the first version of that message claimed geometry was "usually"
+  dominant and the very first real run disagreed; it now computes the dominant reason.
+
 - **CODE WRITTEN FROM ONE ACTOR'S PERSPECTIVE BREAKS FOR THE OTHER — re-read it as the
   other actor before shipping.** `MeleeAttack` was built player-first and worked perfectly
   for years of player swings; the moment NPCs started attacking, TWO latent bugs opened at
