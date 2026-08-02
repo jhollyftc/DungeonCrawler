@@ -129,6 +129,8 @@ namespace DungeonGen
             public GameObject[] floorPrefabs;
             [Tooltip("Ceiling tiles for rooms of this type. Empty = kit's generic ceiling.")]
             public GameObject[] ceilingPrefabs;
+            [Tooltip("LINTEL / cornice trim for the top edge of a wall inside a STAIR SHAFT, where it meets the ceiling. A stairwell exposes a full storey of wall in one view, so that seam is the most visible wall/ceiling junction in the dungeon and reads as a hard 90 degree edge without a piece to blend it. Empty = kit's generic lintel.")]
+            public GameObject[] lintelPrefabs;
         }
 
         [Header("Floors & ceilings (empty = kit's generic)")]
@@ -138,6 +140,8 @@ namespace DungeonGen
         public GameObject[] hallwayFloorPrefabs;
         [Tooltip("Ceiling tiles for corridors.")]
         public GameObject[] hallwayCeilingPrefabs;
+        [Tooltip("Lintel trim for CORRIDOR stair shafts — a corridor staircase belongs to no room, so it cannot use a per-type set.")]
+        public GameObject[] hallwayLintelPrefabs;
         [Tooltip("Floor tiles for prison closets.")]
         public GameObject[] prisonFloorPrefabs;
         [Tooltip("Ceiling tiles for prison closets.")]
@@ -163,8 +167,18 @@ namespace DungeonGen
             return null;
         }
 
+        /// <summary>Stair-shaft lintel trim for a room type, or null.</summary>
+        public GameObject[] LintelsFor(RoomType type)
+        {
+            foreach (var s in roomSurfaces)
+                if (s.type == type)
+                    return (s.lintelPrefabs != null && s.lintelPrefabs.Length > 0) ? s.lintelPrefabs : null;
+            return null;
+        }
+
         public GameObject[] HallwayFloors() => Nullable(hallwayFloorPrefabs);
         public GameObject[] HallwayCeilings() => Nullable(hallwayCeilingPrefabs);
+        public GameObject[] HallwayLintels() => Nullable(hallwayLintelPrefabs);
         public GameObject[] PrisonFloors() => Nullable(prisonFloorPrefabs);
         public GameObject[] PrisonCeilings() => Nullable(prisonCeilingPrefabs);
         /// <summary>Pit-bottom floor tiles, or null. No pit CEILING accessor exists on purpose:

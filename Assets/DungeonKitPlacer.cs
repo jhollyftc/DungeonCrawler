@@ -45,6 +45,14 @@ namespace DungeonGen
         public GameObject[] bridgePrefabs; // optional — skipped if empty
         [Tooltip("Nudge applied to a bridge deck in world space (Y is the useful axis — sink or raise the deck relative to the floor plane). Unlike ladderOffset this is NOT rotated: a bridge lies flat and is placed axis-aligned, so there is no wall frame to be relative to.")]
         public Vector3 bridgeOffset;
+        [Tooltip("BROKEN EDGE piece for a pit's rim — cracked flagstones and rubble along the lip, laid where a room's floor meets the hole. Without it the floor quad simply stops and the transition reads as MISSING GEOMETRY rather than a designed opening; the pit's own walls are a whole level below and you don't see them from across the room. Author facing +Z, which is rotated to point AWAY from the pit (toward the floor you stand on to look at it), same convention as a wall facing into the room it is viewed from. Placed as StaticDecor — no collider, so it never becomes a lip you trip on.")]
+        public GameObject[] pitRimPrefabs; // optional — skipped if empty
+        [Tooltip("Nudge for the rim piece in its OWN frame: Z = further over the hole / back onto the floor, Y = up, X = along the edge. Rotated like the piece, so one value is correct on all four edge directions (the ladderOffset lesson).")]
+        public Vector3 pitRimOffset;
+        [Tooltip("GENERIC lintel / cornice for the top edge of a wall inside a STAIR SHAFT, where it meets the ceiling. RoomStyle's per-type lintelPrefabs override this; this is the fallback so a partially authored style still renders. A stairwell exposes a whole storey of wall in one view, which makes that seam the most visible wall/ceiling junction in the dungeon — everywhere else the eye is much further from it.\n\nAuthor facing +Z (rotated to point INTO the shaft, same convention as a wall facing the space it is viewed from) and with the SAME ORIGIN CONVENTION AS YOUR WALLS AND CEILINGS — globalVisualOffset IS applied to this, because it is a kit piece that has to line up with them. That differs from ladders and bridges, which are authored BASE-ORIGIN and get no offset. Getting this backwards puts the piece a half-cell out, which is the classic symptom (golden rule 2).")]
+        public GameObject[] lintelPrefabs; // optional — skipped if empty
+        [Tooltip("Nudge for the lintel in its OWN frame: Z = further into the shaft / back into the wall, Y = up or down from the ceiling line, X = along the run. Rotated with the piece, so one value is correct on all four wall directions.")]
+        public Vector3 lintelOffset;
         [Header("Per-room emissive tinting (optional)")]
         [Tooltip("The GLOWING material used by kit pieces with an emissive element (candle walls, braziers). When set, every instanced kit piece using this exact material gets a cached variant tinted to its room's TORCH COLOUR — so a shrine's candles burn the same cold blue as its torches, exactly like the fog and flame VFX already do. Leave empty to disable tinting entirely (pieces render with the authored material).\n\nThis is needed because a MaterialPropertyBlock can't work on the instanced path: nothing renders through the prefab's MeshRenderer, so an EmissionController on a kit wall does nothing. Cost is one extra batch per distinct colour in use — bounded by the palette, not by instance count.")]
         public Material emissiveMaterial;
@@ -1242,6 +1250,188 @@ namespace DungeonGen
 
             if (count > 0)
                 Debug.Log($"[Dungeon] {count} bridge deck(s) placed across {gen.Pits.Count} pit(s).");
+            return root;
+        }
+
+        /// <summary>
+        /// The broken edge around a pit's mouth, where the room's floor stops.
+        ///
+        /// NEEDS ITS OWN PASS because no existing rule covers this face. The wall emitter only
+        /// fires on OPEN→SOLID faces, and at the opening level BOTH cells are open — the floor
+        /// cell and the hole are both CellType.Room — so it skips the edge entirely. The pit's
+        /// real walls exist a whole level below, which you cannot see from across the room. The
+        /// result was a floor quad that simply stopped: correct geometry that reads as MISSING
+        /// geometry rather than as a designed opening.
+        ///
+        /// Closest existing analogue is FrameFace, which likewise handles a face between two
+        /// open cells rather than an open/solid boundary.
+        /// </summary>
+        public static GameObject BuildPitRims(DungeonGenerator gen, DungeonKit kit, float cellSize, Transform parent,
+                                              InstancedDungeonRenderer instancer = null)
+        {
+            var root = new GameObject("DungeonPitRims");
+            root.transform.SetParent(parent, false);
+            if (kit.pitRimPrefabs == null || kit.pitRimPrefabs.Length == 0) return root;
+            if (gen.Pits.Count == 0) return root;
+
+            int count = 0;
+            foreach (var pit in gen.Pits)
+            {
+                foreach (var c in pit.Openings)
+                {
+                    foreach (var d in HDirs)
+                    {
+                        Vector3Int nb = c + d;
+
+                        // Another opening of the same hole: an interior edge, not a rim.
+                        if (gen.IsPitOpening(nb)) continue;
+                        // Solid rock: the ordinary wall emitter already put a wall on this face.
+                        if (!gen.Grid.InBounds(nb) || gen.Grid[nb] == CellType.Empty) continue;
+
+                        // Bridge landings are NOT skipped, by choice — the edge continues
+                        // unbroken under the deck, so the crossing looks laid ACROSS a broken
+                        // hole rather than the hole being tidily finished where the bridge
+                        // happens to meet it.
+
+                        GameObject prefab = kit.pitRimPrefabs[Hash(c, 167 + DirIndex(d)) % kit.pitRimPrefabs.Length];
+                        if (prefab == null) continue;
+
+                        // On the face between the two cells, at the room's floor level.
+                        Vector3 face = new Vector3(c.x + 0.5f + d.x * 0.5f,
+                                                   c.y,
+                                                   c.z + 0.5f + d.z * 0.5f) * cellSize;
+
+                        // Forward points AWAY from the pit, toward the floor you stand on to
+                        // look at it — the same convention as a wall facing into the room it is
+                        // viewed from. `d` runs opening → floor, so it already is that vector.
+                        Quaternion rot = Quaternion.LookRotation((Vector3)d);
+
+                        // Offset in the piece's OWN frame, not world space: an edge offset is
+                        // inherently directional ("how far over the hole"), so a world-space
+                        // nudge would only be correct on the edges that happen to face that
+                        // world axis and would push the others sideways along the lip — exactly
+                        // the bug ladderOffset had.
+                        Vector3 pos = face + rot * kit.pitRimOffset + parent.position;
+
+                        if (instancer != null)
+                        {
+                            PropInstancer.PlaceProps(instancer, prefab,
+                                new[] { new PropPlacement { position = pos, rotation = rot } },
+                                PropTier.StaticDecor, cellSize, root.transform);
+                        }
+                        else
+                        {
+                            Object.Instantiate(prefab, pos, rot * prefab.transform.rotation, root.transform);
+                        }
+                        count++;
+                    }
+                }
+            }
+
+            if (count > 0)
+                Debug.Log($"[Dungeon] {count} pit rim piece(s) placed.");
+            return root;
+        }
+
+        static int DirIndex(Vector3Int d) => d.x > 0 ? 0 : d.x < 0 ? 1 : d.z > 0 ? 2 : 3;
+
+        /// <summary>
+        /// Lintel trim along the top edge of stair-shaft walls, where they meet the shaft's
+        /// ceiling.
+        ///
+        /// A stairwell is the one place the player sees a FULL STOREY of wall in a single view,
+        /// so its wall/ceiling seam is far more visible than the same junction anywhere else —
+        /// everywhere else the eye is further away and the ceiling is read at a glancing angle.
+        /// Left bare it is a hard 90 degree edge between two flat surfaces.
+        ///
+        /// THE EDGE IS THE UNDERSIDE OF A CEILING SLAB, NOT THE TOP OF A WALL. Descending a
+        /// staircase you look at the ceiling over the space at the BOTTOM of the stairs, and it
+        /// ends in a horizontal line where the shaft's wall carries on upward. That line is the
+        /// slab's edge — at the BOTTOM of the upper stair cell, not the top.
+        ///
+        /// The test that finds exactly that face and nothing else: a wall face (solid
+        /// neighbour) whose BELOW-AND-OUTWARD cell is OPEN. Open below-outward means there is a
+        /// ceiling slab over that space and this face is where it stops.
+        ///
+        /// It also excludes the shaft's SIDE walls for free, which is what makes it the right
+        /// test rather than a filtered version of the wrong one: beside a staircase the sealed
+        /// envelope keeps the cell below-outward solid, so no slab edge exists there and no trim
+        /// is emitted. Trimming the tops of those side walls — the first attempt — put a line
+        /// along the shaft's shoulders, including on the outside faces you never see.
+        /// </summary>
+        public static GameObject BuildLintels(DungeonGenerator gen, DungeonKit kit, float cellSize, Transform parent,
+                                              RoomStyle style = null, InstancedDungeonRenderer instancer = null)
+        {
+            var root = new GameObject("DungeonLintels");
+            root.transform.SetParent(parent, false);
+
+            bool anyGeneric = kit.lintelPrefabs != null && kit.lintelPrefabs.Length > 0;
+            if (!anyGeneric && style == null) return root;
+            if (gen.Stairs.Count == 0) return root;
+
+            var grid = gen.Grid;
+            bool Open(Vector3Int p) => grid.InBounds(p) && grid[p] != CellType.Empty;
+
+            // Stairs is keyed by cell index with all four footprint cells mapping to the same
+            // Stair, so iterate the KEYS to visit each cell once rather than each stair once.
+            int count = 0;
+            foreach (var kv in gen.Stairs)
+            {
+                Vector3Int c = grid.Position(kv.Key);
+                if (!grid.InBounds(c)) continue;
+
+                // Style by the room the stair belongs to. An interior staircase keeps its cells
+                // in Room.Cells and only changes their CellType, so RoomAt resolves it (§7) —
+                // a corridor stair belongs to no room and falls back to the hallway set.
+                GameObject[] slot = kit.lintelPrefabs;
+                if (style != null)
+                {
+                    Room room = gen.RoomAt(c);
+                    slot = (room != null ? style.LintelsFor(room.Type) : style.HallwayLintels()) ?? slot;
+                }
+                if (slot == null || slot.Length == 0) continue;
+
+                foreach (var d in HDirs)
+                {
+                    if (Open(c + d)) continue;                       // only where a WALL exists
+                    // ...and only where that wall is the EDGE OF A CEILING SLAB: the cell
+                    // below-and-outward must be open, meaning there is a roofed space out there
+                    // whose ceiling stops at this face. Solid below-outward (the sealed envelope
+                    // flanking a staircase) means no slab edge, so no trim.
+                    if (!Open(c + d - Vector3Int.up)) continue;
+
+                    GameObject prefab = slot[Hash(c, 173 + DirIndex(d)) % slot.Length];
+                    if (prefab == null) continue;
+
+                    // On the wall face at the BOTTOM of this cell — which is the ceiling plane
+                    // of the space below-outward, i.e. the slab's underside edge.
+                    Vector3 face = new Vector3(c.x + 0.5f + d.x * 0.5f,
+                                               c.y,
+                                               c.z + 0.5f + d.z * 0.5f) * cellSize;
+
+                    // Forward points into the shaft, matching how a wall faces the space it is
+                    // viewed from. Offset is applied in the piece's OWN frame for the same
+                    // reason ladderOffset is: "further into the shaft" is directional, so a
+                    // world-space nudge is only correct on walls facing that world axis.
+                    Quaternion rot = Quaternion.LookRotation(-(Vector3)d);
+                    Vector3 pos = face + rot * kit.lintelOffset + kit.globalVisualOffset + parent.position;
+
+                    if (instancer != null)
+                    {
+                        PropInstancer.PlaceProps(instancer, prefab,
+                            new[] { new PropPlacement { position = pos, rotation = rot } },
+                            PropTier.StaticDecor, cellSize, root.transform);
+                    }
+                    else
+                    {
+                        Object.Instantiate(prefab, pos, rot * prefab.transform.rotation, root.transform);
+                    }
+                    count++;
+                }
+            }
+
+            if (count > 0)
+                Debug.Log($"[Dungeon] {count} stair lintel piece(s) placed.");
             return root;
         }
     }

@@ -85,7 +85,7 @@ namespace DungeonGen
             // regenerate — F1 would stack a second dungeon's worth of props on the first.
             // "DungeonAlcoveProps" was missed when alcoves landed (already shipped);
             // "DungeonBridges" arrives with pits.
-            "DungeonAlcoveProps", "DungeonBridges",
+            "DungeonAlcoveProps", "DungeonBridges", "DungeonPitRims", "DungeonLintels",
         };
 
         void Start()
@@ -211,6 +211,8 @@ namespace DungeonGen
                 DungeonKitPlacer.BuildInteriorColumns(gen, kit, cellSize, transform);
                 DungeonKitPlacer.BuildLadders(gen, kit, cellSize, transform);
                 DungeonKitPlacer.BuildBridges(gen, kit, cellSize, transform);
+                DungeonKitPlacer.BuildPitRims(gen, kit, cellSize, transform);
+                DungeonKitPlacer.BuildLintels(gen, kit, cellSize, transform, roomStyle);
             }
             else if (geometryMode == GeometryMode.InstancedKit)
             {
@@ -281,6 +283,8 @@ namespace DungeonGen
                 DungeonKitPlacer.BuildInteriorColumns(gen, kit, cellSize, transform, ir);
                 DungeonKitPlacer.BuildLadders(gen, kit, cellSize, transform, ir);
                 DungeonKitPlacer.BuildBridges(gen, kit, cellSize, transform, ir);
+                DungeonKitPlacer.BuildPitRims(gen, kit, cellSize, transform, ir);
+                DungeonKitPlacer.BuildLintels(gen, kit, cellSize, transform, roomStyle, ir);
 
                 ir.Commit(); // idempotent — bakes kit + archway instances together
 
