@@ -273,7 +273,15 @@ a pit applies that to a SUBSET of one room's cells.
 - **A PIT OPENING PASSES EVERY "IS THIS A ROOM CELL" TEST**, because it genuinely is one —
   just floorless. See §12's category rule; `Room.Holes` is the flag, and it lives on `Room`
   rather than only in the pit registry because `InteriorFloorCell` is a Room property with no
-  generator reference.
+  generator reference. Five systems needed telling; assume a sixth exists.
+- **Pit STYLING** (`RoomStyle.pitWalls` / `pitFloorPrefabs`) is global, not per-room-type —
+  a chasm exposes what lies BENEATH the dungeon, so raw rock reads better than the room's own
+  masonry continuing down. No pit ceiling slot (the top is the hole). **Both resolutions must
+  be checked BEFORE the room branch in the kit placer**, because `RoomAt` deliberately
+  resolves a pit cell TO its room via `PitAt` — otherwise the room branch always wins and the
+  slots can never fire. Unauthored falls through to the room's own walls and floor, so the
+  slots are inert until filled. Corner POSTS are excluded from pit interiors outright, beside
+  the prison-entrance rule that exists for the same reason.
 - **A BRIDGE DECK IS A THRESHOLD, NOT A HOLE** (real bug). Decks were first marked in
   `Room.Holes`, which removes a cell from `rz.Floor` and therefore from the prop system's
   threshold FLOOD-FILL — so on a severing pit the flood-fill could not cross the bridge, every
@@ -2043,14 +2051,22 @@ Cosmetic-first; combat is far off ("get the world together first").
   THAT CATEGORY.** A pit opening is a room cell in every respect the code can test — it is in
   `Room.Cells`, its `CellType` is `Room`, it sits at floor level — it simply has no floor. So
   every system that had quietly assumed "room cell ⇒ something to stand on" broke, and each
-  broke SILENTLY and DIFFERENTLY: `RoomPropPlacer` dropped a chest into the void,
-  `InteriorFloorCell` handed a floorless cell to the player spawn / navmesh sample point /
-  path-debug endpoints, `PlanInteriorColumns` hung stacked segments over the chasm, and
-  `TorchPlacer` lit the inside of it. Four consumers, four unrelated-looking bugs, one cause.
-  When you give a subset of an existing category a new property, the work is not the feature —
-  it is grepping for everyone who reads that category and asking whether the new property
-  breaks their assumption. (`Room.Holes` is the flag here; the same shape will recur for any
-  future "room cell that isn't quite a room cell".)
+  broke SILENTLY and DIFFERENTLY. **FIVE consumers, found one at a time over several test
+  rounds:** `RoomPropPlacer` dropped a chest into the void; `InteriorFloorCell` handed a
+  floorless cell to the player spawn, the navmesh sample point and the path-debug endpoints;
+  `PlanInteriorColumns` hung stacked segments over the chasm; `TorchPlacer` lit the inside of
+  it; and the corner-post classifier posted the pit's wall corners. Five unrelated-looking
+  bugs, one cause.
+  **The count is the lesson.** Each one satisfied every structural test its system makes —
+  "is this floor", "is this a wall corner", "is this a lattice point in a room" — and failed
+  only the thing nobody had written down. So when you give a subset of an existing category a
+  new property, the work is not the feature (pits were ONE line in `NeedsSlabBetween`); it is
+  grepping for everyone who reads that category and asking whether the new property breaks
+  their assumption. Budget for that, and expect to keep finding them after you think you are
+  done. (`Room.Holes` / `PitAt` are the flags here; the same shape will recur for any future
+  "room cell that isn't quite a room cell". Note the pillar classifier already carried an
+  unconditional prison-entrance exclusion for the identical reason — when a system already has
+  one special case of this shape, that is where the next one belongs.)
 - **A PASS THAT WRITES THE CELLTYPE IT READS WILL FEED ON ITSELF.** Both new corridor
   features hit this, one stage apart, and it is a property of the shape rather than a slip.
   **Alcoves** are typed `Hallway` (that's what gets them free walls and floors), so an
