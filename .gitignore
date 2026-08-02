@@ -53,3 +53,7 @@ desktop.ini
 # Blender backup files (sources live alongside FBX exports)
 *.blend1
 *.blend2
+
+# Scratch scene copies — recreated by hand, not part of the project
+/[Aa]ssets/DungeonProcBACKUP.unity
+/[Aa]ssets/DungeonProcBACKUP.unity.meta
