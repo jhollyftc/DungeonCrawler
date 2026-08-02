@@ -51,8 +51,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.37690136, y: 3.0003345, z: 2.30492}
-  m_Center: {x: -0.13546324, y: -0.38154107, z: 0.10159471}
+  m_Size: {x: 0.20920357, y: 3.0003889, z: 2.30492}
+  m_Center: {x: 0.20755866, y: -0.38154104, z: 0.10159472}
 --- !u!1 &7347494386711623682
 GameObject:
   m_ObjectHideFlags: 0
@@ -249,7 +249,7 @@ PrefabInstance:
     - target: {fileID: -7511558181221131132, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 293f477857b0f144fb26fc4b91cad65d, type: 2}
+      objectReference: {fileID: 2100000, guid: 7ebf7d5cf8b2b3a45819685b1c5e6416, type: 2}
     - target: {fileID: -7511558181221131132, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: 'm_Materials.Array.data[1]'
       value: 
@@ -257,7 +257,7 @@ PrefabInstance:
     - target: {fileID: -5754084199372789682, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: m_Mesh
       value: 
-      objectReference: {fileID: -1020708126068460956, guid: b6af1323c60f5e7409fa1cd9273ae2d2, type: 3}
+      objectReference: {fileID: 2549477523924550976, guid: a806d45837a57a443bbb69f06ed4fda4, type: 3}
     - target: {fileID: 919132149155446097, guid: 88b17e11d93479043b3baf71037a436d, type: 3}
       propertyPath: m_Name
       value: Wooden_Door
@@ -319,8 +319,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.000125, y: 0.0044017187, z: 0.009360824}
-  m_Center: {x: -0.00003804147, y: -0.000001833439, z: 0.000283738}
+  m_Size: {x: 0.000125, y: 0.0078065335, z: 0.0077473577}
+  m_Center: {x: -0.000038041475, y: 0.000010871093, z: 0.000035998823}
 --- !u!54 &6843682354859069726
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -358,7 +358,7 @@ HingeJoint:
   serializedVersion: 3
   m_ConnectedBody: {fileID: 0}
   m_ConnectedArticulationBody: {fileID: 0}
-  m_Anchor: {x: 0, y: -0.0022, z: 0}
+  m_Anchor: {x: 0, y: -0.0039, z: 0}
   m_Axis: {x: 0, y: 0, z: 1}
   m_AutoConfigureConnectedAnchor: 1
   m_ConnectedAnchor: {x: 0, y: 0, z: 0}
@@ -596,11 +596,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Size.y
-      value: 0.002752471
+      value: 0.0011771234
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Size.z
-      value: 0.008299243
+      value: 0.008997997
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Enabled
@@ -612,19 +612,19 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.y
-      value: -0.0036807396
+      value: -0.0045573567
       objectReference: {fileID: 0}
     - target: {fileID: 4354230813982145408, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.z
-      value: -0.00090971513
+      value: -0.0005603437
       objectReference: {fileID: 0}
     - target: {fileID: 4837963884654409230, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Size.y
-      value: 0.0027283996
+      value: 0.0011403473
       objectReference: {fileID: 0}
     - target: {fileID: 4837963884654409230, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Size.z
-      value: 0.008311709
+      value: 0.00894694
       objectReference: {fileID: 0}
     - target: {fileID: 4837963884654409230, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.x
@@ -632,20 +632,40 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4837963884654409230, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.y
-      value: 0.0037204763
+      value: 0.0045145145
       objectReference: {fileID: 0}
     - target: {fileID: 4837963884654409230, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Center.z
-      value: -0.00089103624
+      value: -0.0005734249
       objectReference: {fileID: 0}
+    - target: {fileID: 5029803495147856660, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_Mesh
+      value: 
+      objectReference: {fileID: 2907066213040260387, guid: fbf68069480105941b597943f4b2e84c, type: 3}
     - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Enabled
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
-      propertyPath: 'm_Materials.Array.data[2]'
+      propertyPath: m_Materials.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 0a41120931dd6864eaa47be662b6ffd6, type: 2}
+      objectReference: {fileID: 2100000, guid: 1cb57d9bd8916514bb8f99c9d7e7b1c8, type: 2}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 300
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 300
+      objectReference: {fileID: 0}
+    - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 300
+      objectReference: {fileID: 0}
     - target: {fileID: 8242335211417857201, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_LocalPosition.x
       value: 12.306447
@@ -688,7 +708,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Name
-      value: WoodenDoor_Prefab_PhysicsBased
+      value: WoodeDoorSquare_Prefab_PhysicsBased
       objectReference: {fileID: 0}
     - target: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Layer
@@ -744,8 +764,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.0037768555, y: 0.010078452, z: 0.001732998}
-  m_Center: {x: -1.5496863e-17, y: -0.000016863745, z: 0.004136815}
+  m_Size: {x: 0.0037768555, y: 0.010281725, z: 0.0012375243}
+  m_Center: {x: -4.070818e-18, y: -0.000016862552, z: 0.0045624184}
 --- !u!65 &4542169768093844122
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -765,5 +785,5 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.0037768555, y: 0.004599931, z: 0.0007319876}
-  m_Center: {x: 1.6005715e-17, y: 0.000028288761, z: -0.0046791737}
+  m_Size: {x: 0.0037768555, y: 0.007826888, z: 0.0010369015}
+  m_Center: {x: 4.0245588e-18, y: -0.00000982523, z: -0.004526722}
