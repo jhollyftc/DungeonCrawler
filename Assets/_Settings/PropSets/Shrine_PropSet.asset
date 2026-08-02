@@ -139,3 +139,34 @@ MonoBehaviour:
     gridStride: 2
     snapToCeilingWall: 0
     allowCenter: 1
+  - label: Blood Drip
+    prefabs:
+    - {fileID: 3757418027612394138, guid: 0bc8884993e32124080be158e228bf28, type: 3}
+    anchor: 1
+    tier: 3
+    featurePositionMode: 1
+    featureWallSide: 2
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    guaranteed: 0
+    count: 1
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 0, y: 0}
+    subCellJitter: 1
+    snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 1
+    wallGap: 0.1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
