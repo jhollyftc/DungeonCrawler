@@ -65,7 +65,7 @@ MonoBehaviour:
     intensityScale: 5
     spacingScale: 1.5
   - type: 8
-    torchColor: {r: 1, g: 0.042452812, b: 1, a: 1}
+    torchColor: {r: 0.7490197, g: 0.03231065, b: 0.6269343, a: 1}
     intensityScale: 5
     spacingScale: 1.5
   - type: 14
@@ -345,6 +345,15 @@ MonoBehaviour:
     allowPropsInFront: 1
     allowTorch: 1
     featureLabel: 
+  pitWalls:
+  - prefab: {fileID: 6816111268289552834, guid: a507041bcc2604848b97158ebe1c3bea, type: 3}
+    bottom: 1
+    middle: 1
+    top: 1
+    maxPerRoom: 0
+    allowPropsInFront: 0
+    allowTorch: 0
+    featureLabel: 
   roomSurfaces:
   - type: 7
     floorPrefabs: []
@@ -352,9 +361,9 @@ MonoBehaviour:
     - {fileID: 919132149155446097, guid: 78362f8b50845734b9868f3f3a0e313d, type: 3}
   - type: 8
     floorPrefabs:
-    - {fileID: 919132149155446097, guid: 5d5433e5d39869044ac91255b4e30a09, type: 3}
+    - {fileID: 919132149155446097, guid: 96858aeb387787c4db583da72faf3840, type: 3}
     ceilingPrefabs:
-    - {fileID: 919132149155446097, guid: 683c5e18ac200ad4485a7c6adc038a25, type: 3}
+    - {fileID: 919132149155446097, guid: 78362f8b50845734b9868f3f3a0e313d, type: 3}
   hallwayFloorPrefabs: []
   hallwayCeilingPrefabs:
   - {fileID: 919132149155446097, guid: 683c5e18ac200ad4485a7c6adc038a25, type: 3}
@@ -362,6 +371,8 @@ MonoBehaviour:
   - {fileID: 919132149155446097, guid: 5d5433e5d39869044ac91255b4e30a09, type: 3}
   prisonCeilingPrefabs:
   - {fileID: 919132149155446097, guid: 683c5e18ac200ad4485a7c6adc038a25, type: 3}
+  pitFloorPrefabs:
+  - {fileID: 919132149155446097, guid: b1179402ceeba484d9840c2aab725486, type: 3}
   roomOpenings:
   - type: 0
     archwayPrefabs:
@@ -430,7 +441,7 @@ MonoBehaviour:
     archwayPrefabs:
     - {fileID: 5995367872348806340, guid: b15d1b5646a6d5e4082917b7fc9e639e, type: 3}
     doorPrefabs:
-    - {fileID: 5995367872348806340, guid: b15d1b5646a6d5e4082917b7fc9e639e, type: 3}
+    - {fileID: 1029005481309709157, guid: 3d1e5ed31e65cc447b30d21159fc4db4, type: 3}
     outerPillarPrefabs:
     - {fileID: 1537402847695427244, guid: 3bb82d9e8435b3d4caa97c19a0f4e657, type: 3}
     innerPillarPrefabs: []
@@ -495,3 +506,12 @@ MonoBehaviour:
   - type: 0
     props: {fileID: 11400000, guid: cc228de8e7c1729488d96aa5c2a7afd8, type: 2}
   hallwayProps: {fileID: 11400000, guid: f091b7636f761184fb6292fa86c06da5, type: 2}
+  alcoveStyles:
+  - kind: 0
+    props: {fileID: 11400000, guid: 0ccff1c53f85006478704bb65cab13e6, type: 2}
+  - kind: 1
+    props: {fileID: 11400000, guid: ddbd94714529496478cf5365199f60d3, type: 2}
+  - kind: 2
+    props: {fileID: 11400000, guid: 42ac13bdd1d3f1344b827927fc2d2e8c, type: 2}
+  - kind: 3
+    props: {fileID: 11400000, guid: 284721b688d17184db5d71c760919eee, type: 2}

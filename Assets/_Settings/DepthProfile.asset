@@ -47,13 +47,43 @@ MonoBehaviour:
   largePerDepth: 0.25
   largeMaxCount: 4
   largeRoomEdge: {x: 5, y: 6}
-  shapedRoomChance: 0.5
+  shapedRoomChance: 0.75
   shapeMinEdge: 5
+  alcoveMinDepth: 1
+  alcoveBaseChance: 1
+  alcoveChancePerDepth: 1
+  alcoveMaxChance: 0.8
+  alcoveMaxCount: 20
+  alcoveKinds:
+  - kind: 0
+    minDepth: 1
+    weight: 1
+    maxPerRun: 8
+    widthRange: {x: 1, y: 1}
+    depthRange: {x: 1, y: 1}
+  - kind: 1
+    minDepth: 1
+    weight: 0.8
+    maxPerRun: 6
+    widthRange: {x: 1, y: 1}
+    depthRange: {x: 2, y: 2}
+  - kind: 2
+    minDepth: 1
+    weight: 1.2
+    maxPerRun: 10
+    widthRange: {x: 1, y: 1}
+    depthRange: {x: 1, y: 1}
+  - kind: 3
+    minDepth: 1
+    weight: 1
+    maxPerRun: 8
+    widthRange: {x: 1, y: 1}
+    depthRange: {x: 1, y: 1}
   guaranteedSatellites:
   - host: 3
     satellite: 10
-    minDepth: 6
-    chance: 0
+    minDepth: 3
+    chance: 1
   chancedSatellites:
   - host: 5
     satellite: 11
@@ -61,18 +91,18 @@ MonoBehaviour:
     chance: 0.6
   - host: 6
     satellite: 12
-    minDepth: 3
+    minDepth: 2
     chance: 0.7
   - host: 7
     satellite: 13
-    minDepth: 5
-    chance: 0.7
+    minDepth: 2
+    chance: 1
   - host: 8
     satellite: 14
-    minDepth: 4
-    chance: 0.5
-  - host: 0
-    satellite: 9
+    minDepth: 2
+    chance: 1
+  - host: 4
+    satellite: 10
     minDepth: 1
     chance: 0.25
   columnSpacing: 2
