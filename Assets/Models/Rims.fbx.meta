@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 26bc5f4d3abe8224dbde8c5de978214a
+guid: 67f4ba5aa79f7ec4399f476818cfe34a
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
@@ -7,8 +7,8 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: Bridge_Mat
-    second: {fileID: 2100000, guid: 0555331f407791742891302ae89b810b, type: 2}
+      name: ArchMaterial
+    second: {fileID: 2100000, guid: 293f477857b0f144fb26fc4b91cad65d, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -36,7 +36,7 @@ ModelImporter:
     extraExposedTransformPaths: []
     extraUserProperties: []
     clipAnimations: []
-    isReadable: 1
+    isReadable: 0
   meshes:
     lODScreenPercentages: []
     globalScale: 1

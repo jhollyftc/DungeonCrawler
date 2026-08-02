@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 26bc5f4d3abe8224dbde8c5de978214a
+guid: b1179402ceeba484d9840c2aab725486
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
@@ -7,8 +7,8 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: Bridge_Mat
-    second: {fileID: 2100000, guid: 0555331f407791742891302ae89b810b, type: 2}
+      name: cave_collapse_material
+    second: {fileID: 2100000, guid: 658db4b22f1353241a6cf7058c6b85bd, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -36,7 +36,7 @@ ModelImporter:
     extraExposedTransformPaths: []
     extraUserProperties: []
     clipAnimations: []
-    isReadable: 1
+    isReadable: 0
   meshes:
     lODScreenPercentages: []
     globalScale: 1

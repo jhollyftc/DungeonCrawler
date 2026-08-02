@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 26bc5f4d3abe8224dbde8c5de978214a
+guid: 287a034c60d60524190cfb0fba977982
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
@@ -7,8 +7,13 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: Bridge_Mat
-    second: {fileID: 2100000, guid: 0555331f407791742891302ae89b810b, type: 2}
+      name: ArchMaterial
+    second: {fileID: 2100000, guid: 293f477857b0f144fb26fc4b91cad65d, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Pillar_Corner_Mat
+    second: {fileID: 2100000, guid: 4aef306ca154bd5489288e5f14a1db6e, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -36,7 +41,7 @@ ModelImporter:
     extraExposedTransformPaths: []
     extraUserProperties: []
     clipAnimations: []
-    isReadable: 1
+    isReadable: 0
   meshes:
     lODScreenPercentages: []
     globalScale: 1
