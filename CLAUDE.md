@@ -274,6 +274,10 @@ a pit applies that to a SUBSET of one room's cells.
   just floorless. See §12's category rule; `Room.Holes` is the flag, and it lives on `Room`
   rather than only in the pit registry because `InteriorFloorCell` is a Room property with no
   generator reference. Five systems needed telling; assume a sixth exists.
+- **Pit RIM** (`kit.pitRimPrefabs`) trims the broken edge where the floor stops; **stair
+  LINTELS** (`kit.lintelPrefabs` + per-type) trim the ceiling-slab edge over a stairwell. Both
+  are §5's "edge between two emitted surfaces" category — read that entry before adding a
+  third, especially for the origin-convention split.
 - **Pit STYLING** (`RoomStyle.pitWalls` / `pitFloorPrefabs`) is global, not per-room-type —
   a chasm exposes what lies BENEATH the dungeon, so raw rock reads better than the room's own
   masonry continuing down. No pit ceiling slot (the top is the hole). **Both resolutions must
@@ -309,6 +313,44 @@ convention), **stairs and corner pillars** (the latter two route through
 approximate sloped ramp is skipped (`includeStairRamps=false`) so the prefab's
 authored stepped collider is the sole walking surface — two colliders that
 disagree about the floor was the original stair-collision bug.
+
+**EVERY PLACER'S ROOT MUST BE LISTED IN `DungeonVisualizer.GeneratedRoots`** or its output
+accumulates on every regenerate — F1 stacks a second dungeon's worth of geometry on the first,
+which reads as a mysterious framerate collapse rather than as a leak. `DungeonAlcoveProps` was
+missed when alcoves shipped and went unnoticed for a while. Adding a `Build...` method that
+creates a root is only half the job.
+
+**AN EDGE BETWEEN TWO EMITTED SURFACES IS ITS OWN CATEGORY — no existing rule covers it.**
+The wall emitter fires on **open→solid** faces only, so wherever something is open on BOTH
+sides the seam is left bare: geometrically correct, visually reading as MISSING geometry.
+Two such seams now have trim, and both needed a dedicated pass (`FrameFace` is the closest
+prior art — it likewise handles a face between two open cells):
+- **`pitRimPrefabs`** — the broken edge where a room's floor stops at a pit. `NeedsSlabBetween`
+  suppresses the floor quad over an opening while the neighbour emits its own normally, so
+  they met at a bare polygon edge. Emitted per opening cell against each neighbour that is
+  open-but-not-an-opening, so each face is visited once. Bridge landings are deliberately NOT
+  skipped — the break runs unbroken under the deck so the crossing reads as laid ACROSS a
+  broken hole.
+- **`lintelPrefabs`** (+ `RoomStyle` per-type `lintelPrefabs` / `hallwayLintelPrefabs`) — the
+  underside edge of the ceiling slab over the space at the bottom of a staircase. A stairwell
+  is the one place the player sees a full storey of wall in a single view, so that seam is far
+  more visible than the same junction anywhere else.
+  **The test is "a wall face whose BELOW-AND-OUTWARD cell is OPEN"**, and it sits at the
+  BOTTOM of the upper stair cell. The first attempt trimmed the TOP of every walled stair
+  cell, which drew a line along the shaft's shoulders including the outside faces you can
+  never see — a wall face exists on both stair cells regardless of which side you stand on.
+  The correct rule is a *different test*, not a filtered version of the wrong one, and it
+  excludes the shaft's side walls for free: the sealed 13-cell stair envelope keeps everything
+  below-outward solid, so no slab edge exists there.
+
+**TWO ORIGIN CONVENTIONS COEXIST — check which one a new piece belongs to.** `Emit` adds
+`globalVisualOffset` to every piece routed through it (walls, floors, ceilings, arches,
+stairs, and **lintels**, which must line up with the walls and ceilings they blend). Pieces
+placed directly at nominal grid coordinates get **no** offset and are authored BASE-ORIGIN:
+ladders, bridges, pit rims, and all props (golden rule 2). Four pieces now follow one
+convention and one follows the other, so the safe question for anything new is "does this
+have to align with kit masonry, or does it sit on the grid like a prop?" Getting it backwards
+puts the piece a half-cell out, which is the classic symptom.
 
 **Directional kit offsets must be applied in the PIECE'S OWN frame** (real bug):
 `ladderOffset` was added in world space while the ladder is rotated by
