@@ -53,12 +53,16 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 2100000, guid: 76b9597d9793ad04b8efcd0485b4ebec, type: 2}
     - target: {fileID: -7511558181221131132, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 0a41120931dd6864eaa47be662b6ffd6, type: 2}
+    - target: {fileID: -7511558181221131132, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
       propertyPath: 'm_Materials.Array.data[2]'
       value: 
       objectReference: {fileID: 2100000, guid: 2c40bf1a1d7d6fa42b9f4c98e32a99ed, type: 2}
     - target: {fileID: 919132149155446097, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
       propertyPath: m_Name
-      value: Wall_Recessed_P
+      value: Wall_Basic_Recessed_P
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

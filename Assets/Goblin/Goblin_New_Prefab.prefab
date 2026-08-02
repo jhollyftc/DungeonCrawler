@@ -502,11 +502,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -3714003574039648521, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.8499925
+      value: 0.8596599
       objectReference: {fileID: 0}
     - target: {fileID: -3714003574039648521, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0.5267948
+      value: 0.5108669
       objectReference: {fileID: 0}
     - target: {fileID: -3714003574039648521, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.y
@@ -834,11 +834,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8332496597460359287, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.4353707
+      value: 0.45054117
       objectReference: {fileID: 0}
     - target: {fileID: 8332496597460359287, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0.90025127
+      value: 0.8927556
       objectReference: {fileID: 0}
     - target: {fileID: 8332496597460359287, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.y
@@ -970,6 +970,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       insertIndex: -1
       addedObject: {fileID: -7770067562315944642}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3287447778970640241}
     - targetCorrespondingSourceObject: {fileID: -8699787447509501512, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       insertIndex: -1
       addedObject: {fileID: 58973243294828293}
@@ -2162,8 +2165,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 106d2579bcc27b04cb5aea82eb5de256, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcBrain
-  idleTime: {x: 1.5, y: 4}
-  walkTimeout: 45
+  idleTime: {x: 15, y: 25}
+  walkTimeout: 10
   lookAroundTime: 3
   investigateRadius: 2
   engageDistance: 2.1
@@ -2204,16 +2207,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcPerception
   faction: 1
-  maxHearRadius: 8
+  maxHearRadius: 4.5
   viewRadius: 10
   viewAngle: 65
   eyeHeight: 1.25
   sightBlockMask:
     serializedVersion: 2
     m_Bits: 3263
-  sightGainPerSecond: 2.5
+  sightGainPerSecond: 1
   hearGain: 0.6
-  decayPerSecond: 0.35
+  decayPerSecond: 0.15
   investigateThreshold: 0.3
   tickInterval: 0.15
 --- !u!114 &1850375092434283784
@@ -2314,7 +2317,8 @@ MonoBehaviour:
   hurtMinimumVolume: 0.35
   hurtInterval: 0.25
   hurtChance: 0.4
-  attackClips: []
+  attackClips:
+  - {fileID: 8300000, guid: 9b84a282cee0e8f4a9855a5bb1a51d82, type: 3}
   attackVolume: 0.8
   attackChance: 0.35
   attackInterval: 1.2
@@ -2510,7 +2514,7 @@ MonoBehaviour:
     name: Wounded
     minAwareness: 0
     eyebrowRange: {x: 85, y: 95}
-    jawRange: {x: 145, y: 155}
+    jawRange: {x: 90, y: 110}
     eyebrowSpeed: 1
     jawSpeed: 0.3
     pupilColor: {r: 1, g: 0, b: 0, a: 1}
@@ -2650,6 +2654,37 @@ MonoBehaviour:
   whooshFromAnimationEvent: 1
   whooshDelay: 0.25
   cullDistance: 18
+--- !u!114 &3287447778970640241
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6381376234669534215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00bca76758361d54daae9927e5e3f53f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcFootsteps
+  source: {fileID: 0}
+  maxDistance: 9
+  clips:
+  - {fileID: 8300000, guid: 72f526a6a9890f643a88e85a61c86c8a, type: 3}
+  - {fileID: 8300000, guid: 85016e0f2b01da248b9663dd49a161b0, type: 3}
+  - {fileID: 8300000, guid: 186de84b3207156479abe98f4958fed0, type: 3}
+  - {fileID: 8300000, guid: 1a91fcd19acf1e54bba0945d9f390849, type: 3}
+  - {fileID: 8300000, guid: 14e8a8d2158bec840b56c54f5266e692, type: 3}
+  - {fileID: 8300000, guid: 29841e7d5bbfb5b419c9ad16ca8bc4c1, type: 3}
+  - {fileID: 8300000, guid: dd1af302b8902684d9381de1f2d3a5af, type: 3}
+  - {fileID: 8300000, guid: 67c8b33e424ccdc4486edf538ab91c5a, type: 3}
+  volume: 0.149
+  pitchJitter: -0.2
+  stepDistance: 0.5
+  movementDeadzone: 0.15
+  groundedGrace: 0.2
+  cullDistance: 12
+  speedVolumeInfluence: 0.5
+  fullVolumeSpeed: 3
 --- !u!1 &6577283558178491389 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: -8139853090755257685, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}

@@ -846,10 +846,10 @@ MonoBehaviour:
   inheritAngularVelocity: 0.6
   inheritBlowSpeed: 3
   inheritBlowFadeSpeed: 2
-  debrisLifetime: 1
-  debrisShrinkTime: 0.3
+  debrisLifetime: 1.5
+  debrisShrinkTime: 0.6
   damageOnImpact: 1
-  impactDamageAtFullForce: 25
+  impactDamageAtFullForce: 17
   impactDamageThreshold: 0.8
   surfaceLibrary: {fileID: 11400000, guid: 37df9bb4b5dd2cb4d93c00877b2392ad, type: 2}
   extraBreakBursts: 2

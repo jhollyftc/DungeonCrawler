@@ -897,7 +897,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0ee39f98d4389f440958c30e7676ab0e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.Health
-  max: 30
+  max: 50
   debugDamage: 1
 --- !u!114 &-3116968627051900201
 MonoBehaviour:
@@ -920,10 +920,10 @@ MonoBehaviour:
   inheritAngularVelocity: 0.6
   inheritBlowSpeed: 3
   inheritBlowFadeSpeed: 2
-  debrisLifetime: 2
-  debrisShrinkTime: 0.5
+  debrisLifetime: 2.5
+  debrisShrinkTime: 1
   damageOnImpact: 1
-  impactDamageAtFullForce: 25
+  impactDamageAtFullForce: 15
   impactDamageThreshold: 0.35
   surfaceLibrary: {fileID: 11400000, guid: 37df9bb4b5dd2cb4d93c00877b2392ad, type: 2}
   extraBreakBursts: 2
