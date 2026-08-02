@@ -274,7 +274,21 @@ namespace DungeonGen
                 if (style != null)
                 {
                     Room surfRoom = RoomAtCached(c);
-                    if (surfRoom != null)
+                    // PIT FIRST. A pit cell resolves to its owning room through RoomAt's PitAt
+                    // fallback (which is what styles a chasm as part of its room rather than a
+                    // generic hole), so the room branch below would otherwise always win and a
+                    // pit could never have a look of its own. Unauthored falls through to
+                    // exactly that room styling, so this changes nothing until it's filled in.
+                    if (gen.PitAt(c) != null)
+                    {
+                        floorSlot = style.PitFloors() ?? (surfRoom != null
+                            ? style.FloorsFor(surfRoom.Type) ?? floorSlot : floorSlot);
+                        // No pit ceiling: the top of a pit is the hole you fell through, and
+                        // NeedsSlabBetween suppresses it. Kept as the room's so a 2-deep pit's
+                        // internal levels stay consistent if that ever changes.
+                        if (surfRoom != null) ceilingSlot = style.CeilingsFor(surfRoom.Type) ?? ceilingSlot;
+                    }
+                    else if (surfRoom != null)
                     {
                         floorSlot = style.FloorsFor(surfRoom.Type) ?? floorSlot;
                         ceilingSlot = style.CeilingsFor(surfRoom.Type) ?? ceilingSlot;
@@ -328,7 +342,22 @@ namespace DungeonGen
                             Room room = (t == CellType.Room || t == CellType.StairLower || t == CellType.StairUpper)
                                 ? gen.RoomAt(c) : null;
 
-                            if (room != null)
+                            // PIT INTERIOR takes its own walls if authored. Checked before the
+                            // room branch because RoomAt resolves a pit cell TO its room (the
+                            // PitAt fallback), so the room branch would otherwise always claim
+                            // it. Unauthored (null) falls straight through to the room's walls,
+                            // which is the existing behaviour — so this is inert until filled.
+                            //
+                            // Feature reservations and band logic are deliberately skipped: a
+                            // pit has no bands (it is one course of rough wall) and a fireplace
+                            // down a chasm is not a thing worth supporting.
+                            var pitWalls = gen.PitAt(c) != null && style != null ? style.PitWalls() : null;
+                            if (pitWalls != null)
+                            {
+                                placedWall = Emit(pitWalls, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                emitted = true;
+                            }
+                            else if (room != null)
                             {
                                 var res = GetReservations(room);
                                 if (res.TryGetValue(FaceKey(i, d), out var reserved))
@@ -565,6 +594,25 @@ namespace DungeonGen
                             if (openCount >= 2 &&
                                 (PrisonFace(q0, q1) || PrisonFace(q2, q3) ||
                                  PrisonFace(q0, q2) || PrisonFace(q1, q3)))
+                            {
+                                carrySlot = null;
+                                continue;
+                            }
+
+                            // PIT INTERIORS never get corner posts either. A pit cell is a room
+                            // cell with solid neighbours, so it forms textbook wall corners and
+                            // the classifier happily posts them — but an architectural pillar
+                            // down a chasm reads as a room that happens to be sunken rather than
+                            // as broken ground, and it fights whatever rough stonework pitWalls
+                            // is authored with. Same reasoning and same unconditional shape as
+                            // the prison rule above.
+                            //
+                            // Fourth consumer to need this check (props/zones, InteriorFloorCell,
+                            // interior columns, torches were the others): anything that reasons
+                            // about room cells has to be told a pit is not ordinary floor. See
+                            // §12's category rule.
+                            if (gen.PitAt(q0) != null || gen.PitAt(q1) != null ||
+                                gen.PitAt(q2) != null || gen.PitAt(q3) != null)
                             {
                                 carrySlot = null;
                                 continue;

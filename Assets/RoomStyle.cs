@@ -110,6 +110,8 @@ namespace DungeonGen
         public List<WallAsset> hallwayWalls = new List<WallAsset>();
         [Tooltip("Wall assets for prison closets (band is always Bottom). Empty = kit's generic walls.")]
         public List<WallAsset> prisonWalls = new List<WallAsset>();
+        [Tooltip("Wall assets for the inside of a PIT (band is always Bottom). A chasm exposes what lies BENEATH the dungeon, so raw rock, old foundations and rough stonework read better here than the room's own masonry continuing downward. Empty = the pit inherits its room's walls, which is the current behaviour, so leaving this unauthored changes nothing. Purely cosmetic — pit floors and collision already work regardless.")]
+        public List<WallAsset> pitWalls = new List<WallAsset>();
 
         // ---------------- Floors & ceilings ----------------
         //
@@ -140,6 +142,8 @@ namespace DungeonGen
         public GameObject[] prisonFloorPrefabs;
         [Tooltip("Ceiling tiles for prison closets.")]
         public GameObject[] prisonCeilingPrefabs;
+        [Tooltip("Floor tiles for the BOTTOM of a pit — rubble, cracked flags, bedrock. Empty = the pit inherits its room's floor.")]
+        public GameObject[] pitFloorPrefabs;
 
         /// <summary>Floor tiles for this room type, or null for the kit's.</summary>
         public GameObject[] FloorsFor(RoomType type)
@@ -163,6 +167,9 @@ namespace DungeonGen
         public GameObject[] HallwayCeilings() => Nullable(hallwayCeilingPrefabs);
         public GameObject[] PrisonFloors() => Nullable(prisonFloorPrefabs);
         public GameObject[] PrisonCeilings() => Nullable(prisonCeilingPrefabs);
+        /// <summary>Pit-bottom floor tiles, or null. No pit CEILING accessor exists on purpose:
+        /// a pit's top is the hole you fell through, and NeedsSlabBetween suppresses it.</summary>
+        public GameObject[] PitFloors() => Nullable(pitFloorPrefabs);
 
         /// <summary>Empty reads as "unauthored" (null) so callers can `?? kitGeneric`.</summary>
         static GameObject[] Nullable(GameObject[] a) => (a != null && a.Length > 0) ? a : null;
@@ -170,6 +177,7 @@ namespace DungeonGen
         Dictionary<(RoomType, WallBand), List<WallAsset>> wallCache;
         GameObject[] hallwayWallCache;
         GameObject[] prisonWallCache;
+        GameObject[] pitWallCache;
 
         /// <summary>Band-eligible wall assets for a room type — STRICT: a band
         /// with no eligible assets returns null (kit generic walls fill in).
@@ -227,6 +235,17 @@ namespace DungeonGen
             return prisonWallCache.Length > 0 ? prisonWallCache : null;
         }
 
+        /// <summary>Pit-interior wall prefabs, or null to inherit the room's walls.</summary>
+        public GameObject[] PitWalls()
+        {
+            if (pitWallCache != null) return pitWallCache.Length > 0 ? pitWallCache : null;
+            var list = new List<GameObject>();
+            foreach (var w in pitWalls)
+                if (w.prefab != null && w.Allows(WallBand.Bottom)) list.Add(w.prefab);
+            pitWallCache = list.ToArray();
+            return pitWallCache.Length > 0 ? pitWallCache : null;
+        }
+
         Dictionary<GameObject, (bool props, bool torch)> wallFlagCache;
 
         /// <summary>Placement restrictions for a wall prefab (allowPropsInFront /
@@ -252,6 +271,10 @@ namespace DungeonGen
                 foreach (var set in roomWalls) Add(set.walls);
                 Add(hallwayWalls);
                 Add(prisonWalls);
+                // Registered here or the per-asset allowTorch / allowPropsInFront flags on pit
+                // walls silently do nothing — the same omission §7 warns about for any new
+                // wall list.
+                Add(pitWalls);
             }
             if (wallFlagCache.TryGetValue(prefab, out var flags))
             {
@@ -271,6 +294,7 @@ namespace DungeonGen
             wallCache = null;
             hallwayWallCache = null;
             prisonWallCache = null;
+            pitWallCache = null;
             wallFlagCache = null;
             lookup = null;
         }
