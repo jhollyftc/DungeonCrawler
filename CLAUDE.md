@@ -479,6 +479,10 @@ return the SAME material or every piece becomes its own batch and instancing is 
 They're runtime copies, so **destroy them on regenerate** or every F1 leaks a set.
 Kit emissives are tinted to the room's TORCH COLOUR — same source as fog and the
 flame VFX (§7), so they can't drift, and a new room type gets correct candles free.
+**`PropInstancer.PlaceProps` takes the same replace/with pair**, so per-room tinting
+is available to every prop placer and not just the kit callback — added for kit
+sockets (§8), where a socket child goes through `PropInstancer` and would otherwise
+keep its authored colour, right in a warm corridor and wrong in a blue shrine.
 **`MaterialGlobalIlluminationFlags.EmissiveIsBlack` must be cleared explicitly**
 (cost an hour): Unity sets it on any material whose authored `_EmissionColor` is
 black — exactly the case when the source was previously driven by a property block —
@@ -596,6 +600,20 @@ One RoomStyle asset defines a room type's whole look. What it holds:
   faces and claims its own — so a banner never lands behind a torch flame.
   `allowPropsInFront` gates both floor-in-front props and wall-mounted props
   (one flag; split only if a real asset needs the distinction).
+  **FLAGS ARE AUTHORED PER LIST, SO THEY MUST BE READ BACK PER LIST** (real field
+  bug). `WallFlagsFor` merged most-restrictive keyed by PREFAB ALONE, but the same
+  prefab legitimately appears in several lists with different flags — `Wall_Basic_P`
+  is a normal hallway wall that takes torches AND a pit-interior wall that must not
+  (a lit chasm reads as another room, §4). So one `allowTorch: 0` in `pitWalls`
+  silently disabled torches for that prefab EVERYWHERE, and a hallway whose set
+  explicitly allowed torches generated none at all — while also suppressing
+  wall-mounted props in front of every such face dungeon-wide, which nobody had
+  noticed because absent props look like unauthored props. Now keyed by
+  `(prefab, WallContext)` — room TYPE, or Hallway/Prison/Pit — with the emitter
+  tracking which list it picked from alongside the prefab. Merging still happens
+  WITHIN a list, which is the case the restrictive reading was written for.
+  **The general shape: reusing one asset across contexts means its METADATA is
+  context-scoped too, even when the asset isn't.**
 - **Hallway / prison / stair walls:** `hallwayWalls` and `prisonWalls` lists
   (band always Bottom). Stair cells resolve their owner: interior stairs carved
   INSIDE a room (their cells never leave `Room.Cells` — only the CellType
@@ -608,7 +626,18 @@ One RoomStyle asset defines a room type's whole look. What it holds:
   unlimited base wall + capped/band-locked accents per set. A capped asset can
   carry a `featureLabel` (e.g. "Fireplace") so NearWallAsset props target it
   (§8); the reservation dict stores the `WallAsset` so the label reaches
-  emission.
+  emission. **PRISONS RESERVE TOO** — a closet is a discrete enclosure, so
+  "1 per room" has an obvious meaning there; they were ignoring the cap entirely
+  (no reservation dealt the asset, AND `PrisonWalls()` handed it to the general
+  hash pick anyway, so a "1 per room" drain competed for every face at even odds).
+  Capped entries are excluded from the general pool exactly as `UnlimitedWalls`
+  does for rooms — leaving them in BOTH is what made the cap look ignored.
+  `DealCappedAssets` is shared, since rooms and prisons differ only in which cells
+  form the enclosure and how a cell maps to a band. **HALLWAYS STRUCTURALLY CANNOT
+  honour it** — a corridor network has no unit to count per — so `HallwayWalls()`
+  WARNS rather than letting the field quietly do nothing. NB reservations currently
+  include a prison's DOORWAY face, where the bars or door go; exclude
+  hallway-facing faces if that turns out to matter.
 - **Openings** (`OpeningSet` per type): archway + door prefabs. Chosen by the
   room the opening leads INTO (a throne entrance gets the throne arch; a treasury
   closet door styles the treasury). Empty = kit generic.
@@ -800,6 +829,50 @@ rooms' per-room 110xx). Wired after RoomPropPlacer so torch face-claims exist.
   children claim cells behind the flood-fill. Child cell Y = parent's cell Y
   (golden rule 5's float-boundary lesson). The summary log reports socket
   fills and skip reasons.
+
+**KIT sockets (`KitSocketPlacer`)** — the same `PropSocket` component authored on
+WALL / CEILING / FLOOR kit pieces instead of on props. What it buys over the prop
+system is an **exact authored position on a specific piece**: the placers choose
+positions by zone, chance and spacing, which can never say "on the mantel of this
+fireplace" or "in the niche of this recess". A wall with a recess gets candles IN
+the recess; a fireplace wall gets its fire where the hearth is.
+- **Record-then-consume, not spawn-inline.** `DungeonKitPlacer` records a
+  `SocketSite` and a later pass fills it, for two reasons: `place` cannot express
+  `PropTier` (a fireplace VFX must be FullGameObject, a candle StaticDecor), and one
+  pass then serves both the PrefabKit and InstancedKit paths. Same shape as
+  `WallFaceRegistry.FeatureFaces` feeding NearWallAsset. Recording lives INSIDE
+  `Emit`, covering all 13 of its call sites at once — plus the reserved capped-asset
+  path separately, which calls `place` directly and is exactly where feature walls
+  land (§7's standing warning about that path, now with a second consumer).
+- **RUNS BEFORE `TorchPlacer`.** `countsAsTorch` claims the face AND seeds
+  TorchPlacer's spacing buckets before thinning. Claiming alone is not enough:
+  it stops a torch on that exact face while nothing prevents one on the next cell
+  along, so an authored sconce gains a computed twin a metre away. Seeding is what
+  makes authored torches DISPLACE computed ones rather than add to them, so a room's
+  brightness still matches its palette. Same most-constrained-first logic as alcoves.
+- **`tintToRoomPalette` resolves by what the child IS**, not by a second authoring
+  flag: a `Light` gets tinted with its flame VFX; an emissive material gets the
+  room's cached variant swapped in — which is how a candle glows per-room with **no
+  Light at all**, and at StaticDecor **no GameObject either**. That is the answer to
+  "can I add variety without a framerate cliff": bounded by one extra batch per
+  palette colour, not by candle count. Default OFF (most sockets hold shields,
+  banners and rubble, where tinting would be wrong).
+- **`tintMaterial` is the CHILD'S own glow material**, not the kit's. A candle's
+  wax-and-flame material is not the walls' emissive material, and `AddInstance`
+  replaces only the exact material handed to it — keying the swap off
+  `kit.emissiveMaterial` meant it matched nothing and every socket child kept its
+  authored colour. Falls back to the kit's, which is right only for a child that
+  literally shares it.
+- **FLOOR sockets may not block.** Sockets spawn outside `RoomPropPlacer`'s occupancy
+  system, so nothing flood-fills after them and a blocking child on a floor tile could
+  sit in a doorway or pinch a room in two with nothing to catch it. Demoted to
+  StaticDecor with a warning rather than skipped, so the piece still appears. Walls
+  and ceilings are structurally incapable of this, which is why the guard is
+  floors-only.
+- Own salt **12201**. Root `DungeonKitSockets`, listed in `GeneratedRoots` (§5).
+- Trap shared with props: the pose composes from the piece's **actually rendered**
+  pose, `globalVisualOffset` included — without it every child lands a half-cell low
+  (golden rule 2, the shape that once floated scatter props in the air).
 
 **Chests:** author as a `Feature`, guaranteed ×1, `StaticCollider` entry in
 Treasury/ChestVault sets. Inert now; interactive later = tier change only.
@@ -1881,6 +1954,12 @@ Cosmetic-first; combat is far off ("get the world together first").
     inside-corner), hallway props, near-prop + near-wall (labeled),
     label spacing, tile sharing. Remaining prop idea: procedural
     clump-scatter (see §8 "Not yet built").
+12b. ✅ **Kit sockets** (`KitSocketPlacer`) — `PropSocket` authored on WALL/CEILING/
+    FLOOR kit pieces, so a piece declares where its fire, candles, sconce or hanging
+    decor belong on its own geometry. Torch-claiming + spacing seed, per-room emissive
+    tinting with no Light and no GameObject, floor-blocking guard. See §8.
+    ⏳ open: per-kind alcove kit walls could use the same mechanism; an authored socket
+    on a pit rim or lintel is untested.
 13. ✅ Viewmodel overlay camera (depth-clear; kills weapon/shield clipping).
 14. ✅ Physics interaction layer: push-open physics doors (+ audio), the
     `IPushable` push system (framerate-independent), crouch/sneak, and
@@ -2152,6 +2231,18 @@ Cosmetic-first; combat is far off ("get the world together first").
   points and impulse magnitudes all sized for the player's case. When a shared system gains
   a second kind of user, walk its assumptions from the new user's position deliberately;
   the defaults will be wrong in ways that never surface as exceptions.
+- **`UnityEngine.Object` DEFINES AN IMPLICIT `operator bool`, SO ARGUMENT-ORDER
+  MISTAKES INVOLVING A `bool` PARAMETER COMPILE SILENTLY.** It is the conversion that
+  makes `if (obj)` work, and it means a `Material` passed positionally into a `bool`
+  slot is a legal call, not the type error it would be in ordinary C#.
+  `PropInstancer.PlaceProps` has `bool castShadows` sitting immediately before the
+  two optional `Material`s, and a positional call bound `castShadows = replaceMat !=
+  null` and shifted the pair one slot — the emissive swap was inert and shadow
+  casting was driven by whether a tint existed, with no warning anywhere. **Pass
+  arguments BY NAME whenever a signature puts a `bool` next to optional Unity-object
+  parameters**, and be suspicious of any "why is this flag on/off" symptom in a call
+  that mixes them. The general rule: C#'s type checker is a weaker safety net inside
+  Unity than outside it, because `UnityEngine.Object` opts into a lossy conversion.
 - **Two unrelated fixes in one file still get two commits.** Stage one, commit,
   restore the other, commit again — the history is what makes a field lesson findable
   later, and a combined commit buries one of them.
