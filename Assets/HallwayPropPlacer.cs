@@ -118,12 +118,19 @@ namespace DungeonGen
             GameObject Pick(PropSet.PropEntry e, HashStream s) =>
                 (e.prefabs == null || e.prefabs.Length == 0) ? null : e.prefabs[s.Next() % e.prefabs.Length];
 
-            void Place(GameObject prefab, Vector3 pos, Quaternion rot, PropTier tier)
+            // Takes the ENTRY, not just a tier, so the per-room emissive tint resolves here
+            // rather than at each call site. A corridor passes a null Room, which PropTint
+            // resolves to the style's DEFAULT torch colour — the same fallback the kit shell
+            // uses for a cell in no room, so a corridor candle and the wall behind it cannot
+            // end up different colours.
+            void Place(PropSet.PropEntry e, GameObject prefab, Vector3 pos, Quaternion rot)
             {
-                PropTier t = instancer != null ? tier : PropTier.FullGameObject;
+                PropTier t = instancer != null ? e.tier : PropTier.FullGameObject;
+                PropTint.Resolve(e, style, null, out var tintFrom, out var tintTo);
                 PropInstancer.PlaceProps(instancer, prefab,
                     new[] { new PropPlacement { position = pos, rotation = rot } },
-                    t, cellSize, root.transform);
+                    t, cellSize, root.transform,
+                    replaceMat: tintFrom, withMat: tintTo);
             }
 
             // Nearest solid wall of a corridor cell (stream-picked among ties),
@@ -225,7 +232,7 @@ namespace DungeonGen
                         }
                         GameObject prefab = Pick(e, ceilingStream);
                         if (prefab == null) continue;
-                        Place(prefab, pos, rot, e.tier);
+                        Place(e, prefab, pos, rot);
                         if (!e.sharesTile) usedCeiling.Add(c);
                         total++; placed++;
                     }
@@ -266,7 +273,7 @@ namespace DungeonGen
                                       + Vector3.up * h + parent.position;
                         Quaternion rot = Quaternion.LookRotation(-(Vector3)d)
                                          * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, wallStream.Next01()), 0f);
-                        Place(prefab, pos, rot, e.tier);
+                        Place(e, prefab, pos, rot);
                         wallFaces?.Claim(grid.Index(c), d);
                         total++; placed++;
                     }
@@ -330,7 +337,7 @@ namespace DungeonGen
                             blocked.Add(c);
                             if (!Connected()) { blocked.Remove(c); continue; }
                         }
-                        Place(prefab, pos, rot, e.tier);
+                        Place(e, prefab, pos, rot);
                         if (!e.sharesTile) usedFloor.Add(c);
                         total++; placed++;
                     }

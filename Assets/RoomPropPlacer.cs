@@ -316,13 +316,19 @@ namespace DungeonGen
                     // No instancer (PrefabKit mode): full GameObjects so the
                     // mesh path never silently vanishes.
                     PropTier tier = instancer != null ? e.tier : PropTier.FullGameObject;
+                    // Per-room emissive tint (opt-in per entry). Named args, never positional:
+                    // PlaceProps takes `bool castShadows` before the material pair and
+                    // UnityEngine.Object has an implicit operator bool, so a positional call
+                    // COMPILES while silently shifting every argument (§12).
+                    PropTint.Resolve(e, style, room, out var tintFrom, out var tintTo);
                     PropInstancer.PlaceProps(instancer, prefab,
                         new[] { new PropPlacement { position = worldPos, rotation = rot } },
-                        tier, cellSize, root.transform);
+                        tier, cellSize, root.transform,
+                        replaceMat: tintFrom, withMat: tintTo);
                     if (!e.sharesTile) usedCells.Add(cell); // sharesTile doesn't reserve
                     placedProps.Add((cell, e.label));       // for NearPropAsset + minSpacing
                     totalPlaced++;
-                    FillSockets(prefab, worldPos, rot, cell.y, 0);
+                    FillSockets(prefab, worldPos, rot, cell.y, 0, e.tintIntensity);
                 }
 
                 // Resolves a placed prop's PropSockets and spawns children
@@ -331,7 +337,12 @@ namespace DungeonGen
                 // spawn a GameObject, so there is no instance to read from.
                 // Children are independent placements (never parented), so
                 // batching stays intact.
-                void FillSockets(GameObject parentPrefab, Vector3 parentPos, Quaternion parentRot, int parentCellY, int depth)
+                // `tintIntensity` rides down from the ENTRY that placed the parent — this is a
+                // sibling of Spawn, not nested inside it, so the entry is not in scope here.
+                // Each socket still supplies its own material and opt-in; only the brightness
+                // is inherited, since that belongs to the fitting as a whole.
+                void FillSockets(GameObject parentPrefab, Vector3 parentPos, Quaternion parentRot, int parentCellY, int depth,
+                                 float tintIntensity)
                 {
                     if (depth >= 2) return; // cap: grandchildren spawn, but have no children
                     var sockets = parentPrefab.GetComponentsInChildren<PropSocket>(true);
@@ -395,12 +406,18 @@ namespace DungeonGen
                         }
 
                         PropTier childTier = instancer != null ? s.childTier : PropTier.FullGameObject;
+                        // The SOCKET carries the material and the opt-in (its child is a
+                        // different prefab with a different material from its parent); the
+                        // parent entry supplies the intensity.
+                        PropTint.Resolve(s, tintIntensity, style, room,
+                                         out var childTintFrom, out var childTintTo);
                         PropInstancer.PlaceProps(instancer, child,
                             new[] { new PropPlacement { position = childPos, rotation = childRot } },
-                            childTier, cellSize, root.transform);
+                            childTier, cellSize, root.transform,
+                            replaceMat: childTintFrom, withMat: childTintTo);
                         totalPlaced++;
                         socketFilled++;
-                        FillSockets(child, childPos, childRot, cell.y, depth + 1);
+                        FillSockets(child, childPos, childRot, cell.y, depth + 1, tintIntensity);
                     }
                 }
 
@@ -840,9 +857,11 @@ namespace DungeonGen
                             GameObject cprefab = PickPrefab(e, ceilingStream);
                             if (cprefab == null) continue;
                             PropTier ctier = instancer != null ? e.tier : PropTier.FullGameObject;
+                            PropTint.Resolve(e, style, room, out var ceilTintFrom, out var ceilTintTo);
                             PropInstancer.PlaceProps(instancer, cprefab,
                                 new[] { new PropPlacement { position = pos, rotation = rot } },
-                                ctier, cellSize, root.transform);
+                                ctier, cellSize, root.transform,
+                                replaceMat: ceilTintFrom, withMat: ceilTintTo);
                             if (!e.sharesTile) usedCeilingCells.Add(c); // sharesTile doesn't reserve
                             totalPlaced++;
                             placedCount++;
@@ -882,9 +901,11 @@ namespace DungeonGen
                                              * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, wallStream.Next01()), 0f);
 
                             PropTier tier = instancer != null ? e.tier : PropTier.FullGameObject;
+                            PropTint.Resolve(e, style, room, out var wallTintFrom, out var wallTintTo);
                             PropInstancer.PlaceProps(instancer, prefab,
                                 new[] { new PropPlacement { position = pos, rotation = rot } },
-                                tier, cellSize, root.transform);
+                                tier, cellSize, root.transform,
+                                replaceMat: wallTintFrom, withMat: wallTintTo);
                             wallFaces?.Claim(grid.Index(c), d);
                             totalPlaced++;
                             placedCount++;

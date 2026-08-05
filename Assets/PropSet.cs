@@ -171,6 +171,14 @@ namespace DungeonGen
             public int minSpacing = 0;
 
 
+            [Header("Per-room emissive tint")]
+            [Tooltip("Recolour this prop's GLOW to the room's torch colour, so a candle on a shrine shelf burns the same cold blue as its torches, fog and kit emissives (§7) instead of its authored orange. A corridor or alcove uses the style's DEFAULT torch colour, matching the walls around it.\n\nOFF by default and opt-in PER ENTRY, not per material: the same emissive material is often reused on something that must NOT shift hue (a lantern with coloured glass, a rune whose colour is its meaning).\n\nCosts one extra batch per distinct colour in use — bounded by the palette, not by prop count — and works on StaticDecor, so a glowing candle needs no Light and no GameObject at all.")]
+            public bool tintToRoomPalette = false;
+            [Tooltip("WHICH of the prefab's materials to recolour — the exact material asset, matched by reference. Only that slot is swapped, so a candelabra's metal stays metal while its flame recolours.\n\nRequired when Tint To Room Palette is on; the swap silently does nothing if this doesn't match a material the prefab actually uses. Author the material with Enable GPU Instancing ON (the prop renders through Graphics.RenderMeshInstanced) and _EMISSION enabled.")]
+            public Material tintMaterial;
+            [Tooltip("Multiplies the room's torch colour to produce the emission value. Emission only BLOOMS above 1 and the palette is LDR-range, so this is what lifts it into HDR — the prop-side equivalent of the kit's Emissive Intensity, kept separate so a dim shelf candle and a blazing brazier can share one material and one palette at different brightness.")]
+            public float tintIntensity = 1f;
+
             [Header("Count")]
             [Tooltip("Guaranteed: place exactly Count (cells permitting). Otherwise scatter by chance per eligible cell.")]
             public bool guaranteed;

@@ -143,6 +143,17 @@ namespace DungeonGen
                     yield return "sharesTile";
                     break;
             }
+
+            // Per-room emissive tint — AFTER the switch, so it applies to every anchor. A
+            // glow can belong to a ceiling chandelier, a wall sconce, a floor candle or a
+            // socket child alike, and there is nothing anchor-specific about recolouring it.
+            yield return "§Tint";
+            yield return "tintToRoomPalette";
+            if (prop.FindPropertyRelative("tintToRoomPalette").boolValue)
+            {
+                yield return "tintMaterial";
+                yield return "tintIntensity";
+            }
         }
 
         static string Header(SerializedProperty prop)

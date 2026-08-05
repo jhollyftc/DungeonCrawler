@@ -64,12 +64,18 @@ namespace DungeonGen
             GameObject Pick(PropSet.PropEntry e, HashStream s) =>
                 (e.prefabs == null || e.prefabs.Length == 0) ? null : e.prefabs[s.Next() % e.prefabs.Length];
 
-            void Place(GameObject prefab, Vector3 pos, Quaternion rot, PropTier tier)
+            // Takes the ENTRY, not just a tier, so the per-room emissive tint resolves here
+            // rather than at each call site. An alcove is typed Hallway and belongs to no
+            // room, so it passes a null Room and PropTint resolves the style's DEFAULT torch
+            // colour — matching the corridor walls the alcove inherits (§7).
+            void Place(PropSet.PropEntry e, GameObject prefab, Vector3 pos, Quaternion rot)
             {
-                PropTier t = instancer != null ? tier : PropTier.FullGameObject;
+                PropTier t = instancer != null ? e.tier : PropTier.FullGameObject;
+                PropTint.Resolve(e, style, null, out var tintFrom, out var tintTo);
                 PropInstancer.PlaceProps(instancer, prefab,
                     new[] { new PropPlacement { position = pos, rotation = rot } },
-                    t, cellSize, root.transform);
+                    t, cellSize, root.transform,
+                    replaceMat: tintFrom, withMat: tintTo);
             }
 
             Vector3 CellCentre(Vector3Int c) =>
@@ -167,7 +173,7 @@ namespace DungeonGen
         static int PlaceFeature(PropSet.PropEntry e, AlcoveSpec a, List<Vector3Int> cells, float cellSize,
                                 System.Func<Vector3Int, Vector3> CellCentre,
                                 System.Func<PropSet.PropEntry, HashStream, GameObject> Pick,
-                                System.Action<GameObject, Vector3, Quaternion, PropTier> Place,
+                                System.Action<PropSet.PropEntry, GameObject, Vector3, Quaternion> Place,
                                 HashStream s, HashSet<Vector3Int> usedFloor,
                                 Grid3D<CellType> grid, WallFaceRegistry wallFaces)
         {
@@ -195,7 +201,7 @@ namespace DungeonGen
                     pos += (Vector3)a.Direction * (cellSize * 0.5f - e.wallGap);
             }
 
-            Place(prefab, pos, rot, e.tier);
+            Place(e, prefab, pos, rot);
             if (!e.sharesTile) usedFloor.Add(cell);
 
             // Claim the back face so a torch can't land on top of the idol.
@@ -209,7 +215,7 @@ namespace DungeonGen
         static int PlaceWallMounted(PropSet.PropEntry e, AlcoveSpec a, float cellSize,
                                     System.Func<Vector3Int, Vector3> CellCentre,
                                     System.Func<PropSet.PropEntry, HashStream, GameObject> Pick,
-                                    System.Action<GameObject, Vector3, Quaternion, PropTier> Place,
+                                    System.Action<PropSet.PropEntry, GameObject, Vector3, Quaternion> Place,
                                     HashStream s, Grid3D<CellType> grid, WallFaceRegistry wallFaces,
                                     System.Func<Vector3Int, bool> Open)
         {
@@ -249,7 +255,7 @@ namespace DungeonGen
                               + Vector3.up * h;
                 Quaternion rot = Quaternion.LookRotation(-(Vector3)d)
                                  * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, s.Next01()), 0f);
-                Place(prefab, pos, rot, e.tier);
+                Place(e, prefab, pos, rot);
                 wallFaces?.Claim(grid.Index(c), d);
                 placed++;
             }
@@ -264,7 +270,7 @@ namespace DungeonGen
         static int PlaceScatterLike(PropSet.PropEntry e, AlcoveSpec a, List<Vector3Int> cells, float cellSize,
                                     System.Func<Vector3Int, Vector3> CellCentre,
                                     System.Func<PropSet.PropEntry, HashStream, GameObject> Pick,
-                                    System.Action<GameObject, Vector3, Quaternion, PropTier> Place,
+                                    System.Action<PropSet.PropEntry, GameObject, Vector3, Quaternion> Place,
                                     HashStream s, HashSet<Vector3Int> used,
                                     Grid3D<CellType> grid, WallFaceRegistry wallFaces,
                                     System.Func<Vector3Int, bool> Open, bool ceiling)
@@ -339,7 +345,7 @@ namespace DungeonGen
 
                 GameObject prefab = Pick(e, s);
                 if (prefab == null) continue;
-                Place(prefab, pos, rot, e.tier);
+                Place(e, prefab, pos, rot);
                 if (!e.sharesTile) used.Add(c);
                 placed++;
             }
