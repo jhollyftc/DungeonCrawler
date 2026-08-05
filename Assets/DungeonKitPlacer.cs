@@ -214,22 +214,77 @@ namespace DungeonGen
                 var setAssets = style.WallSetFor(room.Type);
                 if (setAssets == null) return res;
 
-                // Gather this room's wall faces, grouped by band.
+                DealCappedAssets(res, room.Cells, setAssets, cell => BandOf(room, cell));
+                return res;
+            }
+
+            // Prison closets get their own reservations: a prison is a discrete enclosure with
+            // its own walls, so "1 per room" has an obvious meaning there — the ONE unit for
+            // which it doesn't is the hallway network (see RoomStyle.HallwayWalls). Without this
+            // the cap was ignored entirely and a capped drain simply joined the general hash
+            // pick, landing on face after face.
+            var prisonReservations = new Dictionary<int, Dictionary<long, RoomStyle.WallAsset>>();
+            Dictionary<int, List<Vector3Int>> prisonCellsByIndex = null;
+
+            int PrisonIndexOf(Vector3Int cell)
+            {
+                if (prisonCellsByIndex == null)
+                {
+                    prisonCellsByIndex = new Dictionary<int, List<Vector3Int>>();
+                    for (int pi = 0; pi < gen.PrisonCells.Count; pi++)
+                    {
+                        var bb = gen.PrisonCells[pi];
+                        var cells = new List<Vector3Int>();
+                        foreach (var p in bb.allPositionsWithin)
+                            if (grid.InBounds(p) && grid[p] == CellType.Prison) cells.Add(p);
+                        prisonCellsByIndex[pi] = cells;
+                    }
+                }
+                foreach (var kv in prisonCellsByIndex)
+                    if (kv.Value.Contains(cell)) return kv.Key;
+                return -1;
+            }
+
+            Dictionary<long, RoomStyle.WallAsset> GetPrisonReservations(int prisonIdx)
+            {
+                if (prisonReservations.TryGetValue(prisonIdx, out var res)) return res;
+                res = new Dictionary<long, RoomStyle.WallAsset>();
+                prisonReservations[prisonIdx] = res;
+                if (style == null) return res;
+
+                var setAssets = style.PrisonWallSet();
+                if (setAssets == null) return res;
+
+                // A prison closet is one course of wall — always the Bottom band, like the
+                // general prison/hallway pick.
+                DealCappedAssets(res, prisonCellsByIndex[prisonIdx], setAssets,
+                                 _ => RoomStyle.WallBand.Bottom);
+                return res;
+            }
+
+            // Deal each capped asset ONCE, from the union of faces in its
+            // allowed bands, in hash-shuffled order (never scan order). A
+            // shared used-set keeps two specials off the same face. Salt
+            // the shuffle per asset so co-eligible specials decorrelate.
+            //
+            // Shared by rooms and prisons so the two cannot drift: the ONLY differences
+            // between them are which cells form the enclosure and how a cell maps to a band.
+            void DealCappedAssets(Dictionary<long, RoomStyle.WallAsset> res,
+                                  IEnumerable<Vector3Int> cells,
+                                  List<RoomStyle.WallAsset> setAssets,
+                                  System.Func<Vector3Int, RoomStyle.WallBand> bandOf)
+            {
                 var facesByBand = new Dictionary<RoomStyle.WallBand, List<(Vector3Int cell, int dirIdx)>>();
-                foreach (var cell in room.Cells)
+                foreach (var cell in cells)
                     for (int di = 0; di < HDirs.Length; di++)
                     {
                         if (Open(cell + HDirs[di])) continue;
-                        var band = BandOf(room, cell);
+                        var band = bandOf(cell);
                         if (!facesByBand.TryGetValue(band, out var list))
                             facesByBand[band] = list = new List<(Vector3Int, int)>();
                         list.Add((cell, di));
                     }
 
-                // Deal each capped asset ONCE, from the union of faces in its
-                // allowed bands, in hash-shuffled order (never scan order). A
-                // shared used-set keeps two specials off the same face. Salt
-                // the shuffle per asset so co-eligible specials decorrelate.
                 var usedFaces = new HashSet<long>();
                 for (int ai = 0; ai < setAssets.Count; ai++)
                 {
@@ -257,7 +312,6 @@ namespace DungeonGen
                         placedCount++;
                     }
                 }
-                return res;
             }
 
             // Unlimited assets per (type, band), cached for the pass.
@@ -276,6 +330,23 @@ namespace DungeonGen
                 }
                 unlimitedCache[(type, band)] = result;
                 return result;
+            }
+
+            // A RESERVED capped wall asset. Calls `place` DIRECTLY rather than going through
+            // Emit — the prefab is already chosen, there is nothing to hash-pick — which is
+            // exactly why it needs its own socket record and feature-label handling. It is the
+            // path capped FEATURE walls land on (a fireplace's fire socket lives here), so it is
+            // both the easiest to overlook and the most costly to.
+            void EmitReserved(RoomStyle.WallAsset reserved, Vector3 facePos, Vector3Int c, Vector3Int d)
+            {
+                var rot = Quaternion.LookRotation(-(Vector3)d);
+                place(reserved.prefab, facePos, rot, kit.wallOffset + kit.globalVisualOffset, c);
+                RecordSocketSite(reserved.prefab, facePos, rot,
+                                 kit.wallOffset + kit.globalVisualOffset, c, d, false);
+                // A labeled feature wall (fireplace etc.) — NearWallAsset props with a matching
+                // Host Label attach beside it. Unlabeled capped assets are NOT hosts.
+                if (!string.IsNullOrEmpty(reserved.featureLabel))
+                    wallFaces?.RecordFeature(c, d, reserved.featureLabel);
             }
 
             // Returns the picked prefab (null if the slot was empty) so wall
@@ -392,6 +463,11 @@ namespace DungeonGen
                     {
                         bool emitted = false;
                         GameObject placedWall = null;
+                        // WHICH LIST the prefab came from, tracked alongside it. The same prefab
+                        // carries different flags in different lists, so reading them back needs
+                        // the context and not just the prefab (see RoomStyle.WallFlagsFor).
+                        var wallCtx = RoomStyle.WallContext.Hallway;
+                        RoomType wallCtxType = default;
                         if (style != null)
                         {
                             // Stairs are usually carved as part of the hallway
@@ -418,30 +494,19 @@ namespace DungeonGen
                             if (pitWalls != null)
                             {
                                 placedWall = Emit(pitWalls, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                wallCtx = RoomStyle.WallContext.Pit;
                                 emitted = true;
                             }
                             else if (room != null)
                             {
+                                wallCtx = RoomStyle.WallContext.Room;
+                                wallCtxType = room.Type;
                                 var res = GetReservations(room);
                                 if (res.TryGetValue(FaceKey(i, d), out var reserved))
                                 {
-                                    place(reserved.prefab, facePos, Quaternion.LookRotation(-(Vector3)d),
-                                          kit.wallOffset + kit.globalVisualOffset, c);
+                                    EmitReserved(reserved, facePos, c, d);
                                     placedWall = reserved.prefab;
                                     emitted = true;
-                                    // This path calls `place` DIRECTLY rather than going through
-                                    // Emit, so it needs its own socket record — and it is the
-                                    // path that matters most, being where capped feature walls
-                                    // land. A fireplace's fire socket lives here.
-                                    RecordSocketSite(reserved.prefab, facePos,
-                                                     Quaternion.LookRotation(-(Vector3)d),
-                                                     kit.wallOffset + kit.globalVisualOffset, c, d, false);
-                                    // A labeled feature wall (fireplace etc.) —
-                                    // NearWallAsset props with a matching Host
-                                    // Label attach beside it. Unlabeled capped
-                                    // assets are NOT hosts.
-                                    if (!string.IsNullOrEmpty(reserved.featureLabel))
-                                        wallFaces?.RecordFeature(c, d, reserved.featureLabel);
                                 }
                                 else
                                 {
@@ -455,6 +520,7 @@ namespace DungeonGen
                             }
                             else if (t == CellType.Hallway || t == CellType.StairLower || t == CellType.StairUpper)
                             {
+                                wallCtx = RoomStyle.WallContext.Hallway;
                                 var styled = style.HallwayWalls();
                                 if (styled != null)
                                 {
@@ -464,11 +530,23 @@ namespace DungeonGen
                             }
                             else if (t == CellType.Prison)
                             {
-                                var styled = style.PrisonWalls();
-                                if (styled != null)
+                                wallCtx = RoomStyle.WallContext.Prison;
+                                int pi = PrisonIndexOf(c);
+                                var pres = pi >= 0 ? GetPrisonReservations(pi) : null;
+                                if (pres != null && pres.TryGetValue(FaceKey(i, d), out var reserved))
                                 {
-                                    placedWall = Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                    EmitReserved(reserved, facePos, c, d);
+                                    placedWall = reserved.prefab;
                                     emitted = true;
+                                }
+                                else
+                                {
+                                    var styled = style.PrisonWalls();
+                                    if (styled != null)
+                                    {
+                                        placedWall = Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                        emitted = true;
+                                    }
                                 }
                             }
                         }
@@ -480,7 +558,8 @@ namespace DungeonGen
                         // no WallAsset metadata — they allow everything.
                         if (wallFaces != null && style != null && placedWall != null)
                         {
-                            style.WallFlagsFor(placedWall, out bool allowProps, out bool allowTorch);
+                            style.WallFlagsFor(placedWall, wallCtx, wallCtxType,
+                                               out bool allowProps, out bool allowTorch);
                             if (!allowProps || !allowTorch)
                                 wallFaces.Record(i, d, allowProps, allowTorch);
                         }

@@ -232,19 +232,41 @@ namespace DungeonGen
         {
             if (hallwayWallCache != null) return hallwayWallCache.Length > 0 ? hallwayWallCache : null;
             var list = new List<GameObject>();
+            int capped = 0;
             foreach (var w in hallwayWalls)
-                if (w.prefab != null && w.Allows(WallBand.Bottom)) list.Add(w.prefab);
+            {
+                if (w.prefab == null || !w.Allows(WallBand.Bottom)) continue;
+                // maxPerRoom CANNOT BE HONOURED HERE — a corridor network is not a room, so
+                // there is no group to count against. Rooms and prisons deal capped assets in a
+                // reservation pre-pass; hallways have no equivalent unit. Left in the general
+                // pool rather than dropped (dropping would silently delete the asset) but warned,
+                // because a cap that quietly does nothing is worse than one that says so.
+                if (w.maxPerRoom > 0) capped++;
+                list.Add(w.prefab);
+            }
+            if (capped > 0)
+                Debug.LogWarning($"[RoomStyle] {capped} hallwayWalls entr(y/ies) set Max Per Room, which is " +
+                                 "IGNORED for hallways — a corridor network has no room to count per. " +
+                                 "Set it to 0 there, or move the asset to a room or prison wall list.");
             hallwayWallCache = list.ToArray();
             return hallwayWallCache.Length > 0 ? hallwayWallCache : null;
         }
+
+        /// <summary>Raw prison wall list (capped entries included) for the reservation pre-pass.</summary>
+        public List<WallAsset> PrisonWallSet() => prisonWalls;
+        /// <summary>Raw pit wall list (capped entries included) for the reservation pre-pass.</summary>
+        public List<WallAsset> PitWallSet() => pitWalls;
 
         /// <summary>Prison closet wall prefabs, or null to use the kit's generic walls.</summary>
         public GameObject[] PrisonWalls()
         {
             if (prisonWallCache != null) return prisonWallCache.Length > 0 ? prisonWallCache : null;
             var list = new List<GameObject>();
+            // Capped assets are EXCLUDED from the general pool, exactly as UnlimitedWalls does
+            // for rooms: they are dealt once each by the reservation pre-pass, and leaving them
+            // in the pool as well is what let a "Max Per Room 1" drain land on face after face.
             foreach (var w in prisonWalls)
-                if (w.prefab != null && w.Allows(WallBand.Bottom)) list.Add(w.prefab);
+                if (w.prefab != null && w.maxPerRoom <= 0 && w.Allows(WallBand.Bottom)) list.Add(w.prefab);
             prisonWallCache = list.ToArray();
             return prisonWallCache.Length > 0 ? prisonWallCache : null;
         }
@@ -255,42 +277,65 @@ namespace DungeonGen
             if (pitWallCache != null) return pitWallCache.Length > 0 ? pitWallCache : null;
             var list = new List<GameObject>();
             foreach (var w in pitWalls)
-                if (w.prefab != null && w.Allows(WallBand.Bottom)) list.Add(w.prefab);
+                if (w.prefab != null && w.maxPerRoom <= 0 && w.Allows(WallBand.Bottom)) list.Add(w.prefab);
             pitWallCache = list.ToArray();
             return pitWallCache.Length > 0 ? pitWallCache : null;
         }
 
-        Dictionary<GameObject, (bool props, bool torch)> wallFlagCache;
+        /// <summary>Which wall LIST a face's prefab was picked from. Flags are authored per
+        /// WallAsset — i.e. per list — so they must be read back per list too.</summary>
+        public enum WallContext { Room, Hallway, Prison, Pit }
 
-        /// <summary>Placement restrictions for a wall prefab (allowPropsInFront /
-        /// allowTorch), merged most-restrictive if the prefab appears in several
-        /// WallAssets. Unknown prefabs (kit generics) allow everything.</summary>
-        public void WallFlagsFor(GameObject prefab, out bool allowProps, out bool allowTorch)
+        Dictionary<(GameObject prefab, int ctx), (bool props, bool torch)> wallFlagCache;
+
+        // Room contexts are offset past the non-room ones so a room type can never collide with
+        // Hallway/Prison/Pit.
+        static int ContextKey(WallContext ctx, RoomType type) =>
+            ctx == WallContext.Room ? 100 + (int)type : (int)ctx;
+
+        /// <summary>
+        /// Placement restrictions for a wall prefab (allowPropsInFront / allowTorch) IN THE
+        /// CONTEXT IT WAS PLACED IN. Unknown prefabs (kit generics) allow everything.
+        ///
+        /// KEYED BY CONTEXT, NOT BY PREFAB ALONE. The same prefab legitimately appears in
+        /// several lists with different flags — Wall_Basic_P is a normal hallway wall that
+        /// takes torches, and also a pit-interior wall that must not (a lit chasm reads as a
+        /// room). Merging those most-restrictive by prefab meant ONE `allowTorch: 0` anywhere
+        /// silently disabled torches for that prefab EVERYWHERE, which is how a fully
+        /// torch-enabled hallway ended up with no torches at all. Flags are authored per
+        /// WallAsset, so they are read back per WallAsset's list.
+        ///
+        /// Merging still happens WITHIN a list, which is correct: a prefab listed twice in one
+        /// context has one effective rule there, and the restrictive reading is the safe one.
+        /// </summary>
+        public void WallFlagsFor(GameObject prefab, WallContext ctx, RoomType roomType,
+                                 out bool allowProps, out bool allowTorch)
         {
             if (wallFlagCache == null)
             {
-                wallFlagCache = new Dictionary<GameObject, (bool, bool)>();
-                void Add(List<WallAsset> list)
+                wallFlagCache = new Dictionary<(GameObject, int), (bool, bool)>();
+                void Add(List<WallAsset> list, int key)
                 {
                     if (list == null) return;
                     foreach (var w in list)
                     {
                         if (w.prefab == null) continue;
-                        if (wallFlagCache.TryGetValue(w.prefab, out var f))
-                            wallFlagCache[w.prefab] = (f.props && w.allowPropsInFront, f.torch && w.allowTorch);
+                        var k = (w.prefab, key);
+                        if (wallFlagCache.TryGetValue(k, out var f))
+                            wallFlagCache[k] = (f.props && w.allowPropsInFront, f.torch && w.allowTorch);
                         else
-                            wallFlagCache[w.prefab] = (w.allowPropsInFront, w.allowTorch);
+                            wallFlagCache[k] = (w.allowPropsInFront, w.allowTorch);
                     }
                 }
-                foreach (var set in roomWalls) Add(set.walls);
-                Add(hallwayWalls);
-                Add(prisonWalls);
+                foreach (var set in roomWalls) Add(set.walls, ContextKey(WallContext.Room, set.type));
+                Add(hallwayWalls, ContextKey(WallContext.Hallway, default));
+                Add(prisonWalls, ContextKey(WallContext.Prison, default));
                 // Registered here or the per-asset allowTorch / allowPropsInFront flags on pit
                 // walls silently do nothing — the same omission §7 warns about for any new
                 // wall list.
-                Add(pitWalls);
+                Add(pitWalls, ContextKey(WallContext.Pit, default));
             }
-            if (wallFlagCache.TryGetValue(prefab, out var flags))
+            if (wallFlagCache.TryGetValue((prefab, ContextKey(ctx, roomType)), out var flags))
             {
                 allowProps = flags.props;
                 allowTorch = flags.torch;
