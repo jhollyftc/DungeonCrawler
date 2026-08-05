@@ -86,6 +86,7 @@ namespace DungeonGen
             // "DungeonAlcoveProps" was missed when alcoves landed (already shipped);
             // "DungeonBridges" arrives with pits.
             "DungeonAlcoveProps", "DungeonBridges", "DungeonPitRims", "DungeonLintels",
+            "DungeonKitSockets",
         };
 
         void Start()
@@ -203,9 +204,14 @@ namespace DungeonGen
             // placers below (empty in GeneratedMesh mode = no restrictions).
             var wallFaces = new WallFaceRegistry();
 
+            // Kit pieces that carry PropSockets, recorded as they emit and filled by
+            // KitSocketPlacer below. Collected rather than spawned inline because `place`
+            // cannot express PropTier — see DungeonKitPlacer.SocketSite.
+            var socketSites = new List<DungeonKitPlacer.SocketSite>();
+
             if (geometryMode == GeometryMode.PrefabKit)
             {
-                DungeonKitPlacer.Build(gen, kit, cellSize, transform, roomStyle, wallFaces);
+                DungeonKitPlacer.Build(gen, kit, cellSize, transform, roomStyle, wallFaces, socketSites);
                 DungeonKitPlacer.BuildDoors(gen, kit, cellSize, transform, roomStyle);
                 DungeonKitPlacer.BuildArchways(gen, kit, cellSize, transform, null, roomStyle);
                 DungeonKitPlacer.BuildInteriorColumns(gen, kit, cellSize, transform);
@@ -274,7 +280,7 @@ namespace DungeonGen
                     PropInstancer.PlaceProps(ir, prefab,
                         new[] { new PropPlacement { position = worldPos, rotation = rot } },
                         PropTier.StaticCollider, cellSize, kitColliders.transform);
-                }, wallFaces);
+                }, wallFaces, socketSites);
 
                 // Doors stay full GameObjects (they move). Archways split:
                 // mesh -> instancer, collider -> GameObject.
@@ -297,7 +303,13 @@ namespace DungeonGen
                 DungeonMesher.Build(gen, cellSize, transform, wallMargin);
             }
 
-            // ALCOVES FIRST, before torches. §8's most-constrained-first rule taken to its
+            // KIT SOCKETS FIRST of all the content passes: a socket torch must claim its face
+            // AND enter TorchPlacer's spacing buckets before any computed torch is chosen, or a
+            // deliberately-placed sconce gets a computed twin a metre away.
+            if (roomStyle != null)
+                KitSocketPlacer.Build(gen, kit, socketSites, cellSize, transform, sharedInstancer, roomStyle, wallFaces, torches);
+
+            // ALCOVES next, before torches. §8's most-constrained-first rule taken to its
             // conclusion: an alcove has about three wall faces and one authored hero prop, so it
             // is the tightest consumer of wall real estate in the dungeon and must claim its
             // face before a sconce can take it. Everything after this honours those claims.

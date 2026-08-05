@@ -53,7 +53,15 @@ namespace DungeonGen
             PropTier tier,
             float cellSize,       // unused directly; kept for signature symmetry with kit placers
             Transform functionalParent,
-            bool castShadows = true) // detail geometry casts; only the kit shell opts out
+            bool castShadows = true, // detail geometry casts; only the kit shell opts out
+            // Optional per-placement material swap, same pair the kit path uses for per-room
+            // emissive tinting. Needed because a MaterialPropertyBlock cannot reach the
+            // instanced path at all (there is no renderer to attach one to, §5) — varying the
+            // MATERIAL is the only way, and BatchKey already includes it so a swapped material
+            // is simply its own batch. CACHE the variants by colour (EmissiveMaterialVariants
+            // does) or every placement becomes a batch of one and instancing is gone.
+            Material replaceMat = null,
+            Material withMat = null)
         {
             if (prefab == null) return;
 
@@ -71,7 +79,7 @@ namespace DungeonGen
                     // while the functional GameObject (which applies rootRot
                     // once, below) sat correct.
                     Matrix4x4 m = Matrix4x4.TRS(pl.position, pl.rotation, Vector3.one);
-                    instancer.AddInstance(prefab, m, castShadows);
+                    instancer.AddInstance(prefab, m, castShadows, replaceMat, withMat);
                 }
 
                 // --- Function: a GameObject, when the tier needs one ---

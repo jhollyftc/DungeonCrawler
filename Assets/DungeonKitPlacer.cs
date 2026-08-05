@@ -119,11 +119,58 @@ namespace DungeonGen
         /// Instantiates full prefabs — colliders included — either way) see
         /// no behavior change.
         /// </summary>
+        /// <summary>
+        /// One emitted kit piece that carries PropSockets — recorded so KitSocketPlacer can
+        /// fill them afterwards with full PropTier control, which `place` cannot express (a
+        /// fireplace VFX must be FullGameObject, a candle StaticDecor).
+        ///
+        /// Record-then-consume rather than spawning inline, same shape as
+        /// WallFaceRegistry.FeatureFaces feeding NearWallAsset: it keeps Enumerate free of prop
+        /// concerns and lets one pass serve both the PrefabKit and InstancedKit paths.
+        /// </summary>
+        public struct SocketSite
+        {
+            public GameObject prefab;
+            public Vector3 posCells;      // as handed to `place` — cell units, pre-offset
+            public Quaternion rot;
+            public Vector3 offset;        // includes globalVisualOffset where the piece takes it
+            public Vector3Int cell;       // owning cell
+            public Vector3Int faceDir;    // wall face direction; zero for floors/ceilings
+            public bool isFloor;          // floor pieces may only take NON-BLOCKING children
+        }
+
         public static void Enumerate(DungeonGenerator gen, DungeonKit kit, HashSet<string> missing, PlaceCallback place,
                                      RoomStyle style = null, PlaceCallback placeWithCollider = null,
-                                     WallFaceRegistry wallFaces = null)
+                                     WallFaceRegistry wallFaces = null,
+                                     List<SocketSite> socketSites = null)
         {
             placeWithCollider ??= place;
+
+            // Whether a prefab carries sockets, cached: this is asked once per emitted piece
+            // (thousands per dungeon) and GetComponentsInChildren allocates.
+            var socketedCache = new Dictionary<GameObject, bool>();
+            bool HasSockets(GameObject p)
+            {
+                if (p == null) return false;
+                if (socketedCache.TryGetValue(p, out bool has)) return has;
+                has = p.GetComponentInChildren<PropSocket>(true) != null;
+                socketedCache[p] = has;
+                return has;
+            }
+
+            // Recorded from INSIDE Emit below, so all of its call sites are covered at once
+            // rather than each needing to remember. NB the reserved capped-asset path calls
+            // `place` DIRECTLY, bypassing Emit — it is easy to miss and is handled separately.
+            void RecordSocketSite(GameObject prefab, Vector3 posCells, Quaternion rot, Vector3 offset,
+                                  Vector3Int cell, Vector3Int faceDir, bool isFloor)
+            {
+                if (socketSites == null || !HasSockets(prefab)) return;
+                socketSites.Add(new SocketSite
+                {
+                    prefab = prefab, posCells = posCells, rot = rot, offset = offset,
+                    cell = cell, faceDir = faceDir, isFloor = isFloor,
+                });
+            }
             var grid = gen.Grid;
             bool Open(Vector3Int p) => grid.InBounds(p) && grid[p] != CellType.Empty;
 
@@ -239,6 +286,14 @@ namespace DungeonGen
                 GameObject prefab = slot[Hash(Vector3Int.RoundToInt(posCells * 4f), 11) % slot.Length];
                 if (prefab == null) { missing.Add(slotName); return null; }
                 place(prefab, posCells, rot, offset + kit.globalVisualOffset, cell);
+
+                // Sockets ride on the piece's ACTUAL rendered pose, globalVisualOffset included.
+                // The socket was authored in the mesh's frame, which is offset — composing from
+                // the un-offset pose puts every child a half-cell low (golden rule 2, the same
+                // shape that once floated scatter props in the air).
+                Vector3Int faceDir = slotName == "wall" ? RoundDir(rot * Vector3.back) : Vector3Int.zero;
+                RecordSocketSite(prefab, posCells, rot, offset + kit.globalVisualOffset, cell,
+                                 faceDir, slotName == "floor");
                 return prefab;
             }
 
@@ -374,6 +429,13 @@ namespace DungeonGen
                                           kit.wallOffset + kit.globalVisualOffset, c);
                                     placedWall = reserved.prefab;
                                     emitted = true;
+                                    // This path calls `place` DIRECTLY rather than going through
+                                    // Emit, so it needs its own socket record — and it is the
+                                    // path that matters most, being where capped feature walls
+                                    // land. A fireplace's fire socket lives here.
+                                    RecordSocketSite(reserved.prefab, facePos,
+                                                     Quaternion.LookRotation(-(Vector3)d),
+                                                     kit.wallOffset + kit.globalVisualOffset, c, d, false);
                                     // A labeled feature wall (fireplace etc.) —
                                     // NearWallAsset props with a matching Host
                                     // Label attach beside it. Unlabeled capped
@@ -805,7 +867,8 @@ namespace DungeonGen
 
         /// <summary>GameObject mode: instantiate a prefab per placement.</summary>
         public static GameObject Build(DungeonGenerator gen, DungeonKit kit, float cellSize, Transform parent,
-                                       RoomStyle style = null, WallFaceRegistry wallFaces = null)
+                                       RoomStyle style = null, WallFaceRegistry wallFaces = null,
+                                       List<SocketSite> socketSites = null)
         {
             var root = new GameObject("DungeonKit");
             root.transform.SetParent(parent, false);
@@ -823,7 +886,7 @@ namespace DungeonGen
                     rot * prefab.transform.rotation,
                     root.transform);
                 go.isStatic = true;
-            }, style, null, wallFaces);
+            }, style, null, wallFaces, socketSites);
 
             if (missing.Count > 0)
                 Debug.LogWarning($"[DungeonKit] Missing prefab slot(s): {string.Join(", ", missing)} — those pieces were skipped.");
@@ -1334,6 +1397,15 @@ namespace DungeonGen
         }
 
         static int DirIndex(Vector3Int d) => d.x > 0 ? 0 : d.x < 0 ? 1 : d.z > 0 ? 2 : 3;
+
+        /// <summary>Snap a world direction back to the grid axis it came from — walls are
+        /// emitted with LookRotation(-d), so this recovers `d` for the socket record.</summary>
+        static Vector3Int RoundDir(Vector3 v)
+        {
+            if (Mathf.Abs(v.x) >= Mathf.Abs(v.z))
+                return new Vector3Int(v.x >= 0f ? 1 : -1, 0, 0);
+            return new Vector3Int(0, 0, v.z >= 0f ? 1 : -1);
+        }
 
         /// <summary>
         /// Lintel trim along the top edge of stair-shaft walls, where they meet the shaft's

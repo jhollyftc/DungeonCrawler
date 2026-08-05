@@ -56,5 +56,21 @@ namespace DungeonGen
         /// cell = the open room cell in front of the wall, dir = toward it.</summary>
         public void RecordFeature(Vector3Int cell, Vector3Int dir, string label) => featureFaces.Add((cell, dir, label));
         public IReadOnlyList<(Vector3Int cell, Vector3Int dir, string label)> FeatureFaces => featureFaces;
+
+        readonly List<(Vector3Int cell, Vector3Int dir)> preplacedTorches = new List<(Vector3Int, Vector3Int)>();
+
+        /// <summary>
+        /// An AUTHORED torch — one spawned from a kit piece's socket rather than chosen by
+        /// TorchPlacer's spacing. Recorded so TorchPlacer can seed its spacing buckets with it
+        /// BEFORE thinning, which makes computed torches keep their distance instead of landing
+        /// a metre from a sconce the artist placed deliberately. Authored torches therefore
+        /// DISPLACE computed ones rather than adding to them, so a room's brightness still
+        /// matches what its palette intends.
+        ///
+        /// Cells and directions, not world positions, because that is what TorchPlacer's
+        /// spacing works in: it buckets by wall plane and measures distance ALONG the wall.
+        /// </summary>
+        public void RecordTorch(Vector3Int cell, Vector3Int dir) => preplacedTorches.Add((cell, dir));
+        public IReadOnlyList<(Vector3Int cell, Vector3Int dir)> PreplacedTorches => preplacedTorches;
     }
 }

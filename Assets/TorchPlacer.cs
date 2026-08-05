@@ -155,6 +155,27 @@ namespace DungeonGen
             // Bucket accepted torches by wall plane for cheap distance checks.
             var byPlane = new Dictionary<(Vector3Int dir, int planeCoord, int y), List<Vector3Int>>();
 
+            // SEED WITH AUTHORED TORCHES — sconces spawned from a kit piece's socket, recorded
+            // by KitSocketPlacer before this pass runs. Seeding rather than merely claiming the
+            // face is what makes an authored torch DISPLACE computed ones instead of adding to
+            // them: without it, a face-claim stops a torch on that exact face while nothing
+            // prevents one on the next cell along, so a deliberately placed sconce ends up with
+            // a computed twin a metre away and the room reads brighter than its palette intends.
+            if (wallFaces != null)
+            {
+                foreach (var (cell, dir) in wallFaces.PreplacedTorches)
+                {
+                    int seedPlane = dir.x != 0 ? cell.x : cell.z;
+                    var seedKey = (dir, seedPlane, cell.y);
+                    if (!byPlane.TryGetValue(seedKey, out var seeded))
+                    {
+                        seeded = new List<Vector3Int>();
+                        byPlane[seedKey] = seeded;
+                    }
+                    seeded.Add(cell);
+                }
+            }
+
             foreach (var slot in slots)
             {
                 float need = slot.type == CellType.Room ? roomSpacingCells : spacingCells;
