@@ -38,6 +38,23 @@ Shader "Dungeon/ToonLit"
         _RimColor ("Rim Color", Color) = (1.0, 0.93, 0.80, 1)
         _RimAmount ("Rim Amount", Range(0, 1)) = 0.0
         _RimThreshold ("Rim Threshold", Range(0, 1)) = 0.72
+
+        // Emission is OFF by default (_EmissionColor black), so every existing material
+        // is untouched. Property NAMES match URP/Lit deliberately — a material can be
+        // switched from URP/Lit to this shader and keeps its authored emission.
+        // _EmissionMap defaults to WHITE, not black, for the same reason: URP/Lit treats
+        // colour-only emission (no map) as emitting everywhere, and a black default would
+        // silently kill emission on any material that never assigned a map.
+        [Header(Emission (off by default))]
+        [HDR] _EmissionColor ("Emission Color (black = off)", Color) = (0, 0, 0, 1)
+        _EmissionMap ("Emission Mask", 2D) = "white" {}
+
+        // Per-instance temporal flicker on the emission. 0 = off, and off costs one
+        // uniform branch in the vertex stage.
+        [Header(Emission Flicker)]
+        _FlickerAmount ("Flicker Amount", Range(0, 1)) = 0.0
+        _FlickerSpeed ("Flicker Speed", Float) = 1.5
+        _FlickerCellSize ("Flicker Cell Size (0 = whole mesh)", Float) = 0.0
     }
 
     SubShader
@@ -50,6 +67,7 @@ Shader "Dungeon/ToonLit"
         TEXTURE2D(_BaseMap);
         TEXTURE2D(_MaskMap);
         TEXTURE2D(_BumpMap);
+        TEXTURE2D(_EmissionMap);
         SAMPLER(sampler_BaseMap);
 
         CBUFFER_START(UnityPerMaterial)
@@ -67,7 +85,75 @@ Shader "Dungeon/ToonLit"
             half4  _RimColor;
             half   _RimAmount;
             half   _RimThreshold;
+            half4  _EmissionColor;
+            half   _FlickerAmount;
+            half   _FlickerSpeed;
+            float  _FlickerCellSize;
         CBUFFER_END
+
+        // ---------------- Emission flicker ----------------
+        // A candle placed by the kit is usually PropTier.StaticDecor: mesh instanced, NO
+        // GameObject, therefore no Light and no TorchFlicker to animate it — and a
+        // MaterialPropertyBlock cannot reach the instanced path at all. So for those
+        // pieces the shader is the ONLY place a flicker can live.
+        //
+        // The phase comes from the instance's WORLD ORIGIN, hashed. That is what makes
+        // each candle burn independently instead of a whole room pulsing in lockstep, and
+        // it survives batching because it is DERIVED rather than supplied — there is no
+        // per-instance channel to put a value in. Requires UNITY_SETUP_INSTANCE_ID to have
+        // run, which is why this is called from Vert and not from the struct initialiser.
+        float ToonHash21(float2 p)
+        {
+            p = frac(p * float2(123.34, 456.21));
+            p += dot(p, p + 45.32);
+            return frac(p.x * p.y);
+        }
+
+        // THREE SINES AT INCOMMENSURATE RATIOS, the same fBm-style layering NpcFace uses
+        // for jaw and brow and TextureEmission uses for stained glass. A single sine reads
+        // as a mechanical pulse within seconds. The phase offset is scaled PER OCTAVE
+        // (h, 2.3h, 4.7h) rather than shared — with one offset every candle shows the
+        // IDENTICAL waveform merely time-shifted, obvious the moment two are on screen.
+        // Weights sum to 1 so the result stays in [-1,1] and _FlickerAmount keeps meaning
+        // "peak deviation".
+        // `positionOS` and `vertexColor` differentiate elements WITHIN one mesh — a
+        // candelabra whose flames are all part of a single instance, where the instance
+        // origin is identical for every flame and they would otherwise pulse in unison.
+        //
+        // TWO SOURCES, because neither alone is both precise and free:
+        //
+        //  - VERTEX COLOUR (red channel) is the exact one. Author each flame a distinct
+        //    value in Blender and every vertex of that flame agrees, whatever its shape or
+        //    spacing. A mesh with no vertex colours reads as white, i.e. a constant, so
+        //    this term costs nothing and changes nothing until it is authored.
+        //
+        //  - QUANTIZED OBJECT POSITION is the zero-authoring approximation. Raw positionOS
+        //    cannot be used: it varies per VERTEX, so each vertex of one flame would pick
+        //    its own phase and the flame would shear rather than pulse. Flooring to a cell
+        //    collapses a whole flame onto one value. Set _FlickerCellSize LARGER than a
+        //    single flame and SMALLER than the gap between flames; a flame straddling a
+        //    cell boundary is the failure mode, and it looks like a torn flame.
+        //    0 disables it and the whole mesh flickers as one, which is the old behaviour.
+        half EmissionFlicker(float3 positionOS, half4 vertexColor)
+        {
+            if (_FlickerAmount <= 0.0001h) return 1.0h;   // uniform branch — free when off
+
+            float3 originWS = TransformObjectToWorld(float3(0, 0, 0));
+            float2 id = originWS.xz;
+            if (_FlickerCellSize > 0.0001f)
+            {
+                float3 cell = floor(positionOS / _FlickerCellSize);
+                id += cell.xz * 7.13f + cell.y * 3.71f;
+            }
+            id += vertexColor.r * 137.0h;
+            float h = ToonHash21(id);
+            float t = _Time.y * _FlickerSpeed;
+            float phase = h * 6.2831853;
+            float wave = sin(t        + phase      ) * 0.60
+                       + sin(t * 1.7  + phase * 2.3) * 0.30
+                       + sin(t * 3.1  + phase * 4.7) * 0.10;
+            return 1.0h + wave * _FlickerAmount;
+        }
         ENDHLSL
 
         // ---------------- Lit pass ----------------
@@ -96,6 +182,9 @@ Shader "Dungeon/ToonLit"
                 float3 normalOS   : NORMAL;
                 float4 tangentOS  : TANGENT;
                 float2 uv         : TEXCOORD0;
+                // Per-element flicker id (see EmissionFlicker). A mesh without vertex
+                // colours supplies white, so declaring this is free and inert.
+                half4  color      : COLOR;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -107,6 +196,9 @@ Shader "Dungeon/ToonLit"
                 float4 tangentWS  : TEXCOORD4; // xyz = tangent, w = bitangent sign
                 float3 positionWS : TEXCOORD2;
                 float  fogFactor  : TEXCOORD3;
+                // Constant across the piece (it is per-INSTANCE, not per-vertex), so it is
+                // resolved once in the vertex stage rather than three sines per pixel.
+                half   emissionFlicker : TEXCOORD5;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -153,6 +245,8 @@ Shader "Dungeon/ToonLit"
                 o.tangentWS = float4(TransformObjectToWorldDir(input.tangentOS.xyz), input.tangentOS.w);
                 o.uv = TRANSFORM_TEX(input.uv, _BaseMap);
                 o.fogFactor = ComputeFogFactor(pos.positionCS.z);
+                // After UNITY_SETUP_INSTANCE_ID — it reads unity_ObjectToWorld.
+                o.emissionFlicker = EmissionFlicker(input.positionOS.xyz, input.color);
                 return o;
             }
 
@@ -216,6 +310,14 @@ Shader "Dungeon/ToonLit"
                     half rim = smoothstep(_RimThreshold - 0.04h, _RimThreshold + 0.04h, rimDot);
                     color += _RimColor.rgb * (rim * _RimAmount);
                 }
+
+                // EMISSION LAST, before fog. It is unaffected by the light bands on purpose
+                // — a candle flame is a source, not a lit surface, so banding it would make
+                // it darken in shadow. Fogged with everything else so a glowing piece still
+                // recedes with distance rather than reading as a decal (the mistake
+                // TextureEmission shipped with).
+                color += SAMPLE_TEXTURE2D(_EmissionMap, sampler_BaseMap, input.uv).rgb
+                         * _EmissionColor.rgb * input.emissionFlicker;
 
                 color = MixFog(color, input.fogFactor);
                 return half4(color, 1);
