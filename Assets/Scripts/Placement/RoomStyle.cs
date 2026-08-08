@@ -135,6 +135,8 @@ namespace DungeonGen
         public List<OpeningSet> roomOpenings = new List<OpeningSet>();
         [Tooltip("Per-room-type prop sets (shareable PropSet assets).")]
         public List<PropSetEntry> roomProps = new List<PropSetEntry>();
+        [Tooltip("Per-room-type audio: ambient beds, one-shot pool, reverb override, music tension floor. A type with no entry falls back to Default Audio Profile below.")]
+        public List<AudioProfileEntry> roomAudio = new List<AudioProfileEntry>();
 
         [Header("═══ HALLWAYS ═══")]
         [Tooltip("Wall assets for hallways (band is always Bottom).")]
@@ -147,10 +149,14 @@ namespace DungeonGen
         public GameObject[] hallwayLintelPrefabs;
         [Tooltip("One global prop set for ALL corridors — debris, cobwebs, roots. Hallways have no zones, so zone/feature fields are ignored; scatter (snapToWall works), ceiling, and wall-mounted anchors apply. Empty = no hallway props.")]
         public PropSet hallwayProps;
+        [Tooltip("Audio for CORRIDORS. A separate slot from the unauthored-type fallback ON PURPOSE: a corridor is not a room type that nobody got round to filling in — RoomAt returns NULL there — it is a real place with its own sound (dripping, distant wind, the dungeon breathing). Folding it into the default would mean you could never give corridors a deliberate voice without also changing every unauthored room. Exactly the distinction defaultTorchColor draws for lighting.")]
+        public AudioProfile hallwayAudio;
 
         [Header("═══ HALLWAY ALCOVES (per kind) ═══")]
         [Tooltip("Contents for each alcove kind. An alcove is a small recess carved off a corridor, and its KIND is what gives it an identity — a statue nook wants a Feature facing out, a collapsed dig wants scatter, a storage recess wants crates. Alcove cells are ordinary hallway in the grid, so they inherit hallway WALLS/floors/ceilings; only the props are per-kind. A kind with no entry here simply generates as an empty recess.")]
         public List<AlcoveStyleEntry> alcoveStyles = new List<AlcoveStyleEntry>();
+        [Tooltip("Audio per alcove KIND — a shrine niche can hum where a collapsed dig ticks and settles. Falls back to the HALLWAY profile (not the default), since an alcove is a pocket off a corridor and inherits its walls and floor the same way.")]
+        public List<AlcoveAudioEntry> alcoveAudio = new List<AlcoveAudioEntry>();
 
         [Header("═══ PRISON CELLS ═══")]
         [Tooltip("Wall assets for prison closets (band is always Bottom). Empty = kit's generic walls.")]
@@ -161,12 +167,16 @@ namespace DungeonGen
         public GameObject[] prisonCeilingPrefabs;
         [Tooltip("Contents for prison closets, chosen PER CELL by a weighted roll — so one cell holds a bunk and a bucket, the next a skeleton in chains, the next nothing but straw. A prison is the same generator primitive as an alcove (both come out of RecessFits), so the same anchors work: Direction gives the back/left/right frame, WallSide.Back is the far wall, FeatureFacing.Outward looks out through the bars.\n\nEmpty = bare cells, which is what shipped before this existed.\n\nBLOCKING PROPS ARE SAFE HERE (a dead end severs nothing) EXCEPT in the doorway — the placer reserves the mouth cell and the door's swing arc automatically, so you don't have to author around them.")]
         public List<WeightedPropSet> prisonProps = new List<WeightedPropSet>();
+        [Tooltip("Audio for prison closets. Falls back to the hallway profile.")]
+        public AudioProfile prisonAudio;
 
         [Header("═══ ROOM PITS ═══")]
         [Tooltip("Wall assets for the inside of a PIT (band is always Bottom). A chasm exposes what lies BENEATH the dungeon, so raw rock, old foundations and rough stonework read better here than the room's own masonry continuing downward. Empty = the pit inherits its room's walls, which is the current behaviour, so leaving this unauthored changes nothing. Purely cosmetic — pit floors and collision already work regardless.")]
         public List<WallAsset> pitWalls = new List<WallAsset>();
         [Tooltip("Floor tiles for the BOTTOM of a pit — rubble, cracked flags, bedrock. Empty = the pit inherits its room's floor.")]
         public GameObject[] pitFloorPrefabs;
+        [Tooltip("Audio for the inside of a PIT — the one space whose reverb should obviously differ from the room above it. Falls back to the owning room's profile.")]
+        public AudioProfile pitAudio;
         // No pit CEILING slot on purpose: a pit's top is the hole you fell through, and
         // NeedsSlabBetween suppresses it.
 
@@ -515,6 +525,22 @@ namespace DungeonGen
             public float weight = 1f;
         }
 
+        /// <summary>One room type's audio. Mirrors PropSetEntry — same shape, sound instead of props.</summary>
+        [System.Serializable]
+        public class AudioProfileEntry
+        {
+            public RoomType type;
+            public AudioProfile profile;
+        }
+
+        /// <summary>One alcove kind's audio.</summary>
+        [System.Serializable]
+        public class AlcoveAudioEntry
+        {
+            public AlcoveKind kind;
+            public AudioProfile profile;
+        }
+
         /// <summary>One alcove kind's contents. Mirrors PropSetEntry — kind instead of room type.</summary>
         [System.Serializable]
         public class AlcoveStyleEntry
@@ -555,6 +581,45 @@ namespace DungeonGen
 
         /// <summary>Contents for one prison cell, chosen by `roll01`. Null = a bare cell.</summary>
         public PropSet PrisonProps(float roll01) => PickWeighted(null, prisonProps, roll01);
+
+        // ---------------- Audio ----------------
+
+        [Header("═══ AUDIO FALLBACK ═══")]
+        [Tooltip("Used by any ROOM TYPE with no entry of its own — base drone only, no identity bed, no one-shots. This is 'incomplete authoring degrades gracefully', NOT 'unauthored = silence'.\n\nIt is deliberately NOT what corridors use: they have their own slot, because a corridor is a real place rather than a room type nobody filled in.")]
+        public AudioProfile defaultAudioProfile;
+
+        /// <summary>
+        /// Audio for a room type. Falls back to `defaultAudioProfile`, then null.
+        /// </summary>
+        public AudioProfile AudioFor(RoomType type)
+        {
+            foreach (var e in roomAudio)
+                if (e != null && e.type == type && e.profile != null)
+                    return e.profile;
+            return defaultAudioProfile;
+        }
+
+        /// <summary>Corridor audio. Its OWN slot, never the unauthored-type default — see the
+        /// field's tooltip and the defaultTorchColor precedent.</summary>
+        public AudioProfile HallwayAudio() => hallwayAudio != null ? hallwayAudio : defaultAudioProfile;
+
+        /// <summary>Alcove audio by kind, falling back to the HALLWAY profile: an alcove is a
+        /// pocket off a corridor and inherits its walls and floor the same way.</summary>
+        public AudioProfile AlcoveAudio(AlcoveKind kind)
+        {
+            foreach (var e in alcoveAudio)
+                if (e != null && e.kind == kind && e.profile != null)
+                    return e.profile;
+            return HallwayAudio();
+        }
+
+        /// <summary>Prison audio, falling back to the hallway profile.</summary>
+        public AudioProfile PrisonAudio() => prisonAudio != null ? prisonAudio : HallwayAudio();
+
+        /// <summary>Pit audio, falling back to the OWNING ROOM's profile — a pit is styled as
+        /// part of its room everywhere else (RoomAt resolves through PitAt), so its sound
+        /// should default the same way rather than to the corridor.</summary>
+        public AudioProfile PitAudio(RoomType ownerType) => pitAudio != null ? pitAudio : AudioFor(ownerType);
 
         /// <summary>
         /// Weighted pick over `single` (an implicit weight-1 entry, may be null) plus `pool`.

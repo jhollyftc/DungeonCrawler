@@ -69,6 +69,33 @@ namespace DungeonGen
             RoomStyleDrawerUtil.Height(p);
     }
 
+    [CustomPropertyDrawer(typeof(RoomStyle.AudioProfileEntry))]
+    public class RoomStyleAudioProfileEntryDrawer : PropertyDrawer
+    {
+        public override void OnGUI(Rect r, SerializedProperty p, GUIContent l)
+        {
+            var prof = p.FindPropertyRelative("profile").objectReferenceValue;
+            RoomStyleDrawerUtil.Draw(r, p,
+                $"{RoomStyleDrawerUtil.TypeName(p)} — {(prof != null ? prof.name : "(default)")}");
+        }
+        public override float GetPropertyHeight(SerializedProperty p, GUIContent l) =>
+            RoomStyleDrawerUtil.Height(p);
+    }
+
+    [CustomPropertyDrawer(typeof(RoomStyle.AlcoveAudioEntry))]
+    public class RoomStyleAlcoveAudioEntryDrawer : PropertyDrawer
+    {
+        public override void OnGUI(Rect r, SerializedProperty p, GUIContent l)
+        {
+            var kind = p.FindPropertyRelative("kind");
+            var prof = p.FindPropertyRelative("profile").objectReferenceValue;
+            RoomStyleDrawerUtil.Draw(r, p,
+                $"{kind.enumDisplayNames[kind.enumValueIndex]} — {(prof != null ? prof.name : "(hallway)")}");
+        }
+        public override float GetPropertyHeight(SerializedProperty p, GUIContent l) =>
+            RoomStyleDrawerUtil.Height(p);
+    }
+
     /// <summary>
     /// Variant elements read "SetName ×weight" so a pool's odds are legible without
     /// expanding every entry — the point of a weighted list is the relative weights, and

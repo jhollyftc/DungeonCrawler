@@ -376,18 +376,44 @@ No hand-placed Reverb Zones — room bounds are already known at generation time
 so derive reverb the way the pit and lintel systems derive geometry from existing
 data rather than new authoring.
 
+### A MIXER BUS, not a listener filter — corrected from r2
+
+r2 said apply reverb via an `AudioReverbFilter` on the **AudioListener**. That is
+wrong, and building the mixer made it obvious: **a filter on the listener processes
+the ENTIRE final mix.** The music would reverberate with the room, and so would the
+player's own 2D sounds — sword whoosh, bow creak, carry grunt. Those are in your
+hands, not in the room.
+
+The mixer expresses it correctly:
+
+- A **Reverb** group under Master, chain **`Receive` → `SFX Reverb` → `Attenuation`**.
+- **Send** effects on **SFX** and **Ambient**, targeting that Receive.
+- **Music never sends**, so it stays dry by construction.
+
+**Chain order is signal order, top to bottom.** A `Receive` placed BELOW the reverb
+gets its audio processed only by effects beneath it — i.e. none — so the sends arrive
+and leave dry, and the bus looks correctly wired while doing nothing. (This is exactly
+what happened on the first attempt.) Likewise a `Send` above `Attenuation` is
+pre-fader, so muting that bus still feeds the reverb; put sends after it.
+
+Per-category wetness falls out for free: ambient beds can sit wetter than combat hits
+just by differing send levels.
+
 ### Store floats, not a preset enum
 
-`AudioReverbFilter` **ignores its manual parameters unless `reverbPreset` is
-`User`**, and two enum values cannot be interpolated. So `AudioProfile.reverb` is
-an explicit struct — decay time, room, room HF, wet/dry — and the filter is pinned
-to `User` mode permanently. An enum field here would make the "interpolate between
-small room and great hall" requirement literally unimplementable.
+Two enum values cannot be interpolated, which would make "blend between a small room
+and a great hall" literally unimplementable. So `AudioProfile.reverb` is an explicit
+struct — decay time, room, room HF — matching the parameters exposed on the mixer's
+`SFX Reverb` effect. (`AudioReverbFilter` had a second reason: it ignores manual
+parameters unless its preset is `User`. Moot now, but worth knowing if a per-source
+filter is ever wanted.)
 
 ### Size
 
-Interpolate between a small-room and a great-hall setting by room size, applied via
-an `AudioReverbFilter` on the listener and blended on `PlayerRoomTracker.OnRoomChanged`.
+Interpolate between a small-room and a great-hall setting by room size, driven by
+`SetFloat` on the exposed reverb parameters and blended on
+`PlayerRoomTracker.OnRoomChanged`. Per §1's rule those parameters are script-driven,
+so no snapshot may also animate them.
 
 **`Room.Cells.Count` is a VOLUME, not an area** — `BuildFootprint` writes a room's
 footprint at every Y within its bounds, so a two-storey room counts double. That is
@@ -472,15 +498,15 @@ exist that bleed-through is a noticed problem rather than a theoretical one.
 
 Mark done inline as this progresses, same convention as CLAUDE.md §11.
 
-1. [ ] **Mixer asset + group hierarchy** (§1). Route every existing `AudioSource`
+1. [x] **Mixer asset + group hierarchy** (§1). Route every existing `AudioSource`
    to its group. No new behaviour — pure plumbing; verify nothing changed
    volume-wise. Establish the one-driver-per-parameter table before anything reads
    it.
-2. [ ] **`PlayerRoomTracker`** (§2) — *new step.* Extract the room lookup and
+2. [x] **`PlayerRoomTracker`** (§2) — *new step.* Extract the room lookup and
    refactor `DungeonFogController`, `FirstPersonController` and `DungeonMapper` onto
    it. No audio yet; this is a prerequisite refactor and should be verified by
    nothing changing.
-3. [ ] **`AudioProfile`** (§3) + `RoomStyle` slots (per-type, hallway, alcove) +
+3. [x] **`AudioProfile`** (§3) + `RoomStyle` slots (per-type, hallway, alcove) +
    `DefaultAudioProfile`.
 4. [ ] **`AmbientDirector`** (§4) — base + room layers first; one-shot pool and
    proximity points as a follow-up once the crossfade is stable. Root registered in
