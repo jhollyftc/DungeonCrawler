@@ -164,6 +164,7 @@ MonoBehaviour:
   rotationSpeed: 180
   startOpen: 0
   audioSource: {fileID: 0}
+  mixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   openClip: {fileID: 8300000, guid: ed998163c0490d44b9878407bf9516b7, type: 3}
   closeClip: {fileID: 0}
 --- !u!1001 &8605299162151888766

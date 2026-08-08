@@ -73,7 +73,7 @@ AudioSource:
   m_GameObject: {fileID: 7545949077187988838}
   m_Enabled: 1
   serializedVersion: 4
-  OutputAudioMixerGroup: {fileID: 0}
+  OutputAudioMixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 0}
   m_PlayOnAwake: 1
@@ -282,6 +282,7 @@ MonoBehaviour:
   rotationSpeed: 15
   startOpen: 0
   audioSource: {fileID: 7675072218151052431}
+  mixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   openClip: {fileID: 8300000, guid: ba07dd79944c2634a9c18183c15879aa, type: 3}
   closeClip: {fileID: 8300000, guid: ba07dd79944c2634a9c18183c15879aa, type: 3}
 --- !u!1001 &7583170822077092328
@@ -463,7 +464,8 @@ MonoBehaviour:
   headBone: {fileID: 8146239819617381306}
   bodyReference: {fileID: 8146239819617381306}
   trackRadius: 20
-  onlyWhenAware: 0
+  onlyWhatItKnows: 0
+  suspicionLookHeight: 1.1
   maxYaw: 180
   maxPitch: 180
   blendSpeed: 6

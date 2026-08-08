@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d605a71e7b7d4d047a1befd9ecfb43bb, type: 3}
   m_Name: SurfaceLibrary
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.SurfaceLibrary
+  impactMixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   entries:
   - surface: 1
     vfx: {fileID: 2219292488338847417, guid: c008c0df9793a6b418a4548dc3f6666c, type: 3}

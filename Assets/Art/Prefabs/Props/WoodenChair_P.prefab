@@ -363,6 +363,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ImpactAudio
   impactSource: {fileID: 412713026336800927}
+  mixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   impactClips:
   - {fileID: 8300000, guid: c1aa990b718da2c4487a14eb564b0643, type: 3}
   - {fileID: 8300000, guid: 3e463fc1682b74c40a028f391296685c, type: 3}

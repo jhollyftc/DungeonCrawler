@@ -277,6 +277,7 @@ MonoBehaviour:
   rotationSpeed: 15
   startOpen: 0
   audioSource: {fileID: 2966363734026893683}
+  mixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   openClip: {fileID: 8300000, guid: ba07dd79944c2634a9c18183c15879aa, type: 3}
   closeClip: {fileID: 8300000, guid: ba07dd79944c2634a9c18183c15879aa, type: 3}
 --- !u!4 &4284921318146095177 stripped
@@ -458,7 +459,8 @@ MonoBehaviour:
   headBone: {fileID: 7803499004680504216}
   bodyReference: {fileID: 7803499004680504216}
   trackRadius: 20
-  onlyWhenAware: 0
+  onlyWhatItKnows: 0
+  suspicionLookHeight: 1.1
   maxYaw: 180
   maxPitch: 180
   blendSpeed: 6

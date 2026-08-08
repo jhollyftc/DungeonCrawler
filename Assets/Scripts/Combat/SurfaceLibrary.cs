@@ -18,6 +18,9 @@ namespace DungeonGen
     [CreateAssetMenu(fileName = "SurfaceLibrary", menuName = "Dungeon/Surface Library")]
     public class SurfaceLibrary : ScriptableObject
     {
+        [Tooltip("Mixer group for POSITIONED impact one-shots — the hits with no AudioSource of their own (a sword striking a wall, debris from a shattered crate). Route to SFX/Physics.\n\nIt lives here rather than on each hit source because those callers have no source to carry a group on; the library is the one thing every impact already goes through. Hits that DO pass an sfxSource keep that source's own routing.\n\nEmpty = straight to Master, i.e. today's behaviour.")]
+        public UnityEngine.Audio.AudioMixerGroup impactMixerGroup;
+
         [Serializable]
         public class Entry
         {

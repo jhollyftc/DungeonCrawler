@@ -24,6 +24,8 @@ namespace DungeonGen
         [Header("Source (auto-added 3D if empty)")]
         [Tooltip("Left empty, a 3D source (linear rolloff) is added at Awake. Kept separate from NpcCombatAudio's voice source so a whoosh never drives the jaw.")]
         [SerializeField] private AudioSource source;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
         [Tooltip("Rolloff distance (m) for the swing. Shorter than the voice's 25m on purpose — you should hear a goblin shout across a room but only hear its blade when it's close enough to matter.")]
         [SerializeField] private float maxDistance = 14f;
 
@@ -59,6 +61,7 @@ namespace DungeonGen
             }
             source.maxDistance = maxDistance;
             source.playOnAwake = false;
+            AudioBus.Route(source, mixerGroup);
         }
 
         void OnEnable()

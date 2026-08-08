@@ -28,6 +28,8 @@ namespace DungeonGen
         [Header("Source (should be 3D — Spatial Blend = 1)")]
         [Tooltip("Looping creak/squeak. Left empty, a 3D source is added at Awake so this can be dropped straight onto the cage.")]
         [SerializeField] private AudioSource creakSource;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
 
         [Header("Clip")]
         [SerializeField] private AudioClip creakLoop;
@@ -63,6 +65,7 @@ namespace DungeonGen
             creakSource.loop = true;
             creakSource.playOnAwake = false;
             creakSource.volume = 0f;
+            AudioBus.Route(creakSource, mixerGroup);
         }
 
         private void Update()

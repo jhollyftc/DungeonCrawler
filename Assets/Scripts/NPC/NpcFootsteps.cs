@@ -34,6 +34,8 @@ namespace DungeonGen
         [Header("Source (auto-added 3D if empty)")]
         [Tooltip("Left empty, a 3D source (linear rolloff) is added at Awake. Separate from NpcCombatAudio's voice source — NpcFace follows that one's amplitude to move the jaw, and footsteps must not open a goblin's mouth.")]
         [SerializeField] private AudioSource source;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
         [Tooltip("Rolloff distance (m). Shorter than the voice's 25m: you should hear a goblin shout down a corridor but only hear its feet once it is genuinely near — that gap is what makes footsteps a useful proximity cue instead of ambience.")]
         [SerializeField] private float maxDistance = 12f;
 
@@ -79,6 +81,7 @@ namespace DungeonGen
             }
             source.maxDistance = maxDistance;
             source.playOnAwake = false;
+            AudioBus.Route(source, mixerGroup);
         }
 
         void Update()

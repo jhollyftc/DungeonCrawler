@@ -168,6 +168,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ImpactAudio
   impactSource: {fileID: 0}
+  mixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   impactClips:
   - {fileID: 8300000, guid: 8aeb1eeec4743cb42a75a6e114ec36c9, type: 3}
   - {fileID: 8300000, guid: c585d985fc6cd8048b0de388582d7341, type: 3}
@@ -177,6 +178,7 @@ MonoBehaviour:
   minimumVolume: 0.1
   maximumVolume: 0.705
   minimumInterval: 0.08
+  alwaysAudibleForce: 0.7
   pitchRange: {x: 0.92, y: 1.08}
   forcePitchRange: {x: 1.05, y: 0.9}
   debugAudio: 0

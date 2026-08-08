@@ -41,7 +41,7 @@ AudioSource:
   m_GameObject: {fileID: 5467474210471669447}
   m_Enabled: 1
   serializedVersion: 4
-  OutputAudioMixerGroup: {fileID: 0}
+  OutputAudioMixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 0}
   m_PlayOnAwake: 1
@@ -324,6 +324,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ImpactAudio
   impactSource: {fileID: 5883143841911693058}
+  mixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   impactClips:
   - {fileID: 8300000, guid: 3e463fc1682b74c40a028f391296685c, type: 3}
   - {fileID: 8300000, guid: 680960290e2e15c49bf943a747c04f34, type: 3}
@@ -433,6 +434,10 @@ MonoBehaviour:
   burstUpBias: 0.35
   burstTorque: 1.5
   debrisRotationOffset: {x: 0, y: 0, z: 0}
+  inheritVelocity: 0.9
+  inheritAngularVelocity: 0.6
+  inheritBlowSpeed: 5
+  inheritBlowFadeSpeed: 3
   debrisLifetime: 6
   debrisShrinkTime: 1.2
   damageOnImpact: 1

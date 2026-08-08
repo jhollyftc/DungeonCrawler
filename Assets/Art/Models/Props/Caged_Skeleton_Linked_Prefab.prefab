@@ -195,6 +195,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.HangingCageAudio
   creakSource: {fileID: 7174264203216052080}
+  mixerGroup: {fileID: 0}
   creakLoop: {fileID: 8300000, guid: 05af6e41e84c27b42846a5c5083a8a6e, type: 3}
   fullSpeed: 2.5
   silentBelowSpeed: 0.15
@@ -256,7 +257,7 @@ AudioSource:
   m_GameObject: {fileID: 1760935026941356082}
   m_Enabled: 1
   serializedVersion: 4
-  OutputAudioMixerGroup: {fileID: 0}
+  OutputAudioMixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 0}
   m_PlayOnAwake: 1

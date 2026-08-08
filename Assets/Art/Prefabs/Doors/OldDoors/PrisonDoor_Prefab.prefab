@@ -186,6 +186,7 @@ MonoBehaviour:
   openClip: {fileID: 8300000, guid: 64230446058a66a409f922c30ffe416c, type: 3}
   closeClip: {fileID: 8300000, guid: 3f7186711a25a8b4ea8dc3c489eb2916, type: 3}
   lockedClip: {fileID: 0}
+  mixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
 --- !u!4 &809087451729554539 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: dd8c6d1252192bd45bb9ed014a5f25af, type: 3}

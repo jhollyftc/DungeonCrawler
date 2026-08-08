@@ -33,14 +33,20 @@ namespace DungeonGen
             {
                 AudioClip clip = e.sfx[e.sfx.Length == 1 ? 0 : Random.Range(0, e.sfx.Length)];
                 if (clip == null) return;
+                float pitch = Random.Range(e.pitchRange.x, e.pitchRange.y);
                 if (sfxSource != null)
                 {
-                    sfxSource.pitch = Random.Range(e.pitchRange.x, e.pitchRange.y);
+                    sfxSource.pitch = pitch;
                     sfxSource.PlayOneShot(clip, e.volume);
                 }
                 else
                 {
-                    AudioSource.PlayClipAtPoint(clip, point, e.volume);   // no pitch, but positioned
+                    // Was AudioSource.PlayClipAtPoint, which spawns a hidden temporary source
+                    // nothing can reach — so those hits bypassed the mixer entirely: no bus,
+                    // no volume control, and no DUCKING, despite a surface impact being the
+                    // very event the ducking design keys off. The pool is routable, and it
+                    // gets pitch variation too, which PlayClipAtPoint could not do.
+                    OneShotAudioPool.Play(clip, point, e.volume, pitch, lib.impactMixerGroup);
                 }
             }
         }

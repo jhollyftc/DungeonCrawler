@@ -24,6 +24,8 @@ namespace DungeonGen
         [Header("Source (auto-added 2D if empty)")]
         [Tooltip("Whoosh source. Left empty, a 2D source is added at Awake (first-person = your own arm, not a world position).")]
         [SerializeField] private AudioSource source;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
 
         [Header("Whoosh clips (per attack kind)")]
         [Tooltip("Light-swing whooshes. Several = free variation.")]
@@ -50,6 +52,7 @@ namespace DungeonGen
                 source.spatialBlend = 0f;   // 2D — it's the player's own weapon
             }
             source.playOnAwake = false;
+            AudioBus.Route(source, mixerGroup);
         }
 
         void OnEnable() => melee.OnAttackSwung += HandleSwung;

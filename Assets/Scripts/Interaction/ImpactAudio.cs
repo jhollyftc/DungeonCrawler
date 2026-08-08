@@ -25,6 +25,8 @@ namespace DungeonGen
         [Header("Source (should be 3D — Spatial Blend = 1)")]
         [Tooltip("One-shot impacts. Left empty, a 3D source is added at Awake so a prop can be made audible by dropping this component on it.")]
         [SerializeField] private AudioSource impactSource;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
 
         [Header("Clips")]
         [Tooltip("Impact sounds. Several = free variation, so a barrel bouncing twice doesn't sound like a copy-paste.")]
@@ -74,6 +76,7 @@ namespace DungeonGen
                 impactSource.maxDistance = 25f;
             }
             impactSource.playOnAwake = false;
+            AudioBus.Route(impactSource, mixerGroup);
         }
 
         private void OnCollisionEnter(Collision collision)

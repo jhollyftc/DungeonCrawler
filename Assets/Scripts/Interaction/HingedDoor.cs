@@ -34,6 +34,8 @@ namespace DungeonGen
         float currentAngle;
         float targetAngle;
         AudioSource audioSrc;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
 
         Quaternion hingeRestRotation; // hinge local rotation when closed
         Vector3 swingAxisLocal;       // world up, expressed in the hinge's parent space
@@ -174,6 +176,7 @@ namespace DungeonGen
                 audioSrc.spatialBlend = 1f; // 3D
                 audioSrc.maxDistance = 15f;
             }
+            AudioBus.Route(audioSrc, mixerGroup);
             audioSrc.PlayOneShot(clip);
         }
     }

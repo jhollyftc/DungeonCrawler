@@ -31,6 +31,8 @@ namespace DungeonGen
 
         CharacterController cc;
         AudioSource src;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
         float traveled;
         bool wasGrounded = true;
         float lastYVelocity;
@@ -53,6 +55,7 @@ namespace DungeonGen
             src = gameObject.AddComponent<AudioSource>();
             src.playOnAwake = false;
             src.spatialBlend = 0f; // the player's own steps: no spatialization needed
+            AudioBus.Route(src, mixerGroup);
         }
 
         void Update()

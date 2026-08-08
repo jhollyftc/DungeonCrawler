@@ -26,6 +26,8 @@ namespace DungeonGen
         [Header("Source (auto-added 3D if empty)")]
         [Tooltip("One-shot source. Left empty, a 3D source (linear rolloff, 25m) is added at Awake.")]
         [SerializeField] private AudioSource source;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
 
         /// <summary>The voice source (grunts/death cry) — NpcFace follows its amplitude to open the jaw.</summary>
         public AudioSource Source => source;
@@ -81,6 +83,7 @@ namespace DungeonGen
                 source.maxDistance = 25f;
             }
             source.playOnAwake = false;
+            AudioBus.Route(source, mixerGroup);
         }
 
         void OnEnable()

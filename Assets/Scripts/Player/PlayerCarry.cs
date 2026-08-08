@@ -70,6 +70,8 @@ namespace DungeonGen
         [Header("Exertion (player voice)")]
         [Tooltip("The player's voice. Left empty, a 2D source is added at Awake — the player's own grunt shouldn't attenuate with distance from itself.")]
         public AudioSource voiceSource;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
         [Tooltip("Grunt on throwing. Several = free variation, so hurling three barrels doesn't sound like a stuck record.")]
         public AudioClip[] throwClips;
         [Range(0f, 1f)] public float voiceVolume = 0.8f;
@@ -148,6 +150,7 @@ namespace DungeonGen
                 voiceSource.spatialBlend = 0f;   // 2D: you don't attenuate from yourself
             }
             voiceSource.playOnAwake = false;
+            AudioBus.Route(voiceSource, mixerGroup);
         }
 
         // ---------------- Pickup / release ----------------

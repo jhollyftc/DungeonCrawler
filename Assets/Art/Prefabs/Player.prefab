@@ -336,6 +336,7 @@ MonoBehaviour:
   pitchJitter: 0.08
   landVelocityThreshold: 4
   groundedGrace: 0.2
+  mixerGroup: {fileID: -2029272390745678996, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
 --- !u!114 &7389115687548108523
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -384,6 +385,7 @@ MonoBehaviour:
   dropKey: 101
   throwMouseButton: 0
   voiceSource: {fileID: 0}
+  mixerGroup: {fileID: -5445025898975355743, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   throwClips:
   - {fileID: 8300000, guid: 9f1127586c657054dae34c3f57f775e2, type: 3}
   - {fileID: 8300000, guid: a5bcc42fe67771c45bde41a694489516, type: 3}
@@ -720,6 +722,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PlayerMeleeAudio
   source: {fileID: 0}
+  mixerGroup: {fileID: -5347128251453312461, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   lightWhoosh:
   - {fileID: 8300000, guid: c32f3ba66ddc334448b1918287210117, type: 3}
   - {fileID: 8300000, guid: 26e306c8f0a230544bef4e80a9813304, type: 3}
@@ -807,6 +810,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PlayerBowAudio
   source: {fileID: 0}
   drawLoopSource: {fileID: 0}
+  mixerGroup: {fileID: -5347128251453312461, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   nockClips: []
   drawLoop: {fileID: 0}
   releaseClips:

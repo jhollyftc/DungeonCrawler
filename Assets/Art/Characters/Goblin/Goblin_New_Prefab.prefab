@@ -2309,6 +2309,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcCombatAudio
   source: {fileID: 3724694676383649636}
+  mixerGroup: {fileID: -5347128251453312461, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   hurtClips:
   - {fileID: 8300000, guid: 050b752e6693e71449305eeaf4b7ce11, type: 3}
   - {fileID: 8300000, guid: 1a4ebd93f82f36e43ac1203cd5a50875, type: 3}
@@ -2644,6 +2645,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcMeleeAudio
   source: {fileID: 0}
+  mixerGroup: {fileID: -5347128251453312461, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   maxDistance: 14
   whooshClips:
   - {fileID: 8300000, guid: c32f3ba66ddc334448b1918287210117, type: 3}
@@ -2667,6 +2669,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcFootsteps
   source: {fileID: 0}
+  mixerGroup: {fileID: -2029272390745678996, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   maxDistance: 9
   clips:
   - {fileID: 8300000, guid: 72f526a6a9890f643a88e85a61c86c8a, type: 3}

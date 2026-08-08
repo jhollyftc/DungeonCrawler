@@ -27,6 +27,8 @@ namespace DungeonGen
         [SerializeField] private AudioSource source;
         [Tooltip("The LOOPING draw creak. Needs its own source because it plays continuously underneath the one-shots. Left empty, a second 2D source is added.")]
         [SerializeField] private AudioSource drawLoopSource;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
 
         [Header("Clips")]
         [Tooltip("Played once as the draw begins — the arrow nocking, the first pull.")]
@@ -71,6 +73,7 @@ namespace DungeonGen
                 source.spatialBlend = 0f;   // 2D — the player's own bow
             }
             source.playOnAwake = false;
+            AudioBus.Route(source, mixerGroup);
 
             if (drawLoopSource == null)
             {
@@ -78,6 +81,7 @@ namespace DungeonGen
                 drawLoopSource.spatialBlend = 0f;
             }
             drawLoopSource.playOnAwake = false;
+            AudioBus.Route(drawLoopSource, mixerGroup);
             drawLoopSource.loop = true;
             drawLoopSource.clip = drawLoop;
             drawLoopSource.volume = 0f;

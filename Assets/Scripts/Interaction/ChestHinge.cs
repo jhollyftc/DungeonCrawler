@@ -28,6 +28,8 @@ namespace DungeonGen
         [Header("Source (auto-added 3D if empty)")]
         [Tooltip("One-shot source. Left empty, a 3D source (linear rolloff, 15m) is added at Awake.")]
         [SerializeField] private AudioSource audioSource;
+        [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
+        [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
 
         [Header("Audio (optional)")]
         public AudioClip openClip;
@@ -105,6 +107,7 @@ namespace DungeonGen
                 audioSource.maxDistance = 15f;
             }
 
+            AudioBus.Route(audioSource, mixerGroup);
             audioSource.PlayOneShot(clip);
         }
     }
