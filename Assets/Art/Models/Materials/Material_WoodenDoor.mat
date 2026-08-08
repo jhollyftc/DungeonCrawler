@@ -146,6 +146,9 @@ Material:
     - _DstBlend: 0
     - _DstBlendAlpha: 0
     - _EnvironmentReflections: 1
+    - _FlickerAmount: 0
+    - _FlickerCellSize: 0
+    - _FlickerSpeed: 1.5
     - _FlipbookBlending: 0
     - _FlipbookMode: 0
     - _GlossMapScale: 0
@@ -172,7 +175,7 @@ Material:
     - _SoftParticlesEnabled: 0
     - _SoftParticlesFarFadeDistance: 1
     - _SoftParticlesNearFadeDistance: 0
-    - _SpecPower: 11.3
+    - _SpecPower: 9.3
     - _SpecSoftness: 0.3
     - _SpecSource: 0
     - _SpecularHighlights: 1
@@ -201,7 +204,7 @@ Material:
     - _RimColor: {r: 0, g: 0, b: 0, a: 1}
     - _ShadowTint: {r: 0.5188679, g: 0.5188679, b: 0.5188679, a: 1}
     - _SoftParticleFadeParams: {r: 0, g: 0, b: 0, a: 0}
-    - _SpecColor: {r: 0.3679245, g: 0.3679245, b: 0.3679245, a: 1}
+    - _SpecColor: {r: 0.21698111, g: 0.21698111, b: 0.21698111, a: 1}
     - _SubsurfaceColor: {r: 1, g: 1, b: 1, a: 1}
     - _col: {r: 0, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []
