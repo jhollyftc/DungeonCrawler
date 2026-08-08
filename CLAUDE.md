@@ -22,6 +22,24 @@ scales should scale as a function of run depth.
 Cell size = **3 meters**. Grid is 3D (multi-story via stairs). Legacy Input
 system ("Both" in project settings).
 
+**Where things live.** Everything used to sit loose at the Assets root (107
+scripts, 3 scenes, stray art); it now goes:
+
+```
+Assets/Scripts/   Generation  Rendering  Placement  Player  NPC
+                  Combat  Interaction  Audio  UI  Debug  Editor
+Assets/Art/       Models  Kit (the modular dungeon meshes)  Prefabs
+                  Characters/{Goblin,Skeleton,Ogre}  VFX  Skyboxes  UI
+Assets/Scenes/    the scenes, each with its Unity-managed data folder beside it
+Assets/_Settings/ RoomStyle, DepthProfile, PropSets, shader-variant collections
+Assets/Shaders/   ToonLit, ToonWater, GroundFog, InteriorMapped, TextureEmission
+```
+
+**NOT ours, don't reorganize:** `SourceFiles/` (Unity Starter Assets sample),
+`Samples/`, `TextMesh Pro/`, `Tutorials/`, `Settings/Build Profiles` (Unity 6
+expects that exact path). Editor scripts must stay in a folder NAMED `Editor` —
+the name is what makes them editor-only, at any depth.
+
 Repo: https://github.com/jhollyftc/DungeonCrawler (private). Commit per
 feature; push after commit.
 
@@ -434,7 +452,7 @@ smells like a shader problem and isn't necessarily one.
    = `m_WarmupAsync: 0` (Project Settings > Graphics > Shader Loading), so warmup
    blocks until done. **Two capture attempts (14 then 25 variants) failed before
    this** — the collections were fine and the variant count was a red herring.
-   Preloaded collections live in `Assets/SharedVariantcollection*.shadervariants` and
+   Preloaded collections live in `Assets/_Settings/SharedVariantcollection*.shadervariants` and
    must stay listed in Graphics' Preloaded Shaders (which stores them by GUID, so an
    untracked collection silently drops off the list on a fresh clone). NB: in-EDITOR
    the preload is tied to Editor process startup (adding a collection mid-session
@@ -1063,7 +1081,7 @@ fallback the kit uses for a cell in no room.
   GameObject, costing one batch per palette colour rather than one per prop.
 
 **Inspector UX:** PropSet entries and RoomStyle's nested lists have custom
-drawers (`Assets/Editor/`) — summary foldout labels instead of "Element N",
+drawers (`Assets/Scripts/Editor/`) — summary foldout labels instead of "Element N",
 and PropSet entries show only the fields their anchor uses.
 **A CUSTOM `PropertyDrawer` DOES NOT RUN DECORATOR DRAWERS, so `[Header]` on a drawn type
 is INERT.** `PropSetEntryDrawer` draws each field with `EditorGUI.PropertyField` on a
@@ -2329,6 +2347,34 @@ Cosmetic-first; combat is far off ("get the world together first").
   github.com/jhollyftc/DungeonCrawler — commit per feature, push after).
 - **Review every diff** — the copy-paste workflow that preceded VS Code was a de
   facto review gate; keep reviewing when edits get frictionless.
+- **MOVING ASSETS IS SAFE, AND THE SAFETY IS ENTIRELY IN THE `.meta`.** Unity resolves
+  every reference through the GUID stored in an asset's `.meta`, never through its path —
+  so a file moved TOGETHER WITH ITS META keeps every reference in every prefab, scene,
+  ScriptableObject and project setting. Move one without the other, or let Unity
+  regenerate one, and the GUID changes: for a script that turns every component on every
+  prefab into `Missing (Mono Script)`, which is close to unrecoverable by hand.
+  **The procedure that makes it a non-event** (the whole Assets tree was reorganized this
+  way, ~1400 files, zero breakage):
+  1. **Unity CLOSED.** A running editor can notice files vanish and regenerate metas
+     mid-operation, which is exactly how GUIDs get lost.
+  2. `git mv` the asset and its `.meta` in the same breath; for a FOLDER, move the
+     folder's own `.meta` too or it loses its identity.
+  3. **The invariant is NO GUID LOST** — collect every `guid:` from every `.meta` before
+     and after and check nothing disappeared. That is exhaustive for this failure class,
+     not a spot check. Do NOT demand an *identical* set: Unity legitimately ADDS folder
+     metas for new directories on next open, and additions cannot break a reference.
+  4. Batch by category, one commit each, so a disliked grouping reverts on its own.
+  **What GUIDs do NOT protect:** `Resources.Load` and any other path-based load. This
+  project has none (checked), and its one `AssetDatabase` use goes through
+  `FindAssets`/`GUIDToAssetPath`, which is GUID-based — verify that again before any
+  future move rather than assuming.
+- **A DUPLICATE ASSET IS A TRAP, AND THE TIDY-LOOKING COPY MAY BE THE ORPHAN.** Two
+  byte-identical textures sat at the Assets root AND in `Models/Textures` under the same
+  names but with DIFFERENT GUIDs, so Unity saw four textures. Deleting the copy that
+  looked misplaced would have broken `Material_Stairs.mat` — because the ROOT copy was the
+  one actually referenced and the neatly-filed one was unused. Before removing an apparent
+  duplicate, grep the project for BOTH GUIDs and see which is referenced; file position
+  says nothing about which is live.
 - **Commit a new script's `.meta` WITH it.** `DungeonMapper.cs` went in without its
   `.meta` and would have picked up a different guid on another machine, breaking every
   prefab reference — the same class of failure as the `EmissiveController`/
