@@ -18,35 +18,38 @@ namespace DungeonGen
             Hallways,
         }
 
+        [Header("═══ SEED & LAYOUT ═══")]
+        [Tooltip("Same seed + same depth = the same dungeon (golden rule 4). The live value is shown in the in-game overlay, and F1 re-randomizes it when the toggle below is on.")]
         public int seed = 12345;
         public bool randomizeSeedOnGenerate = false;
+        [Tooltip("Room counts, grid size, corridor and prison/alcove/pit budgets. A DepthProfile, when assigned, DERIVES several of these from depth and wins outright — the mirrored fields here go dead (§9).")]
         public DungeonConfig config = new DungeonConfig();
-        public ViewStage stage = ViewStage.Rooms;
 
-        [Header("Runtime")]
+        [Header("═══ RUNTIME ═══")]
         [Tooltip("Generate the dungeon on Start. REQUIRED for builds — generated content is never saved into the scene (the procedural mesh, runtime materials, and the instancer's batches don't serialize), so a build has no dungeon unless it makes one at startup.")]
         public bool generateOnStart = true;
-
-        [Header("Mesh")]
         public bool buildMeshOnGenerate = true;
+
+        [Header("═══ GEOMETRY ═══")]
+        public GeometryMode geometryMode = GeometryMode.GeneratedMesh;
         public float cellSize = 3f;
         [Tooltip("Meters to inset the collision mesh's wall faces from the nominal grid boundary, so the invisible collider sits flush with (not behind) the kit's decorative wall relief. 0 = flush with the grid, the old behavior.")]
         public float wallMargin = 0f;
-        public GeometryMode geometryMode = GeometryMode.GeneratedMesh;
+        [Tooltip("The prefab kit — every piece the dungeon is built from, grouped by ORIGIN CONVENTION. Read the header comments inside before assigning offsets; the kit has two independent conventions and getting either backwards puts a piece half a cell out.")]
         public DungeonKit kit = new DungeonKit();
 
-        [Header("Torches")]
-        public TorchSettings torches = new TorchSettings();
-        [Tooltip("Per-room-type torch color/intensity/spacing. Leave empty for uniform warm torches.")]
+        [Header("═══ STYLE & ATMOSPHERE ═══")]
+        [Tooltip("The whole per-space look: walls, floors, ceilings, openings and props for every room type, plus hallways, alcoves, prison cells and pits. Also the torch palette that drives fog and emissive tinting. Empty = the kit's generic pieces everywhere and uniform warm torches.")]
         public RoomStyle roomStyle;
-
-        [Header("Fog")]
+        public TorchSettings torches = new TorchSettings();
         [Tooltip("Runtime fog color blending toward the current/approaching room's torch palette. Needs a RoomStyle and fog enabled in Lighting > Environment.")]
         public FogSettings fog = new FogSettings();
 
         public enum GeometryMode { GeneratedMesh, PrefabKit, InstancedKit }
 
-        [Header("Gizmo colors")]
+        [Header("═══ DEBUG VIEW (gizmos only) ═══")]
+        [Tooltip("Which generation stage the scene-view gizmos draw. Affects NOTHING that is generated — it is a view filter over the finished result.")]
+        public ViewStage stage = ViewStage.Rooms;
         public bool colorRoomsByType = false;
         [Tooltip("Debug: color room floor cells by prop-placement zone (green = Entrance, red = Back, grey = Center, blue = Perimeter). Verifies RoomPropPlacer.ComputeZones; overrides colorRoomsByType on floor cells.")]
         public bool colorCellsByZone = false;
@@ -85,7 +88,8 @@ namespace DungeonGen
             // regenerate — F1 would stack a second dungeon's worth of props on the first.
             // "DungeonAlcoveProps" was missed when alcoves landed (already shipped);
             // "DungeonBridges" arrives with pits.
-            "DungeonAlcoveProps", "DungeonBridges", "DungeonPitRims", "DungeonLintels",
+            "DungeonAlcoveProps", "DungeonPrisonProps",
+            "DungeonBridges", "DungeonPitRims", "DungeonLintels",
             "DungeonKitSockets",
         };
 
@@ -177,7 +181,7 @@ namespace DungeonGen
             foreach (var kv in typeCounts) typeSummary.Add($"{kv.Value} {kv.Key}");
             Debug.Log($"[Dungeon] seed {seed} depth {config.depth}: {gen.Rooms.Count}/{config.roomCount} rooms, " +
                       $"{edgeTotal - gen.FailedEdges}/{edgeTotal} edges carved, " +
-                      $"{gen.Stairs.Count / 4} staircases, {gen.PrisonCells.Count} prison cells, " +
+                      $"{gen.Stairs.Count / 4} staircases, {gen.Prisons.Count} prison cells, " +
                       $"{gen.Alcoves.Count} alcoves, {gen.Pits.Count} pits | " +
                       $"types: {string.Join(", ", typeSummary)}");
 
@@ -309,12 +313,16 @@ namespace DungeonGen
             if (roomStyle != null)
                 KitSocketPlacer.Build(gen, kit, socketSites, cellSize, transform, sharedInstancer, roomStyle, wallFaces, torches);
 
-            // ALCOVES next, before torches. §8's most-constrained-first rule taken to its
-            // conclusion: an alcove has about three wall faces and one authored hero prop, so it
-            // is the tightest consumer of wall real estate in the dungeon and must claim its
-            // face before a sconce can take it. Everything after this honours those claims.
+            // RECESSES next, before torches. §8's most-constrained-first rule taken to its
+            // conclusion: an alcove or prison cell has about three wall faces and one authored
+            // hero prop, so it is the tightest consumer of wall real estate in the dungeon and
+            // must claim its face before a sconce can take it (prisons get torches too, when
+            // TorchSettings.torchesInPrisons is on). Everything after this honours those claims.
             if (roomStyle != null)
-                AlcovePropPlacer.Build(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
+            {
+                RecessPropPlacer.BuildAlcoves(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
+                RecessPropPlacer.BuildPrisons(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
+            }
 
             if (torches != null && torches.placeTorches)
                 TorchPlacer.Build(gen, torches, cellSize, transform, sharedInstancer, roomStyle, wallFaces);

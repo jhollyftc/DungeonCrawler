@@ -17,26 +17,55 @@ namespace DungeonGen
     [System.Serializable]
     public class DungeonKit
     {
+        // ─────────────────────────────────────────────────────────────────────────────
+        // ORDERED BY ORIGIN CONVENTION, not alphabetically or by when it was added.
+        // The kit has TWO independent conventions and getting either backwards puts a piece
+        // half a cell out — the single most common authoring bug in this project (golden
+        // rule 2). The grouping below is the documentation:
+        //
+        //   1. Does globalVisualOffset apply?  KIT-FRAME pieces yes, BASE-ORIGIN pieces no.
+        //   2. Is the per-piece nudge rotated into the piece's own frame, or world space?
+        //
+        // They are genuinely independent: a lintel is kit-frame with a ROTATED nudge, a
+        // bridge is base-origin with a WORLD nudge. Each field below says which it is.
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        [Header("Shell — every open cell gets these")]
+        public GameObject[] wallPrefabs;
         public GameObject[] floorPrefabs;
         public GameObject[] ceilingPrefabs;
-        public GameObject[] wallPrefabs;
         public GameObject[] stairPrefabs;
+
+        [Header("Openings — arches, doors, prison gates")]
+        [Tooltip("Open arch frame at hallway↔room openings (colonnades and doorless entrances). Spawned as real GameObjects with their prefab colliders — thick arches need collision the greybox doesn't provide, so give the prefab a collider.")]
+        public GameObject[] archwayPrefabs;    // optional — skipped if empty
+        [Tooltip("Physical door (arch + wooden door). Placed ONLY at semantic entrances the generator flagged with HasDoor. Always spawned as real GameObjects (never instanced) so they can open/break later — give the prefab a collider.")]
+        public GameObject[] doorPrefabs;       // optional — skipped if empty
         public GameObject[] prisonBarsPrefabs; // optional — skipped if empty, superseded by prisonDoorPrefabs
         [Tooltip("Hinged prison gate (needs a HingedDoor set up like the wooden door). Placed at every prison entrance as a real GameObject. When assigned, the static bars slot is ignored.")]
         public GameObject[] prisonDoorPrefabs; // optional — skipped if empty
         [Tooltip("Chance a prison gate spawns locked (deterministic per seed). Lockpicking comes later.")]
         [Range(0f, 1f)] public float prisonDoorLockChance = 0.15f;
-        [Tooltip("Open arch frame at hallway↔room openings (colonnades and doorless entrances). Spawned as real GameObjects with their prefab colliders — thick arches need collision the greybox doesn't provide, so give the prefab a collider.")]
-        public GameObject[] archwayPrefabs;    // optional — skipped if empty
-        [Tooltip("Physical door (arch + wooden door). Placed ONLY at semantic entrances the generator flagged with HasDoor. Always spawned as real GameObjects (never instanced) so they can open/break later — give the prefab a collider.")]
-        public GameObject[] doorPrefabs;       // optional — skipped if empty
+
+        [Header("Pillars & columns")]
         [Tooltip("Posts wrapping convex block corners that jut into open space (corridor turns). Forward faces diagonally away from the solid corner being wrapped.")]
         public GameObject[] outerCornerPillarPrefabs; // optional — skipped if empty
         [Tooltip("Posts for concave room/corridor inside corners, if you model one later. Forward faces diagonally into the open cell.")]
         public GameObject[] innerCornerPillarPrefabs; // optional — skipped if empty
+        [Tooltip("Place corner posts on edges that touch a doorway/arch face (jamb corners and meeting-arch corners). Off = arches stand alone.")]
+        public bool pillarsAtDoorways = false;
         [Tooltip("Free-standing interior column segment (one cell / 3m tall, stacked to reach the ceiling). Placed at lattice points in grand rooms. Give it a collider — the floor cells stay walkable, so collision comes from the prefab.")]
         public GameObject[] interiorColumnPrefabs; // optional — skipped if empty
+        [Tooltip("Nudge for a column segment. KIT-FRAME (globalVisualOffset applies) and WORLD-SPACE — a column is placed axis-aligned at a lattice point, so there is no piece frame to be relative to.")]
         public Vector3 interiorColumnOffset;
+
+        [Header("Trim — edges between two emitted surfaces")]
+        [Tooltip("GENERIC lintel / cornice for the top edge of a wall inside a STAIR SHAFT, where it meets the ceiling. RoomStyle's per-type lintelPrefabs override this; this is the fallback so a partially authored style still renders. A stairwell exposes a whole storey of wall in one view, which makes that seam the most visible wall/ceiling junction in the dungeon — everywhere else the eye is much further from it.\n\nAuthor facing +Z (rotated to point INTO the shaft, same convention as a wall facing the space it is viewed from) and with the SAME ORIGIN CONVENTION AS YOUR WALLS AND CEILINGS — globalVisualOffset IS applied to this, because it is a kit piece that has to line up with them. That differs from ladders and bridges, which are authored BASE-ORIGIN and get no offset. Getting this backwards puts the piece a half-cell out, which is the classic symptom (golden rule 2).")]
+        public GameObject[] lintelPrefabs; // optional — skipped if empty
+        [Tooltip("Nudge for the lintel in its OWN frame: Z = further into the shaft / back into the wall, Y = up or down from the ceiling line, X = along the run. Rotated with the piece, so one value is correct on all four wall directions.")]
+        public Vector3 lintelOffset;
+
+        [Header("BASE-ORIGIN pieces — globalVisualOffset does NOT apply")]
         [Tooltip("Wall-mounted ladder for drop-in elevated entrances (no room for a staircase). Author BASE-ORIGIN (globalVisualOffset is NOT applied), one cell (3m) tall — segments stack per story. Thin, back at the wall plane; give it a solid collider plus a trigger box with a LadderClimbZone covering the climbable front (extend the trigger ~0.5m above the opening so the player keeps climb control while cresting). Optional — skipped if empty (the entrance stays a one-way drop).")]
         public GameObject[] ladderPrefabs; // optional — skipped if empty
         [Tooltip("Nudge applied in the LADDER'S OWN frame, not world space: Z = away from the mounting wall, X = along it, Y = up. Wall-relative because that's the only way one value can be correct on all four wall directions — a world-space offset embeds the ladder in the masonry on the opposite wall.")]
@@ -49,10 +78,15 @@ namespace DungeonGen
         public GameObject[] pitRimPrefabs; // optional — skipped if empty
         [Tooltip("Nudge for the rim piece in its OWN frame: Z = further over the hole / back onto the floor, Y = up, X = along the edge. Rotated like the piece, so one value is correct on all four edge directions (the ladderOffset lesson).")]
         public Vector3 pitRimOffset;
-        [Tooltip("GENERIC lintel / cornice for the top edge of a wall inside a STAIR SHAFT, where it meets the ceiling. RoomStyle's per-type lintelPrefabs override this; this is the fallback so a partially authored style still renders. A stairwell exposes a whole storey of wall in one view, which makes that seam the most visible wall/ceiling junction in the dungeon — everywhere else the eye is much further from it.\n\nAuthor facing +Z (rotated to point INTO the shaft, same convention as a wall facing the space it is viewed from) and with the SAME ORIGIN CONVENTION AS YOUR WALLS AND CEILINGS — globalVisualOffset IS applied to this, because it is a kit piece that has to line up with them. That differs from ladders and bridges, which are authored BASE-ORIGIN and get no offset. Getting this backwards puts the piece a half-cell out, which is the classic symptom (golden rule 2).")]
-        public GameObject[] lintelPrefabs; // optional — skipped if empty
-        [Tooltip("Nudge for the lintel in its OWN frame: Z = further into the shaft / back into the wall, Y = up or down from the ceiling line, X = along the run. Rotated with the piece, so one value is correct on all four wall directions.")]
-        public Vector3 lintelOffset;
+
+        [Header("Variation")]
+        public bool randomizeFloorYaw = true;
+        public bool randomizeCeilingYaw = true;
+        [Header("Wall variant clustering")]
+        [Tooltip("Feature size, in CELLS, of the smooth field that makes wall variants CLUSTER — roughly how wide a patch of damage/soot/damp tends to be. 6 is a good starting point (about 18m at the 3m cell size); larger means broader, lazier regions, smaller means blotchier.\n\n0 DISABLES the field entirely and every wall asset stays eligible everywhere, which reproduces the old behaviour exactly — variants then differ only by their Weight.\n\nOnly assets whose Noise Range is narrower than (0,1) respond to it, so turning this on changes nothing until something opts in.")]
+        public float wallNoiseScale = 6f;
+        [Tooltip("Salt for the clustering field. Change it to get a different arrangement of patches at the same seed — the dungeon's layout is untouched, only which regions are damaged.")]
+        public int wallNoiseSalt = 7717;
         [Header("Per-room emissive tinting (optional)")]
         [Tooltip("The GLOWING material used by kit pieces with an emissive element (candle walls, braziers). When set, every instanced kit piece using this exact material gets a cached variant tinted to its room's TORCH COLOUR — so a shrine's candles burn the same cold blue as its torches, exactly like the fog and flame VFX already do. Leave empty to disable tinting entirely (pieces render with the authored material).\n\nThis is needed because a MaterialPropertyBlock can't work on the instanced path: nothing renders through the prefab's MeshRenderer, so an EmissionController on a kit wall does nothing. Cost is one extra batch per distinct colour in use — bounded by the palette, not by instance count.")]
         public Material emissiveMaterial;
@@ -63,18 +97,13 @@ namespace DungeonGen
         [Tooltip("Multiplies the room's torch colour before it's written as emission. MUST usually be > 1 to actually GLOW: the torch palette's colours are LDR-range (components <= 1), and emission only blooms above 1 — at 1 the candle is merely tinted, not lit. Bloom must also be enabled in the post-process Volume. 2.4 was the hand-tuned value on the original EmissionController.")]
         public float emissiveIntensity = 2.4f;
 
-        [Tooltip("Place corner posts on edges that touch a doorway/arch face (jamb corners and meeting-arch corners). Off = arches stand alone.")]
-        public bool pillarsAtDoorways = false;
-        public bool randomizeFloorYaw = true;
-        public bool randomizeCeilingYaw = true;
-
-        [Header("Pivot correction (meters, world space)")]
-        [Tooltip("Applied to EVERY kit placement (pieces, doors, gates). Use to dial the whole kit flush against the greybox collision shell when visuals sit uniformly off nominal heights. A clean value like ±1.5 or ±3 is the fingerprint of a prefab/origin offset that should eventually be fixed at the source and this zeroed.")]
+        [Header("Pivot correction — KIT-FRAME pieces (meters, world space)")]
+        [Tooltip("Applied to EVERY kit placement (pieces, doors, gates). Use to dial the whole kit flush against the greybox collision shell when visuals sit uniformly off nominal heights. A clean value like ±1.5 or ±3 is the fingerprint of a prefab/origin offset that should eventually be fixed at the source and this zeroed.\n\nNOT applied to the BASE-ORIGIN pieces above (ladders, bridges, pit rims) — those are authored at their own base and nudged in their own frame.")]
         public Vector3 globalVisualOffset;
-        [Tooltip("Use these to compensate for asset pivots that don't sit on the placement surface. The proper fix is setting the origin in Blender; these are the hotfix.")]
+        [Tooltip("Use these to compensate for asset pivots that don't sit on the placement surface. The proper fix is setting the origin in Blender; these are the hotfix.\n\nAll WORLD-SPACE and all on top of globalVisualOffset. The rotated, piece-frame nudges live beside their own prefab slots above (ladder, pit rim, lintel) — a world-space value there only works on one of the four wall directions, which is the bug that produced this split.")]
+        public Vector3 wallOffset;
         public Vector3 floorOffset;
         public Vector3 ceilingOffset;
-        public Vector3 wallOffset;
         public Vector3 stairOffset;
         public Vector3 archwayOffset;
         public Vector3 doorOffset;
@@ -223,33 +252,17 @@ namespace DungeonGen
             // which it doesn't is the hallway network (see RoomStyle.HallwayWalls). Without this
             // the cap was ignored entirely and a capped drain simply joined the general hash
             // pick, landing on face after face.
-            var prisonReservations = new Dictionary<int, Dictionary<long, RoomStyle.WallAsset>>();
-            Dictionary<int, List<Vector3Int>> prisonCellsByIndex = null;
+            // Keyed by the spec itself now that prisons carry one. The bbox rescan this used to
+            // do — walk allPositionsWithin looking for CellType.Prison — is exactly what
+            // PrisonSpec.Cells already knows, and it was also subtly wrong for a WIDE prison,
+            // whose footprint is not its bounding box (the 1x1 vestibule shape).
+            var prisonReservations = new Dictionary<PrisonSpec, Dictionary<long, RoomStyle.WallAsset>>();
 
-            int PrisonIndexOf(Vector3Int cell)
+            Dictionary<long, RoomStyle.WallAsset> GetPrisonReservations(PrisonSpec prison)
             {
-                if (prisonCellsByIndex == null)
-                {
-                    prisonCellsByIndex = new Dictionary<int, List<Vector3Int>>();
-                    for (int pi = 0; pi < gen.PrisonCells.Count; pi++)
-                    {
-                        var bb = gen.PrisonCells[pi];
-                        var cells = new List<Vector3Int>();
-                        foreach (var p in bb.allPositionsWithin)
-                            if (grid.InBounds(p) && grid[p] == CellType.Prison) cells.Add(p);
-                        prisonCellsByIndex[pi] = cells;
-                    }
-                }
-                foreach (var kv in prisonCellsByIndex)
-                    if (kv.Value.Contains(cell)) return kv.Key;
-                return -1;
-            }
-
-            Dictionary<long, RoomStyle.WallAsset> GetPrisonReservations(int prisonIdx)
-            {
-                if (prisonReservations.TryGetValue(prisonIdx, out var res)) return res;
+                if (prisonReservations.TryGetValue(prison, out var res)) return res;
                 res = new Dictionary<long, RoomStyle.WallAsset>();
-                prisonReservations[prisonIdx] = res;
+                prisonReservations[prison] = res;
                 if (style == null) return res;
 
                 var setAssets = style.PrisonWallSet();
@@ -257,8 +270,7 @@ namespace DungeonGen
 
                 // A prison closet is one course of wall — always the Bottom band, like the
                 // general prison/hallway pick.
-                DealCappedAssets(res, prisonCellsByIndex[prisonIdx], setAssets,
-                                 _ => RoomStyle.WallBand.Bottom);
+                DealCappedAssets(res, prison.Cells, setAssets, _ => RoomStyle.WallBand.Bottom);
                 return res;
             }
 
@@ -315,21 +327,63 @@ namespace DungeonGen
             }
 
             // Unlimited assets per (type, band), cached for the pass.
-            var unlimitedCache = new Dictionary<(RoomType, RoomStyle.WallBand), GameObject[]>();
-            GameObject[] UnlimitedWalls(RoomType type, RoomStyle.WallBand band)
+            var unlimitedCache = new Dictionary<(RoomType, RoomStyle.WallBand), List<RoomStyle.WallAsset>>();
+            // The UNCAPPED pool for a (type, band), as WallAssets rather than bare prefabs —
+            // the pick now needs each asset's weight and noise range, not just its prefab.
+            List<RoomStyle.WallAsset> UnlimitedWalls(RoomType type, RoomStyle.WallBand band)
             {
                 if (unlimitedCache.TryGetValue((type, band), out var cached)) return cached;
-                GameObject[] result = null;
+                List<RoomStyle.WallAsset> result = null;
                 var assets = style.WallAssetsFor(type, band);
                 if (assets != null)
                 {
-                    var list = new List<GameObject>();
+                    var list = new List<RoomStyle.WallAsset>();
                     foreach (var a in assets)
-                        if (a.maxPerRoom <= 0) list.Add(a.prefab);
-                    if (list.Count > 0) result = list.ToArray();
+                        if (a.prefab != null && a.maxPerRoom <= 0) list.Add(a);
+                    if (list.Count > 0) result = list;
                 }
                 unlimitedCache[(type, band)] = result;
                 return result;
+            }
+
+            /// Pick one wall asset for a face: NOISE decides what is eligible here, WEIGHT
+            /// decides the mix among those. The two answer different questions — "is this the
+            /// kind of place where walls are cracked" versus "how much of the mix is cracked" —
+            /// and composing them is what separates a damaged SECTION from an even sprinkle.
+            ///
+            /// Falls back to the full pool if the noise range excludes everything, because a
+            /// face with no eligible asset would otherwise drop to the kit generic and punch a
+            /// hole in a themed room. An over-narrow range should look wrong, not missing.
+            GameObject PickWall(List<RoomStyle.WallAsset> pool, Vector3Int cell, Vector3 posCells)
+            {
+                if (pool == null || pool.Count == 0) return null;
+
+                float n = ValueNoise.ForCell(cell, kit.wallNoiseScale, kit.wallNoiseSalt);
+
+                float total = 0f;
+                foreach (var a in pool)
+                    if (a.AllowsNoise(n)) total += Mathf.Max(0f, a.weight);
+
+                bool useNoise = total > 0f;
+                if (!useNoise)
+                {
+                    foreach (var a in pool) total += Mathf.Max(0f, a.weight);
+                    if (total <= 0f) return pool[0].prefab;   // every weight muted
+                }
+
+                // Same per-face hash the uniform pick used, read as a 0..1 value instead of an
+                // index — so variety is still deterministic and still varies face to face
+                // WITHIN a noise region.
+                float roll = Hash(Vector3Int.RoundToInt(posCells * 4f), 11) / (float)0x7fffffff * total;
+                foreach (var a in pool)
+                {
+                    if (useNoise && !a.AllowsNoise(n)) continue;
+                    roll -= Mathf.Max(0f, a.weight);
+                    if (roll <= 0f) return a.prefab;
+                }
+                for (int i = pool.Count - 1; i >= 0; i--)      // float drift on the last bucket
+                    if (!useNoise || pool[i].AllowsNoise(n)) return pool[i].prefab;
+                return pool[0].prefab;
             }
 
             // A RESERVED capped wall asset. Calls `place` DIRECTLY rather than going through
@@ -351,10 +405,24 @@ namespace DungeonGen
 
             // Returns the picked prefab (null if the slot was empty) so wall
             // emission can record per-face restrictions for it.
+            //
+            // UNIFORM pick, still correct for every slot that is a plain prefab array — floors,
+            // ceilings, bars, arches. WALLS no longer come through here; they carry per-asset
+            // weight and noise range and go through PickWall + EmitPrefab instead.
             GameObject Emit(GameObject[] slot, string slotName, Vector3 posCells, Quaternion rot, Vector3 offset, Vector3Int cell)
             {
                 if (slot == null || slot.Length == 0) { missing.Add(slotName); return null; }
                 GameObject prefab = slot[Hash(Vector3Int.RoundToInt(posCells * 4f), 11) % slot.Length];
+                return EmitPrefab(prefab, slotName, posCells, rot, offset, cell);
+            }
+
+            // Placement for an ALREADY-CHOSEN prefab. Split out of Emit so the weighted wall
+            // pick and the reserved capped-asset path share one placement + socket-recording
+            // path rather than each reimplementing it — the reserved path already diverged once
+            // and had to have its socket recording added separately.
+            GameObject EmitPrefab(GameObject prefab, string slotName, Vector3 posCells, Quaternion rot,
+                                  Vector3 offset, Vector3Int cell)
+            {
                 if (prefab == null) { missing.Add(slotName); return null; }
                 place(prefab, posCells, rot, offset + kit.globalVisualOffset, cell);
 
@@ -493,7 +561,7 @@ namespace DungeonGen
                             var pitWalls = gen.PitAt(c) != null && style != null ? style.PitWalls() : null;
                             if (pitWalls != null)
                             {
-                                placedWall = Emit(pitWalls, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                placedWall = EmitPrefab(PickWall(pitWalls, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
                                 wallCtx = RoomStyle.WallContext.Pit;
                                 emitted = true;
                             }
@@ -513,7 +581,7 @@ namespace DungeonGen
                                     var unlimited = UnlimitedWalls(room.Type, BandOf(room, c));
                                     if (unlimited != null)
                                     {
-                                        placedWall = Emit(unlimited, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                        placedWall = EmitPrefab(PickWall(unlimited, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
                                         emitted = true;
                                     }
                                 }
@@ -524,15 +592,15 @@ namespace DungeonGen
                                 var styled = style.HallwayWalls();
                                 if (styled != null)
                                 {
-                                    placedWall = Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                    placedWall = EmitPrefab(PickWall(styled, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
                                     emitted = true;
                                 }
                             }
                             else if (t == CellType.Prison)
                             {
                                 wallCtx = RoomStyle.WallContext.Prison;
-                                int pi = PrisonIndexOf(c);
-                                var pres = pi >= 0 ? GetPrisonReservations(pi) : null;
+                                var prison = gen.PrisonAt(c);
+                                var pres = prison != null ? GetPrisonReservations(prison) : null;
                                 if (pres != null && pres.TryGetValue(FaceKey(i, d), out var reserved))
                                 {
                                     EmitReserved(reserved, facePos, c, d);
@@ -544,7 +612,7 @@ namespace DungeonGen
                                     var styled = style.PrisonWalls();
                                     if (styled != null)
                                     {
-                                        placedWall = Emit(styled, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                        placedWall = EmitPrefab(PickWall(styled, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
                                         emitted = true;
                                     }
                                 }
@@ -1094,7 +1162,7 @@ namespace DungeonGen
                         }
 
                         var marker = go.AddComponent<PrisonDoorMarker>();
-                        marker.prisonIndex = gen.PrisonCells.FindIndex(b => b.Contains(p));
+                        marker.prison = gen.PrisonAt(p);
                         marker.prisonCell = p;
                         marker.direction = d;
 
@@ -1593,7 +1661,12 @@ namespace DungeonGen
     /// </summary>
     public class PrisonDoorMarker : MonoBehaviour
     {
-        public int prisonIndex;       // index into DungeonGenerator.PrisonCells
+        // The spec itself, not an index. The old `prisonIndex` was resolved by BOUNDING-BOX
+        // containment, which is the wrong test for a wide prison (its footprint is a 1x1
+        // vestibule plus a wider pocket behind, so bboxes can enclose cells that aren't the
+        // prison's). Nothing read the index yet, so this was cheap to correct before it grew a
+        // consumer. Runtime-assigned; PrisonSpec is a plain class and does not serialize.
+        [System.NonSerialized] public PrisonSpec prison;
         public Vector3Int prisonCell; // the cell behind this gate
         public Vector3Int direction;  // prison -> hallway
     }

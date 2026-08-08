@@ -138,17 +138,27 @@ namespace DungeonGen
         [System.Serializable]
         public class PropEntry
         {
+            // THE SECTION MARKERS BELOW ARE COMMENTS, NOT [Header] ATTRIBUTES, AND THAT IS
+            // DELIBERATE. PropSetEntryDrawer owns this type's inspector: it draws each field
+            // individually with EditorGUI.PropertyField and sizes the block with
+            // GetPropertyHeight, and NEITHER of those runs decorator drawers. A [Header] here
+            // would therefore never appear — and if it somehow did, the height calculation
+            // wouldn't account for it and every field below would be drawn in the wrong place.
+            //
+            // The headings you actually see come from the '§' tokens in the drawer's
+            // VisibleFields, which is also what decides WHICH fields show for the selected
+            // anchor. ADD A NEW FIELD THERE TOO or it will not appear in the inspector at all.
             [Tooltip("This prop's KIND. Names the inspector entry AND acts as a tag: a Near Prop Asset entry attaches to props with a matching Host Label, and Min Spacing keeps same-Label props apart. Give matching props (e.g. all statues) the same Label to space them from each other.")]
             public string label;
             [Tooltip("Variants — deterministic hash-pick per placement.")]
             public GameObject[] prefabs;
 
-            [Header("Placement anchor type")]
+            // ---- Placement anchor type ----
             public PropAnchor anchor = PropAnchor.FloorScatter;
             [Tooltip("StaticDecor: mesh only, never blocks. StaticCollider: mesh + collider (blocks movement — occupancy-checked). InstancedMeshWithLight: mesh + light GameObject (candles!). FullGameObject: everything (future interactives).")]
             public PropTier tier = PropTier.StaticDecor;
             
-            [Header("Feature placement")]
+            // ---- Feature placement ----
             [Tooltip("Feature only: a named wall, or the middle of the room.")]
             public FeaturePositionMode featurePositionMode = FeaturePositionMode.WallSide;
             [Tooltip("Feature + WallSide only: which wall, relative to the entrance.")]
@@ -156,13 +166,13 @@ namespace DungeonGen
             [Tooltip("Feature + WallSide only: middle of that wall, or one of its corners.")]
             public FeatureSpot featureSpot = FeatureSpot.Center;
             
-            [Header("Feature orientation")]
+            // ---- Feature orientation ----
             [Tooltip("Feature only: how its base yaw is computed before featureYaw is added.")]
             public FeatureFacing featureFacing = FeatureFacing.Outward;
             [Tooltip("Feature only: degrees added on top of featureFacing (or the absolute yaw when featureFacing = Fixed).")]
             public float featureYaw = 0f;
 
-            [Header("Near-prop / spacing")]
+            // ---- Near-prop / spacing ----
             [Tooltip("NearPropAsset only: attach beside already-placed props whose Label equals this (case-sensitive).")]
             public string hostLabel = "";
             [Tooltip("NearPropAsset / NearWallAsset: chance to place a prop beside each matching host (a labeled prop, or a feature wall).")]
@@ -171,7 +181,7 @@ namespace DungeonGen
             public int minSpacing = 0;
 
 
-            [Header("Per-room emissive tint")]
+            // ---- Per-room emissive tint ----
             [Tooltip("Recolour this prop's GLOW to the room's torch colour, so a candle on a shrine shelf burns the same cold blue as its torches, fog and kit emissives (§7) instead of its authored orange. A corridor or alcove uses the style's DEFAULT torch colour, matching the walls around it.\n\nOFF by default and opt-in PER ENTRY, not per material: the same emissive material is often reused on something that must NOT shift hue (a lantern with coloured glass, a rune whose colour is its meaning).\n\nCosts one extra batch per distinct colour in use — bounded by the palette, not by prop count — and works on StaticDecor, so a glowing candle needs no Light and no GameObject at all.")]
             public bool tintToRoomPalette = false;
             [Tooltip("WHICH of the prefab's materials to recolour — the exact material asset, matched by reference. Only that slot is swapped, so a candelabra's metal stays metal while its flame recolours.\n\nRequired when Tint To Room Palette is on; the swap silently does nothing if this doesn't match a material the prefab actually uses. Author the material with Enable GPU Instancing ON (the prop renders through Graphics.RenderMeshInstanced) and _EMISSION enabled.")]
@@ -179,7 +189,7 @@ namespace DungeonGen
             [Tooltip("Multiplies the room's torch colour to produce the emission value. Emission only BLOOMS above 1 and the palette is LDR-range, so this is what lifts it into HDR — the prop-side equivalent of the kit's Emissive Intensity, kept separate so a dim shelf candle and a blazing brazier can share one material and one palette at different brightness.")]
             public float tintIntensity = 1f;
 
-            [Header("Count")]
+            // ---- Count ----
             [Tooltip("Guaranteed: place exactly Count (cells permitting). Otherwise scatter by chance per eligible cell.")]
             public bool guaranteed;
             public int count = 1;
@@ -188,7 +198,7 @@ namespace DungeonGen
             [Tooltip("Scatter cap per room. 0 = unlimited.")]
             public int maxPerRoom = 0;
 
-            [Header("Placement feel")]
+            // ---- Placement feel ----
             [Tooltip("FloorScatter / CeilingHung: which zone(s) this entry places into — multi-select (e.g. Center + Back). Perimeter alone reproduces the classic wall-bias. Ignored when Allow Center is on.")]
             public RoomZoneMask preferredZones = RoomZoneMask.Perimeter;
             [Tooltip("FloorScatter only: how each placement's yaw is computed. Random uses yawRange; the wall rules read the cell's nearest solid wall.")]
@@ -207,7 +217,7 @@ namespace DungeonGen
             [Tooltip("Meters between the nominal wall plane and the prop origin when Snap To Wall is on. Tune per asset (account for the wall kit's relief depth). WallMounted also uses this as its distance off the wall face.")]
             public float wallGap = 0.1f;
 
-            [Header("Wall / Ceiling mount")]
+            // ---- Wall / Ceiling mount ----
             [Tooltip("WallMounted: meters above the floor the prop mounts. Torches default ~2.2; hang banners higher, shields lower.")]
             public float mountHeight = 2.2f;
             [Tooltip("WallMounted: +/- meters of deterministic height variation on top of Mount Height. 0 = every instance at the same height.")]
@@ -219,7 +229,7 @@ namespace DungeonGen
             [Tooltip("CeilingHung + Scatter: snap flush to the nearest wall at the ceiling plane (the ceiling equivalent of Snap To Wall — one wall, not a corner). Uses Wall Gap and tangent-only jitter. Ignored in Grid layout. For true two-wall corners use Snap To Inside Corner.")]
             public bool snapToCeilingWall = false;
 
-            [Header("Legacy: Anywhere toggle")]
+            // ---- Legacy: Anywhere toggle ----
             [Tooltip("Legacy 'anywhere' toggle: skip the zone filter entirely — scatter may use ANY free cell.")]
             public bool allowCenter = false;
         }

@@ -70,6 +70,47 @@ namespace DungeonGen
     }
 
     /// <summary>
+    /// Variant elements read "SetName ×weight" so a pool's odds are legible without
+    /// expanding every entry — the point of a weighted list is the relative weights, and
+    /// "Element 0 / Element 1 / Element 2" hides exactly that.
+    /// </summary>
+    [CustomPropertyDrawer(typeof(RoomStyle.WeightedPropSet))]
+    public class RoomStyleWeightedPropSetDrawer : PropertyDrawer
+    {
+        public override void OnGUI(Rect r, SerializedProperty p, GUIContent l)
+        {
+            var set = p.FindPropertyRelative("props").objectReferenceValue;
+            float w = p.FindPropertyRelative("weight").floatValue;
+            string name = set != null ? set.name : "(no set)";
+            string muted = w <= 0f ? "  — MUTED" : "";
+            RoomStyleDrawerUtil.Draw(r, p, $"{name}  ×{w:0.##}{muted}");
+        }
+        public override float GetPropertyHeight(SerializedProperty p, GUIContent l) =>
+            RoomStyleDrawerUtil.Height(p);
+    }
+
+    /// <summary>
+    /// AlcoveStyleEntry reads its kind plus how many contents sets are in the pool, so
+    /// "which kinds actually have variety" is answerable at a glance.
+    /// </summary>
+    [CustomPropertyDrawer(typeof(RoomStyle.AlcoveStyleEntry))]
+    public class RoomStyleAlcoveStyleEntryDrawer : PropertyDrawer
+    {
+        public override void OnGUI(Rect r, SerializedProperty p, GUIContent l)
+        {
+            var kind = p.FindPropertyRelative("kind");
+            var set = p.FindPropertyRelative("props").objectReferenceValue;
+            int variants = p.FindPropertyRelative("variants").arraySize;
+            int pool = (set != null ? 1 : 0) + variants;
+            string kindName = kind.enumDisplayNames[kind.enumValueIndex];
+            string summary = pool == 0 ? "(empty)" : pool == 1 ? "1 set" : $"{pool} sets";
+            RoomStyleDrawerUtil.Draw(r, p, $"{kindName} — {summary}");
+        }
+        public override float GetPropertyHeight(SerializedProperty p, GUIContent l) =>
+            RoomStyleDrawerUtil.Height(p);
+    }
+
+    /// <summary>
     /// WallAsset elements summarize as "PrefabName [BMT] ×cap !props !torch"
     /// — band eligibility, per-room cap, and placement restrictions visible
     /// without expanding.
@@ -91,6 +132,20 @@ namespace DungeonGen
             string s = $"{name} [{bands}]";
             int cap = p.FindPropertyRelative("maxPerRoom").intValue;
             if (cap > 0) s += $" ×{cap}";
+
+            // Frequency and clustering only apply to UNCAPPED assets, so showing them on a
+            // capped one would advertise a setting that does nothing (the reservation pre-pass
+            // fully determines a capped asset's count).
+            if (cap <= 0)
+            {
+                float w = p.FindPropertyRelative("weight").floatValue;
+                if (w <= 0f) s += " MUTED";
+                else if (!Mathf.Approximately(w, 1f)) s += $" w{w:0.##}";
+
+                var nr = p.FindPropertyRelative("noiseRange").vector2Value;
+                if (nr.x > 0f || nr.y < 1f) s += $" ~[{nr.x:0.##}-{nr.y:0.##}]";
+            }
+
             if (!p.FindPropertyRelative("allowPropsInFront").boolValue) s += " !props";
             if (!p.FindPropertyRelative("allowTorch").boolValue) s += " !torch";
             return s;

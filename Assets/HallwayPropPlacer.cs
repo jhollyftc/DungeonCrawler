@@ -49,7 +49,7 @@ namespace DungeonGen
             //
             // ALCOVE CELLS ARE EXCLUDED. They are typed Hallway so the kit gives them walls and
             // floors for free, which means they would otherwise collect generic corridor debris
-            // on top of whatever AlcovePropPlacer put there — burying the statue the alcove
+            // on top of whatever RecessPropPlacer put there — burying the statue the alcove
             // exists to show. Alcove contents are per-KIND and belong to that pass alone.
             var cells = new List<Vector3Int>();
             for (int i = 0; i < grid.Length; i++)

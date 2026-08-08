@@ -119,7 +119,7 @@ namespace DungeonGen
                 if (gen.PitAt(c) != null) continue;
 
                 // Torches respect an already-CLAIMED face. Nothing used to claim before this
-                // pass ran, so this was a no-op when written — it exists for AlcovePropPlacer,
+                // pass ran, so this was a no-op when written — it exists for RecessPropPlacer,
                 // which runs first precisely because an alcove has ~3 faces and one hero prop
                 // and cannot afford to lose the right wall to a sconce. Regression test if you
                 // touch it: torch count and positions must be unchanged on a fixed seed with

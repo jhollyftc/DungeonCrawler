@@ -28,7 +28,7 @@ namespace DungeonGen
     /// mesher paths with no changes. A dedicated CellType would instead be read as solid-adjacent
     /// by every `!= CellType.Empty` test across the mesher and kit, and would render as nothing.
     /// Everything that makes an alcove an alcove therefore lives HERE, in metadata, exactly as
-    /// PrisonCells / Ladders / ColumnPoints do.
+    /// Prisons / Ladders / ColumnPoints do.
     ///
     /// The consequence to remember: because the cells read as plain hallway, an alcove is a
     /// legal host for ANOTHER alcove. DungeonGenerator.TryPlaceAlcove guards against that
@@ -39,7 +39,7 @@ namespace DungeonGen
         public AlcoveKind Kind;
 
         /// <summary>Bounding box of the whole shape, including the doorway tile. Mirrors the
-        /// semantics of DungeonGenerator.PrisonCells entries — on a wide alcove it also covers
+        /// semantics of DungeonGenerator.Prisons entries — on a wide alcove it also covers
         /// the two solid corners beside the mouth, which nothing queries.</summary>
         public BoundsInt Bounds;
 

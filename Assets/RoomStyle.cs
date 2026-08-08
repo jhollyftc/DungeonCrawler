@@ -90,6 +90,17 @@ namespace DungeonGen
             [Tooltip("Name this a feature wall so NearWallAsset props can target it (a fireplace tagged 'Fireplace' → firewood with Host Label 'Fireplace' places beside it). Empty = not a NearWallAsset host. Usually paired with a per-room cap.")]
             public string featureLabel = "";
 
+            [Header("Frequency (uncapped assets only)")]
+            [Tooltip("Relative frequency against the other UNCAPPED assets eligible on this face. 3 is three times as likely as 1; every asset at 1 reproduces the old even split. Zero mutes it without deleting it.\n\nIGNORED when Max Per Room is set — a capped asset is dealt by the reservation pre-pass, which already fully determines its count, so frequency would mean nothing.\n\nNote weights are resolved PER BAND: an asset eligible in Bottom and Middle competes separately in each, so its share depends on what else is eligible there rather than on the set as a whole.")]
+            public float weight = 1f;
+            [Tooltip("Restrict this asset to part of the CLUSTER NOISE range — a smooth field over world position, so neighbouring faces read similar values.\n\n(0,1) = eligible everywhere; this is the default and behaves as if noise didn't exist. (0.6,1) = only where the field is high, which produces PATCHES rather than an even sprinkle: a damaged section of wall, a waterlogged corner, a stretch of soot near a forge.\n\nThis is the difference between 'cracked walls are rare' (frequency) and 'this part of the room is falling apart' (noise). Weight still decides the mix among everything eligible at a face, so the two compose: noise picks the character of a region, weight fills it.\n\nRequires DungeonKit.wallNoiseScale > 0; at 0 the field is disabled and every range is treated as eligible.")]
+            public Vector2 noiseRange = new Vector2(0f, 1f);
+
+            /// <summary>Is this asset eligible where the cluster field reads `n`? A full (0,1)
+            /// range — the default — is always true, which is what keeps noise opt-in.</summary>
+            public bool AllowsNoise(float n) =>
+                (noiseRange.x <= 0f && noiseRange.y >= 1f) || (n >= noiseRange.x && n <= noiseRange.y);
+
             public bool Allows(WallBand b) =>
                 (b == WallBand.Bottom && bottom) ||
                 (b == WallBand.Middle && middle) ||
@@ -103,15 +114,61 @@ namespace DungeonGen
             public List<WallAsset> walls = new List<WallAsset>();
         }
 
-        [Header("Walls (empty = kit's generic walls)")]
+        // ─────────────────────────────────────────────────────────────────────────────
+        // GROUPED BY SPACE, NOT BY SUBSYSTEM. Authoring happens one place at a time —
+        // "what does a prison look like" — while the file used to be sorted by kind of
+        // thing (all walls, then all floors, then all props), which meant styling a
+        // prison took three trips to three different sections and it was easy to fill in
+        // its walls and forget its floor. Rooms stay subsystem-shaped because their lists
+        // are per-TYPE and inherently so; every other space is one contiguous block.
+        //
+        // Field ORDER is presentation only — Unity serializes by name, so moving these
+        // never loses authored data.
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        [Header("═══ ROOMS (per type; empty = the kit's generic piece) ═══")]
         [Tooltip("Per-room-type wall assets with band eligibility. Types without a set fall back to the kit's generic walls.")]
         public List<WallSet> roomWalls = new List<WallSet>();
+        [Tooltip("Per-room-type floor and ceiling tiles. A shrine can have its own flagstones and a kitchen its scorched brick without touching the walls.")]
+        public List<SurfaceSet> roomSurfaces = new List<SurfaceSet>();
+        [Tooltip("Per-room-type archway and door prefabs, matching each type's wall set.")]
+        public List<OpeningSet> roomOpenings = new List<OpeningSet>();
+        [Tooltip("Per-room-type prop sets (shareable PropSet assets).")]
+        public List<PropSetEntry> roomProps = new List<PropSetEntry>();
+
+        [Header("═══ HALLWAYS ═══")]
         [Tooltip("Wall assets for hallways (band is always Bottom).")]
         public List<WallAsset> hallwayWalls = new List<WallAsset>();
+        [Tooltip("Floor tiles for corridors. Corridors are most of what the player walks over, so this is the single highest-mileage surface in the dungeon.")]
+        public GameObject[] hallwayFloorPrefabs;
+        [Tooltip("Ceiling tiles for corridors.")]
+        public GameObject[] hallwayCeilingPrefabs;
+        [Tooltip("Lintel trim for CORRIDOR stair shafts — a corridor staircase belongs to no room, so it cannot use a per-type set.")]
+        public GameObject[] hallwayLintelPrefabs;
+        [Tooltip("One global prop set for ALL corridors — debris, cobwebs, roots. Hallways have no zones, so zone/feature fields are ignored; scatter (snapToWall works), ceiling, and wall-mounted anchors apply. Empty = no hallway props.")]
+        public PropSet hallwayProps;
+
+        [Header("═══ HALLWAY ALCOVES (per kind) ═══")]
+        [Tooltip("Contents for each alcove kind. An alcove is a small recess carved off a corridor, and its KIND is what gives it an identity — a statue nook wants a Feature facing out, a collapsed dig wants scatter, a storage recess wants crates. Alcove cells are ordinary hallway in the grid, so they inherit hallway WALLS/floors/ceilings; only the props are per-kind. A kind with no entry here simply generates as an empty recess.")]
+        public List<AlcoveStyleEntry> alcoveStyles = new List<AlcoveStyleEntry>();
+
+        [Header("═══ PRISON CELLS ═══")]
         [Tooltip("Wall assets for prison closets (band is always Bottom). Empty = kit's generic walls.")]
         public List<WallAsset> prisonWalls = new List<WallAsset>();
+        [Tooltip("Floor tiles for prison closets.")]
+        public GameObject[] prisonFloorPrefabs;
+        [Tooltip("Ceiling tiles for prison closets.")]
+        public GameObject[] prisonCeilingPrefabs;
+        [Tooltip("Contents for prison closets, chosen PER CELL by a weighted roll — so one cell holds a bunk and a bucket, the next a skeleton in chains, the next nothing but straw. A prison is the same generator primitive as an alcove (both come out of RecessFits), so the same anchors work: Direction gives the back/left/right frame, WallSide.Back is the far wall, FeatureFacing.Outward looks out through the bars.\n\nEmpty = bare cells, which is what shipped before this existed.\n\nBLOCKING PROPS ARE SAFE HERE (a dead end severs nothing) EXCEPT in the doorway — the placer reserves the mouth cell and the door's swing arc automatically, so you don't have to author around them.")]
+        public List<WeightedPropSet> prisonProps = new List<WeightedPropSet>();
+
+        [Header("═══ ROOM PITS ═══")]
         [Tooltip("Wall assets for the inside of a PIT (band is always Bottom). A chasm exposes what lies BENEATH the dungeon, so raw rock, old foundations and rough stonework read better here than the room's own masonry continuing downward. Empty = the pit inherits its room's walls, which is the current behaviour, so leaving this unauthored changes nothing. Purely cosmetic — pit floors and collision already work regardless.")]
         public List<WallAsset> pitWalls = new List<WallAsset>();
+        [Tooltip("Floor tiles for the BOTTOM of a pit — rubble, cracked flags, bedrock. Empty = the pit inherits its room's floor.")]
+        public GameObject[] pitFloorPrefabs;
+        // No pit CEILING slot on purpose: a pit's top is the hole you fell through, and
+        // NeedsSlabBetween suppresses it.
 
         // ---------------- Floors & ceilings ----------------
         //
@@ -133,21 +190,6 @@ namespace DungeonGen
             public GameObject[] lintelPrefabs;
         }
 
-        [Header("Floors & ceilings (empty = kit's generic)")]
-        [Tooltip("Per-room-type floor and ceiling tiles. A shrine can have its own flagstones and a kitchen its scorched brick without touching the walls.")]
-        public List<SurfaceSet> roomSurfaces = new List<SurfaceSet>();
-        [Tooltip("Floor tiles for corridors. Corridors are most of what the player walks over, so this is the single highest-mileage surface in the dungeon.")]
-        public GameObject[] hallwayFloorPrefabs;
-        [Tooltip("Ceiling tiles for corridors.")]
-        public GameObject[] hallwayCeilingPrefabs;
-        [Tooltip("Lintel trim for CORRIDOR stair shafts — a corridor staircase belongs to no room, so it cannot use a per-type set.")]
-        public GameObject[] hallwayLintelPrefabs;
-        [Tooltip("Floor tiles for prison closets.")]
-        public GameObject[] prisonFloorPrefabs;
-        [Tooltip("Ceiling tiles for prison closets.")]
-        public GameObject[] prisonCeilingPrefabs;
-        [Tooltip("Floor tiles for the BOTTOM of a pit — rubble, cracked flags, bedrock. Empty = the pit inherits its room's floor.")]
-        public GameObject[] pitFloorPrefabs;
 
         /// <summary>Floor tiles for this room type, or null for the kit's.</summary>
         public GameObject[] FloorsFor(RoomType type)
@@ -189,9 +231,11 @@ namespace DungeonGen
         static GameObject[] Nullable(GameObject[] a) => (a != null && a.Length > 0) ? a : null;
 
         Dictionary<(RoomType, WallBand), List<WallAsset>> wallCache;
-        GameObject[] hallwayWallCache;
-        GameObject[] prisonWallCache;
-        GameObject[] pitWallCache;
+        // WallAsset lists, not prefab arrays: the kit's pick reads each asset's weight and
+        // noise range, so the pool has to carry the assets themselves.
+        List<WallAsset> hallwayWallCache;
+        List<WallAsset> prisonWallCache;
+        List<WallAsset> pitWallCache;
 
         /// <summary>Band-eligible wall assets for a room type — STRICT: a band
         /// with no eligible assets returns null (kit generic walls fill in).
@@ -228,10 +272,10 @@ namespace DungeonGen
         }
 
         /// <summary>Hallway wall prefabs, or null to use the kit's generic walls.</summary>
-        public GameObject[] HallwayWalls()
+        public List<WallAsset> HallwayWalls()
         {
-            if (hallwayWallCache != null) return hallwayWallCache.Length > 0 ? hallwayWallCache : null;
-            var list = new List<GameObject>();
+            if (hallwayWallCache != null) return hallwayWallCache.Count > 0 ? hallwayWallCache : null;
+            var list = new List<WallAsset>();
             int capped = 0;
             foreach (var w in hallwayWalls)
             {
@@ -242,14 +286,14 @@ namespace DungeonGen
                 // pool rather than dropped (dropping would silently delete the asset) but warned,
                 // because a cap that quietly does nothing is worse than one that says so.
                 if (w.maxPerRoom > 0) capped++;
-                list.Add(w.prefab);
+                list.Add(w);
             }
             if (capped > 0)
                 Debug.LogWarning($"[RoomStyle] {capped} hallwayWalls entr(y/ies) set Max Per Room, which is " +
                                  "IGNORED for hallways — a corridor network has no room to count per. " +
                                  "Set it to 0 there, or move the asset to a room or prison wall list.");
-            hallwayWallCache = list.ToArray();
-            return hallwayWallCache.Length > 0 ? hallwayWallCache : null;
+            hallwayWallCache = list;
+            return hallwayWallCache.Count > 0 ? hallwayWallCache : null;
         }
 
         /// <summary>Raw prison wall list (capped entries included) for the reservation pre-pass.</summary>
@@ -258,28 +302,28 @@ namespace DungeonGen
         public List<WallAsset> PitWallSet() => pitWalls;
 
         /// <summary>Prison closet wall prefabs, or null to use the kit's generic walls.</summary>
-        public GameObject[] PrisonWalls()
+        public List<WallAsset> PrisonWalls()
         {
-            if (prisonWallCache != null) return prisonWallCache.Length > 0 ? prisonWallCache : null;
-            var list = new List<GameObject>();
+            if (prisonWallCache != null) return prisonWallCache.Count > 0 ? prisonWallCache : null;
+            var list = new List<WallAsset>();
             // Capped assets are EXCLUDED from the general pool, exactly as UnlimitedWalls does
             // for rooms: they are dealt once each by the reservation pre-pass, and leaving them
             // in the pool as well is what let a "Max Per Room 1" drain land on face after face.
             foreach (var w in prisonWalls)
-                if (w.prefab != null && w.maxPerRoom <= 0 && w.Allows(WallBand.Bottom)) list.Add(w.prefab);
-            prisonWallCache = list.ToArray();
-            return prisonWallCache.Length > 0 ? prisonWallCache : null;
+                if (w.prefab != null && w.maxPerRoom <= 0 && w.Allows(WallBand.Bottom)) list.Add(w);
+            prisonWallCache = list;
+            return prisonWallCache.Count > 0 ? prisonWallCache : null;
         }
 
         /// <summary>Pit-interior wall prefabs, or null to inherit the room's walls.</summary>
-        public GameObject[] PitWalls()
+        public List<WallAsset> PitWalls()
         {
-            if (pitWallCache != null) return pitWallCache.Length > 0 ? pitWallCache : null;
-            var list = new List<GameObject>();
+            if (pitWallCache != null) return pitWallCache.Count > 0 ? pitWallCache : null;
+            var list = new List<WallAsset>();
             foreach (var w in pitWalls)
-                if (w.prefab != null && w.maxPerRoom <= 0 && w.Allows(WallBand.Bottom)) list.Add(w.prefab);
-            pitWallCache = list.ToArray();
-            return pitWallCache.Length > 0 ? pitWallCache : null;
+                if (w.prefab != null && w.maxPerRoom <= 0 && w.Allows(WallBand.Bottom)) list.Add(w);
+            pitWallCache = list;
+            return pitWallCache.Count > 0 ? pitWallCache : null;
         }
 
         /// <summary>Which wall LIST a face's prefab was picked from. Flags are authored per
@@ -376,9 +420,6 @@ namespace DungeonGen
             public GameObject[] stairPrefabs;
         }
 
-        [Header("Openings (empty = kit's generic arch/door)")]
-        [Tooltip("Per-room-type archway and door prefabs, matching each type's wall set.")]
-        public List<OpeningSet> roomOpenings = new List<OpeningSet>();
 
         /// <summary>Archway prefabs for openings into this room type, or null for the kit's.</summary>
         public GameObject[] ArchwaysFor(RoomType type)
@@ -458,19 +499,33 @@ namespace DungeonGen
             public PropSet props;
         }
 
+        /// <summary>
+        /// One candidate contents set for a RECESS (alcove or prison), with a relative weight.
+        ///
+        /// This is what makes two cells of the same kind look different. Without it every
+        /// statue nook in a run is identical, because a single PropSet placed with the same
+        /// anchors into the same-shaped pocket produces the same result every time — the
+        /// per-cell hash varies WHERE things land, not WHAT is there.
+        /// </summary>
+        [System.Serializable]
+        public class WeightedPropSet
+        {
+            public PropSet props;
+            [Tooltip("Relative weight against the other variants for this kind. Weights need not sum to anything; 2 is simply twice as likely as 1. Zero or negative removes the variant without deleting it, which is how you mute one for testing.")]
+            public float weight = 1f;
+        }
+
         /// <summary>One alcove kind's contents. Mirrors PropSetEntry — kind instead of room type.</summary>
         [System.Serializable]
         public class AlcoveStyleEntry
         {
             public AlcoveKind kind;
-            [Tooltip("Props for this kind. The Feature anchor works here: the alcove's Direction supplies the same back/left/right frame a room's entrance does, so WallSide.Back is the far face and FeatureFacing.Outward looks out at the corridor.")]
+            [Tooltip("Props for this kind. The Feature anchor works here: the alcove's Direction supplies the same back/left/right frame a room's entrance does, so WallSide.Back is the far face and FeatureFacing.Outward looks out at the corridor.\n\nKept as the single-set slot it always was; it now counts as one weight-1 entry in the variant pool below, so existing authoring keeps working and adding variants EXTENDS the pool rather than replacing it.")]
             public PropSet props;
+            [Tooltip("Extra contents sets for this kind, chosen per alcove by a weighted roll. Leave empty for the old behaviour (always `props`). This is what stops every statue nook in a run looking identical.")]
+            public List<WeightedPropSet> variants = new List<WeightedPropSet>();
         }
 
-        [Header("Props (per room type; sets are shareable assets)")]
-        public List<PropSetEntry> roomProps = new List<PropSetEntry>();
-        [Tooltip("One global prop set for ALL corridors — debris, cobwebs, roots. Hallways have no zones, so zone/feature fields are ignored; scatter (snapToWall works), ceiling, and wall-mounted anchors apply. Empty = no hallway props.")]
-        public PropSet hallwayProps;
 
         /// <summary>Prop set for a room type, or null (no props).</summary>
         public PropSet PropsFor(RoomType type)
@@ -484,17 +539,59 @@ namespace DungeonGen
         /// <summary>The global corridor prop set, or null.</summary>
         public PropSet HallwayProps() => hallwayProps;
 
-        [Header("Hallway alcoves (per KIND)")]
-        [Tooltip("Contents for each alcove kind. An alcove is a small recess carved off a corridor, and its KIND is what gives it an identity — a statue nook wants a Feature facing out, a collapsed dig wants scatter, a storage recess wants crates. Alcove cells are ordinary hallway in the grid, so they inherit hallway WALLS/floors/ceilings; only the props are per-kind. A kind with no entry here simply generates as an empty recess.")]
-        public List<AlcoveStyleEntry> alcoveStyles = new List<AlcoveStyleEntry>();
 
-        /// <summary>Prop set for an alcove kind, or null (an empty recess).</summary>
-        public PropSet AlcoveProps(AlcoveKind kind)
+
+        /// <summary>
+        /// Contents for one alcove of this kind, chosen from its variant pool by `roll01`.
+        /// Null = an empty recess.
+        /// </summary>
+        public PropSet AlcoveProps(AlcoveKind kind, float roll01)
         {
             foreach (var e in alcoveStyles)
                 if (e.kind == kind)
-                    return e.props;
+                    return PickWeighted(e.props, e.variants, roll01);
             return null;
+        }
+
+        /// <summary>Contents for one prison cell, chosen by `roll01`. Null = a bare cell.</summary>
+        public PropSet PrisonProps(float roll01) => PickWeighted(null, prisonProps, roll01);
+
+        /// <summary>
+        /// Weighted pick over `single` (an implicit weight-1 entry, may be null) plus `pool`.
+        ///
+        /// `roll01` must come from the recess's own hash stream, NOT from a shared counter and
+        /// NOT from UnityEngine.Random: which variant a cell gets is part of what (seed, depth)
+        /// reproduces (golden rule 4). One draw per recess, made unconditionally by the caller
+        /// so the stream can't depend on how the pool is authored.
+        /// </summary>
+        public static PropSet PickWeighted(PropSet single, List<WeightedPropSet> pool, float roll01)
+        {
+            float total = single != null ? 1f : 0f;
+            if (pool != null)
+                foreach (var v in pool)
+                    if (v != null && v.props != null) total += Mathf.Max(0f, v.weight);
+
+            if (total <= 0f) return single;   // nothing authored, or every weight muted
+
+            float t = roll01 * total;
+            if (single != null)
+            {
+                t -= 1f;
+                if (t <= 0f) return single;
+            }
+            if (pool != null)
+                foreach (var v in pool)
+                {
+                    if (v == null || v.props == null) continue;
+                    t -= Mathf.Max(0f, v.weight);
+                    if (t <= 0f) return v.props;
+                }
+
+            // Float drift can leave t marginally positive on the last bucket.
+            if (pool != null)
+                for (int i = pool.Count - 1; i >= 0; i--)
+                    if (pool[i] != null && pool[i].props != null) return pool[i].props;
+            return single;
         }
     }
 }

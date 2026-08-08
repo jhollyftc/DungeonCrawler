@@ -201,7 +201,10 @@ namespace DungeonGen
         public List<DEdge> LoopEdges { get; private set; } = new List<DEdge>();
         public Dictionary<int, Stair> Stairs { get; } = new Dictionary<int, Stair>();
         public int FailedEdges { get; private set; }
-        public List<BoundsInt> PrisonCells { get; } = new List<BoundsInt>();
+        /// <summary>Prison closets carved off corridors. See PrisonSpec for why this carries a
+        /// full spec rather than the bare BoundsInt it used to: a bounding box cannot support a
+        /// Feature prop, which needs the recess's Direction frame.</summary>
+        public List<PrisonSpec> Prisons { get; } = new List<PrisonSpec>();
         public List<DungeonDoor> Doors { get; } = new List<DungeonDoor>();
         public List<LadderSpec> Ladders { get; } = new List<LadderSpec>();
         /// <summary>Lattice points (cell-corner coords) + floor level + height where interior columns go.</summary>
@@ -236,6 +239,13 @@ namespace DungeonGen
         /// <summary>True if this cell was carved as part of an alcove. Note the cell's CellType is
         /// Hallway either way — this is the only way to tell them apart.</summary>
         public bool IsAlcoveCell(Vector3Int c) => alcoveCells.ContainsKey(c);
+
+        // Cell -> prison, same reasoning as alcoveCells: the kit's capped-wall reservations ask
+        // per face, so a linear scan over prisons would be O(prisons) per wall face.
+        readonly Dictionary<Vector3Int, PrisonSpec> prisonCells = new Dictionary<Vector3Int, PrisonSpec>();
+
+        /// <summary>The prison owning this cell, or null.</summary>
+        public PrisonSpec PrisonAt(Vector3Int c) => prisonCells.TryGetValue(c, out var p) ? p : null;
 
         readonly DungeonConfig cfg;
         readonly Random rng;
@@ -1493,7 +1503,8 @@ namespace DungeonGen
 
         void PlacePrisons()
         {
-            PrisonCells.Clear();
+            Prisons.Clear();
+            prisonCells.Clear();
             if (!cfg.placePrisonCells || cfg.prisonChance <= 0f) return;
 
             // Fixed iteration order + sequential RNG draws = deterministic per seed.
@@ -2276,8 +2287,24 @@ namespace DungeonGen
                             out BoundsInt bbox, out List<Vector3Int> cells))
                 return false;
 
-            foreach (var c in cells) Grid[c] = CellType.Prison;
-            PrisonCells.Add(bbox);
+            // Every field here was already computed above and used to be discarded — recording
+            // it costs nothing and is what lets prisons take authored contents (PrisonSpec).
+            var spec = new PrisonSpec
+            {
+                Bounds = bbox,
+                HallCell = h,
+                Direction = d,
+                MouthCell = h + d,
+                Width = w,
+                Depth = depth,
+            };
+            foreach (var c in cells)
+            {
+                Grid[c] = CellType.Prison;
+                spec.Cells.Add(c);
+                prisonCells[c] = spec;
+            }
+            Prisons.Add(spec);
             return true;
         }
 
