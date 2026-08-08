@@ -1,5 +1,385 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &2181537787476654
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5574623962523267124}
+  - component: {fileID: 3111226341592174785}
+  m_Layer: 0
+  m_Name: Socket
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5574623962523267124
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2181537787476654}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.5, y: 0.49999997, z: 0.5, w: -0.5}
+  m_LocalPosition: {x: 0.00155, y: -0.00144, z: -0.00262}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3436358600460801217}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &3111226341592174785
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2181537787476654}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
+  childPrefabs:
+  - {fileID: 919132149155446097, guid: 79c7e020e20cdff49bba96539d94d5a5, type: 3}
+  - {fileID: 919132149155446097, guid: 3248a59a5c8ad974295f38b6083236ca, type: 3}
+  - {fileID: 919132149155446097, guid: 59ea3f5ceb0af2a47a433fc1368dd12e, type: 3}
+  childTier: 0
+  fillChance: 0.497
+  yawJitter: 180
+  positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 1
+  tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+--- !u!1 &1410938339094276167
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7393536406432510143}
+  - component: {fileID: 6140111656080733813}
+  m_Layer: 0
+  m_Name: Socket (1)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7393536406432510143
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1410938339094276167}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.5, y: 0.49999997, z: 0.5, w: -0.5}
+  m_LocalPosition: {x: 0.00018, y: -0.00106, z: -0.00262}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3436358600460801217}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6140111656080733813
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1410938339094276167}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
+  childPrefabs:
+  - {fileID: 919132149155446097, guid: 79c7e020e20cdff49bba96539d94d5a5, type: 3}
+  - {fileID: 919132149155446097, guid: 3248a59a5c8ad974295f38b6083236ca, type: 3}
+  childTier: 0
+  fillChance: 0.497
+  yawJitter: 180
+  positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 1
+  tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+--- !u!1 &3055559571234822208
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2982042086399831084}
+  - component: {fileID: 8604216536130714351}
+  m_Layer: 0
+  m_Name: Socket (3)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2982042086399831084
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3055559571234822208}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.5, y: 0.49999997, z: 0.5, w: -0.5}
+  m_LocalPosition: {x: 0.00149, y: 0.00205, z: -0.00262}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3436358600460801217}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8604216536130714351
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3055559571234822208}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
+  childPrefabs:
+  - {fileID: 919132149155446097, guid: 79c7e020e20cdff49bba96539d94d5a5, type: 3}
+  - {fileID: 919132149155446097, guid: 3248a59a5c8ad974295f38b6083236ca, type: 3}
+  - {fileID: 919132149155446097, guid: 59ea3f5ceb0af2a47a433fc1368dd12e, type: 3}
+  childTier: 0
+  fillChance: 0.497
+  yawJitter: 180
+  positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 1
+  tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+--- !u!1 &5220320478250230830
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7163662778481158325}
+  - component: {fileID: 8667289498117767891}
+  m_Layer: 0
+  m_Name: Socket (2)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7163662778481158325
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5220320478250230830}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.5, y: 0.49999997, z: 0.5, w: -0.5}
+  m_LocalPosition: {x: 0.00184, y: 0.00112, z: -0.00262}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3436358600460801217}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8667289498117767891
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5220320478250230830}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
+  childPrefabs:
+  - {fileID: 919132149155446097, guid: 79c7e020e20cdff49bba96539d94d5a5, type: 3}
+  - {fileID: 919132149155446097, guid: 3248a59a5c8ad974295f38b6083236ca, type: 3}
+  - {fileID: 919132149155446097, guid: 59ea3f5ceb0af2a47a433fc1368dd12e, type: 3}
+  childTier: 0
+  fillChance: 0.497
+  yawJitter: 180
+  positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 1
+  tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+--- !u!1 &6163076913884553795
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5491786169909231287}
+  - component: {fileID: 6311448824052930575}
+  m_Layer: 0
+  m_Name: Socket (4)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5491786169909231287
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6163076913884553795}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.5, y: 0.49999997, z: 0.5, w: -0.5}
+  m_LocalPosition: {x: 0.00101, y: 0.001533, z: -0.00262}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3436358600460801217}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6311448824052930575
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6163076913884553795}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
+  childPrefabs:
+  - {fileID: 919132149155446097, guid: 79c7e020e20cdff49bba96539d94d5a5, type: 3}
+  - {fileID: 919132149155446097, guid: 3248a59a5c8ad974295f38b6083236ca, type: 3}
+  childTier: 0
+  fillChance: 0.497
+  yawJitter: 180
+  positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 1
+  tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+--- !u!1 &6200810391942698410
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 113281140282342973}
+  - component: {fileID: 8453309155033285158}
+  m_Layer: 0
+  m_Name: Socket (6)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &113281140282342973
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6200810391942698410}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.5851181, y: -0.397035, z: -0.39703503, w: 0.5851181}
+  m_LocalPosition: {x: 0.0009, y: -0.00004, z: -0.00262}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3436358600460801217}
+  m_LocalEulerAnglesHint: {x: 21.682, y: -90, z: -90}
+--- !u!114 &8453309155033285158
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6200810391942698410}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
+  childPrefabs:
+  - {fileID: 919132149155446097, guid: 0cb4196a42fa94942a08639bad6dac33, type: 3}
+  childTier: 0
+  fillChance: 0.497
+  yawJitter: 20
+  positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 1
+  tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+--- !u!1 &7856350703712761765
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7272106447439214239}
+  - component: {fileID: 4020344626771158560}
+  m_Layer: 0
+  m_Name: Socket (5)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7272106447439214239
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7856350703712761765}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.5, y: 0.49999997, z: 0.5, w: -0.5}
+  m_LocalPosition: {x: 0.00013, y: 0.002045, z: -0.00262}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3436358600460801217}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4020344626771158560
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7856350703712761765}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
+  childPrefabs:
+  - {fileID: 919132149155446097, guid: 79c7e020e20cdff49bba96539d94d5a5, type: 3}
+  - {fileID: 919132149155446097, guid: 3248a59a5c8ad974295f38b6083236ca, type: 3}
+  childTier: 0
+  fillChance: 0.497
+  yawJitter: 180
+  positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 1
+  tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
 --- !u!1001 &2898871811467801386
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -10,15 +390,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 33.21359
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: 0.00000004398828
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: 54.13279
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
       propertyPath: m_LocalRotation.w
@@ -66,7 +446,28 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5574623962523267124}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7393536406432510143}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7163662778481158325}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2982042086399831084}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5491786169909231287}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7272106447439214239}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 113281140282342973}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
       insertIndex: -1
@@ -98,3 +499,8 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.004988624, y: 0.009847998, z: 0.015004951}
   m_Center: {x: 0.0010782531, y: 0.000016478334, z: 0.0000024723972}
+--- !u!4 &3436358600460801217 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9e0f9cc5296a0a643ab778fbc8669b54, type: 3}
+  m_PrefabInstance: {fileID: 2898871811467801386}
+  m_PrefabAsset: {fileID: 0}

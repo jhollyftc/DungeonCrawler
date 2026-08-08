@@ -15,7 +15,8 @@ MonoBehaviour:
   entries:
   - label: Collapsed Dig
     prefabs:
-    - {fileID: 8654218044348637339, guid: 333e923f08eea9e41aeafc68ecb5566c, type: 3}
+    - {fileID: 7626219196578851110, guid: d2ef35795d9405e4086fa9f31336cb2e, type: 3}
+    - {fileID: 6862054371965764520, guid: 20ca366598db1e64ca57adba30d6cb2c, type: 3}
     anchor: 3
     tier: 1
     featurePositionMode: 0
@@ -26,6 +27,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 1
     chancePerCell: 1

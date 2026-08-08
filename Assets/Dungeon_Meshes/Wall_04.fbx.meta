@@ -3,7 +3,17 @@ guid: acd0ff7a2f138f94582f64b0f8029500
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Stone_Wall_03_MAT
+    second: {fileID: 2100000, guid: 4f432a2fb314d08499f9d2ca9cf34ca4, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: dark gray stone
+    second: {fileID: 2100000, guid: 0a41120931dd6864eaa47be662b6ffd6, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

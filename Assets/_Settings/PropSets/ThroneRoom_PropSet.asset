@@ -14,8 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
   entries:
   - label: 
-    prefabs:
-    - {fileID: 2261073350949710241, guid: dfbe1588070c90541b97661e7e90d98d, type: 3}
+    prefabs: []
     anchor: 2
     tier: 1
     featurePositionMode: 0
@@ -26,6 +25,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 1
     count: 0
     chancePerCell: 0
@@ -56,6 +58,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 1

@@ -26,6 +26,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 0.546
@@ -57,6 +60,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 4
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 0.444
@@ -88,6 +94,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 4
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 0.444
@@ -119,6 +128,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 1
     chancePerCell: 0.444
@@ -152,6 +164,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 2
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+    tintIntensity: 25
     guaranteed: 0
     count: 0
     chancePerCell: 1
@@ -183,6 +198,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 1
@@ -213,6 +231,9 @@ MonoBehaviour:
     hostLabel: Fireplace
     chancePerHost: 1
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 1
@@ -231,8 +252,78 @@ MonoBehaviour:
     gridStride: 2
     snapToCeilingWall: 0
     allowCenter: 0
-  - label: Hanging Lights
-    prefabs: []
+  - label: Stockades
+    prefabs:
+    - {fileID: 919132149155446097, guid: 697dff768cf730e449178c76386e4c4d, type: 3}
+    - {fileID: 8875240018798638949, guid: 890a4b2f9572ba34bb3511572d39c38c, type: 3}
+    anchor: 0
+    tier: 1
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 4
+    preferredZones: 7
+    facing: 0
+    yawRange: {x: 0, y: 180}
+    subCellJitter: 0.21
+    snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0.5
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 1
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Sacks
+    prefabs:
+    - {fileID: 919132149155446097, guid: 643fc8502e061e7449d83fc0f34f1abb, type: 3}
+    anchor: 0
+    tier: 0
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 2
+    preferredZones: 7
+    facing: 0
+    yawRange: {x: 0, y: 180}
+    subCellJitter: 0.21
+    snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0.5
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 1
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Chandeliers
+    prefabs:
+    - {fileID: 919132149155446097, guid: 87296d388c210a34a9df93401f5f2558, type: 3}
     anchor: 1
     tier: 0
     featurePositionMode: 1
@@ -243,14 +334,17 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 1
+    tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+    tintIntensity: 50
     guaranteed: 0
     count: 0
     chancePerCell: 1
     maxPerRoom: 0
-    preferredZones: 4
+    preferredZones: 7
     facing: 0
     yawRange: {x: 0, y: 5}
-    subCellJitter: 0.21
+    subCellJitter: 0.163
     snapToWall: 1
     snapToInsideCorner: 0
     sharesTile: 0

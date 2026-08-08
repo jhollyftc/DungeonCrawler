@@ -1,0 +1,118 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
+  m_Name: PrisonCell_1_PropSet
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
+  entries:
+  - label: Cobwebs
+    prefabs:
+    - {fileID: 919132149155446097, guid: e073a4d06a281954db3ad6019b5b0cdc, type: 3}
+    anchor: 1
+    tier: 0
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
+    guaranteed: 0
+    count: 0
+    chancePerCell: 0.71
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 45, y: 45}
+    subCellJitter: 0
+    snapToWall: 1
+    snapToInsideCorner: 1
+    sharesTile: 1
+    wallGap: 0
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Chains
+    prefabs:
+    - {fileID: 919132149155446097, guid: e9a17474b19a1d74d86c798a8621787a, type: 3}
+    anchor: 1
+    tier: 0
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
+    guaranteed: 0
+    count: 0
+    chancePerCell: 1
+    maxPerRoom: 1
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 0, y: 180}
+    subCellJitter: 0
+    snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0.5
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Caged Skeleton
+    prefabs:
+    - {fileID: 7109544866316261103, guid: 6fd0a876c06117540a2b9b2ccedd23ba, type: 3}
+    - {fileID: 7109544866316261103, guid: 7473b56b315271546a74f5aa73032003, type: 3}
+    anchor: 1
+    tier: 3
+    featurePositionMode: 1
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
+    guaranteed: 0
+    count: 0
+    chancePerCell: 0.511
+    maxPerRoom: 1
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 0, y: 180}
+    subCellJitter: 0
+    snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0.5
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 2
+    snapToCeilingWall: 0
+    allowCenter: 0

@@ -44,14 +44,14 @@ Material:
     m_Floats:
     - _Bands: 2
     - _BumpScale: 1
-    - _OutlineWidth: 0.0056
-    - _SpecPower: 8.5
-    - _SpecSoftness: 0.1774
+    - _OutlineWidth: 0.0068
+    - _SpecPower: 12.5
+    - _SpecSoftness: 0.3
     m_Colors:
     - _BaseColor: {r: 0.4245283, g: 0.4245283, b: 0.4245283, a: 1}
     - _RimColor: {r: 1, g: 0.93, b: 0.8, a: 1}
     - _ShadowTint: {r: 0.7075472, g: 0.7075472, b: 0.7075472, a: 1}
-    - _SpecColor: {r: 0.33962262, g: 0.33962262, b: 0.33962262, a: 1}
+    - _SpecColor: {r: 0.21698111, g: 0.21698111, b: 0.21698111, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!114 &6379774828620541135

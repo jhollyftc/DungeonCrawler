@@ -1547,7 +1547,7 @@ MonoBehaviour:
       m_Type:
         m_SerializableType: UnityEngine.Color, UnityEngine.CoreModule, Version=0.0.0.0,
           Culture=neutral, PublicKeyToken=null
-      m_SerializableObject: '{"r":0.08500000089406967,"g":0.0,"b":0.0,"a":1.0}'
+      m_SerializableObject: '{"r":1.4980393648147584,"g":0.0,"b":1.1003838777542115,"a":1.0}'
     m_Space: -1
   m_Property:
     name: _Color
@@ -1747,7 +1747,7 @@ MonoBehaviour:
       m_Type:
         m_SerializableType: System.Single, mscorlib, Version=4.0.0.0, Culture=neutral,
           PublicKeyToken=b77a5c561934e089
-      m_SerializableObject: 0.756
+      m_SerializableObject: 0.149
     m_Space: -1
   m_Property:
     name: _Erosion
@@ -4547,7 +4547,7 @@ MonoBehaviour:
       m_Type:
         m_SerializableType: System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral,
           PublicKeyToken=b77a5c561934e089
-      m_SerializableObject: False
+      m_SerializableObject: True
     m_Space: -1
   m_Property:
     name: _vfx_enabled

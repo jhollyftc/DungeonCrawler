@@ -26,6 +26,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 0.546
@@ -48,7 +51,10 @@ MonoBehaviour:
     prefabs:
     - {fileID: 1841846976050919672, guid: b2a4a10f82e4acb4da4bac9d45767f07, type: 3}
     - {fileID: 3091887059629816438, guid: 4bc2428f94769cc4090b737b288d507b, type: 3}
-    - {fileID: 2487930608722856401, guid: 4d25d3d05b82d60448174768b0e8ef16, type: 3}
+    - {fileID: 919132149155446097, guid: 8592573fee5c1264884d5850b9c30371, type: 3}
+    - {fileID: 919132149155446097, guid: 7cd060bcea50d8548b0a265292cf1e77, type: 3}
+    - {fileID: 919132149155446097, guid: 60faecd8d03527745ae05c70be3fae97, type: 3}
+    - {fileID: 919132149155446097, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
     anchor: 0
     tier: 1
     featurePositionMode: 0
@@ -58,10 +64,13 @@ MonoBehaviour:
     featureYaw: 0
     hostLabel: 
     chancePerHost: 0.6
-    minSpacing: 4
+    minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
-    chancePerCell: 0.444
+    chancePerCell: 1
     maxPerRoom: 0
     preferredZones: 8
     facing: 3
@@ -70,7 +79,7 @@ MonoBehaviour:
     snapToWall: 1
     snapToInsideCorner: 0
     sharesTile: 0
-    wallGap: 0.7
+    wallGap: 0.85
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
@@ -90,6 +99,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 1
@@ -121,6 +133,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 1
     chancePerCell: 0.444
@@ -138,4 +153,38 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    allowCenter: 0
+  - label: Chandeliers
+    prefabs:
+    - {fileID: 919132149155446097, guid: 87296d388c210a34a9df93401f5f2558, type: 3}
+    anchor: 1
+    tier: 0
+    featurePositionMode: 0
+    featureWallSide: 2
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    tintToRoomPalette: 1
+    tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+    tintIntensity: 25
+    guaranteed: 0
+    count: 4
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: 7
+    facing: 0
+    yawRange: {x: -45, y: 45}
+    subCellJitter: 0
+    snapToWall: 1
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 1
+    gridStride: 2
+    snapToCeilingWall: 1
     allowCenter: 0

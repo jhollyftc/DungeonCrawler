@@ -16,6 +16,7 @@ MonoBehaviour:
   - label: Statue King
     prefabs:
     - {fileID: 5527588616426762877, guid: f7c9b50012688d3428840a576ca800cc, type: 3}
+    - {fileID: 239324533688105287, guid: 84c65fccf816c134399bf0011f88dd7f, type: 3}
     anchor: 3
     tier: 1
     featurePositionMode: 0
@@ -26,6 +27,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 1
     chancePerCell: 1
@@ -37,7 +41,7 @@ MonoBehaviour:
     snapToWall: 1
     snapToInsideCorner: 0
     sharesTile: 0
-    wallGap: 0.7
+    wallGap: 0.85
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
@@ -57,6 +61,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 1

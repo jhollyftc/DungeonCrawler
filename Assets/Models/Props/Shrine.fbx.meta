@@ -8,7 +8,7 @@ ModelImporter:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Candle_Emissive
-    second: {fileID: 2100000, guid: 95024558f9581944dbf40e033a767bb1, type: 2}
+    second: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule

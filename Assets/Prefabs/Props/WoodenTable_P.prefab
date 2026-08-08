@@ -50,6 +50,9 @@ MonoBehaviour:
   fillChance: 0.524
   yawJitter: 5
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &252424924725314453
 GameObject:
   m_ObjectHideFlags: 0
@@ -101,6 +104,9 @@ MonoBehaviour:
   fillChance: 0.524
   yawJitter: 5
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &811862522356218101
 GameObject:
   m_ObjectHideFlags: 0
@@ -152,6 +158,9 @@ MonoBehaviour:
   fillChance: 0.524
   yawJitter: 5
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &1429076319813654980
 GameObject:
   m_ObjectHideFlags: 0
@@ -202,6 +211,9 @@ MonoBehaviour:
   fillChance: 0.542
   yawJitter: 5
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &2024593664188633243
 GameObject:
   m_ObjectHideFlags: 0
@@ -253,6 +265,9 @@ MonoBehaviour:
   fillChance: 0.524
   yawJitter: 5
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &3160825867175794329
 GameObject:
   m_ObjectHideFlags: 0
@@ -304,6 +319,9 @@ MonoBehaviour:
   fillChance: 0.524
   yawJitter: 5
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &3383306775112432879
 GameObject:
   m_ObjectHideFlags: 0
@@ -357,6 +375,9 @@ MonoBehaviour:
   fillChance: 1
   yawJitter: 180
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &5227287461416039495
 GameObject:
   m_ObjectHideFlags: 0
@@ -410,6 +431,62 @@ MonoBehaviour:
   fillChance: 0.524
   yawJitter: 180
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
+--- !u!1 &5373119534730818150
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4402885198642899991}
+  - component: {fileID: 8646920127734501870}
+  m_Layer: 10
+  m_Name: Socket_Cup (9)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4402885198642899991
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5373119534730818150}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.5, y: -0.5, z: -0.5, w: 0.5}
+  m_LocalPosition: {x: -0.0044, y: -0.00182, z: 0.00368}
+  m_LocalScale: {x: 0.0033333332, y: 0.003333334, z: 0.003333334}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7948687033450948168}
+  m_LocalEulerAnglesHint: {x: 0, y: -90, z: -90}
+--- !u!114 &8646920127734501870
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5373119534730818150}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fce7272022644341875a1a2d762aab3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
+  childPrefabs:
+  - {fileID: 585498852465811658, guid: 8d70325a8fd94ad42812fdee2c34e1f9, type: 3}
+  childTier: 3
+  fillChance: 1
+  yawJitter: 180
+  positionJitter: 0
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &6275643084963084968
 GameObject:
   m_ObjectHideFlags: 0
@@ -463,6 +540,9 @@ MonoBehaviour:
   fillChance: 0.524
   yawJitter: 180
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &6696369824526567129
 GameObject:
   m_ObjectHideFlags: 0
@@ -513,6 +593,9 @@ MonoBehaviour:
   fillChance: 0.524
   yawJitter: 5
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &7041651390431705504
 GameObject:
   m_ObjectHideFlags: 0
@@ -566,6 +649,9 @@ MonoBehaviour:
   fillChance: 0.524
   yawJitter: 180
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1 &7949371829878183949
 GameObject:
   m_ObjectHideFlags: 0
@@ -616,6 +702,9 @@ MonoBehaviour:
   fillChance: 0.545
   yawJitter: 5
   positionJitter: 0.05
+  countsAsTorch: 0
+  tintToRoomPalette: 0
+  tintMaterial: {fileID: 0}
 --- !u!1001 &7621728581137564067
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -711,6 +800,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
       insertIndex: -1
       addedObject: {fileID: 3429999176473554254}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4402885198642899991}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 10c75bc5fb486f2459fe037d4fabbc15, type: 3}
       insertIndex: -1

@@ -3,7 +3,17 @@ guid: aad26a09da2f3384d9857b158cfacb48
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_BarracksGeneric_Material
+    second: {fileID: 2100000, guid: 4d7a742e4e94eb54c8df85dd410d3342, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_pikes_material
+    second: {fileID: 2100000, guid: a57398369b3e3604193ba7c5744260ba, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
