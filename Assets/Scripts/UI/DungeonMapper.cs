@@ -100,8 +100,8 @@ namespace DungeonGen
         public Color playerColor = new Color(1f, 1f, 1f, 1f);
 
         DungeonVisualizer vis;
+        PlayerRoomTracker tracker;
         DungeonGenerator cachedGen;      // identity of the dungeon this map describes
-        Transform player;
 
         readonly HashSet<int> exploredRooms = new HashSet<int>();
         readonly HashSet<Vector3Int> exploredCells = new HashSet<Vector3Int>();
@@ -167,17 +167,16 @@ namespace DungeonGen
             // completely different layout.
             if (!ReferenceEquals(vis.Generator, cachedGen)) ResetForNewDungeon();
 
-            if (player == null)
-            {
-                var fpc = FindObjectOfType<FirstPersonController>();
-                if (fpc == null) return;
-                player = fpc.transform;
-            }
-
-            // The SAME world→cell conversion FirstPersonController.CurrentRoomLabel and
-            // DungeonFogController use, so the map, the room readout and the fog color
-            // can never disagree about which cell the player is in.
-            Vector3Int cell = Vector3Int.FloorToInt((player.position - vis.transform.position) / vis.cellSize);
+            // ONE shared answer, not a copy of the same arithmetic. This used to compute
+            // the cell itself and claim it "can never disagree" with the fog and the room
+            // readout — but sharing a code SHAPE is not sharing an ANSWER, and the fog was
+            // in fact sampling the camera while this sampled the player. PlayerRoomTracker
+            // is now the single source; it is frame-stamped, so reading it here is correct
+            // regardless of script execution order.
+            if (tracker == null) tracker = vis.GetComponent<PlayerRoomTracker>();
+            if (tracker == null || !tracker.HasPlayer) return;
+            tracker.Refresh();
+            Vector3Int cell = tracker.CurrentCell;
             if (cell != lastPlayerCell)
             {
                 lastPlayerCell = cell;

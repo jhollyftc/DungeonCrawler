@@ -93,6 +93,15 @@ namespace DungeonGen
             "DungeonKitSockets",
         };
 
+        void Awake()
+        {
+            // SELF-INSTALLING, because its absence is a SILENT failure: the fog, the map and
+            // the room readout all null-guard their tracker lookup, so a scene missing this
+            // component loses room-aware fog and map reveal with no error anywhere. Adding it
+            // here means it cannot be forgotten on a fresh scene or after a prefab rebuild.
+            if (GetComponent<PlayerRoomTracker>() == null) gameObject.AddComponent<PlayerRoomTracker>();
+        }
+
         void Start()
         {
             // REQUIRED for builds: nothing is baked into the scene, so the
@@ -337,7 +346,7 @@ namespace DungeonGen
             {
                 var fogGo = new GameObject("DungeonFog");
                 fogGo.transform.SetParent(transform, false);
-                fogGo.AddComponent<DungeonFogController>().Init(gen, roomStyle, cellSize, transform.position, fog);
+                fogGo.AddComponent<DungeonFogController>().Init(gen, roomStyle, cellSize, transform.position, fog, GetComponent<PlayerRoomTracker>());
             }
 
             // Torch/prop meshes may have been added to the instancer after its

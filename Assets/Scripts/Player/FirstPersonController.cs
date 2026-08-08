@@ -321,16 +321,21 @@ namespace DungeonGen
             Debug.Log($"[Warp] Warped to {type} room at {dest}");
         }
 
-        /// <summary>Which room (by type) the player's feet are standing in right now, for
-        /// the dev overlay — same world-to-cell + RoomAt lookup DungeonFogController uses
-        /// to pick a room's color, so this can never disagree with what the fog shows.</summary>
+        /// <summary>Which room (by type) the player is standing in right now, for the dev
+        /// overlay. Reads PlayerRoomTracker — the SINGLE source shared with the fog, the
+        /// map and the audio systems, so the readout cannot drift from what they act on.
+        /// It used to compute the cell itself; that made the readout a second opinion
+        /// rather than the same one.</summary>
         string CurrentRoomLabel()
         {
-            if (dungeon.Generator == null) return "-";
-            Vector3Int cell = Vector3Int.FloorToInt((transform.position - dungeon.transform.position) / dungeon.cellSize);
-            Room room = dungeon.Generator.RoomAt(cell);
+            if (dungeon == null || dungeon.Generator == null) return "-";
+            if (roomTracker == null) roomTracker = dungeon.GetComponent<PlayerRoomTracker>();
+            if (roomTracker == null || !roomTracker.HasPlayer) return "-";
+            roomTracker.Refresh();
+            Room room = roomTracker.CurrentRoom;
             return room != null ? room.Type.ToString() : "Hallway";
         }
+        PlayerRoomTracker roomTracker;
 
         /// <summary>
         /// Developer control list. Unity finds OnGUI by reflecting over the CLASS,

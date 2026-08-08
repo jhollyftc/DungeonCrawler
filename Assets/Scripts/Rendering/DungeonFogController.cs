@@ -34,6 +34,7 @@ namespace DungeonGen
     public class DungeonFogController : MonoBehaviour
     {
         DungeonGenerator gen;
+        PlayerRoomTracker tracker;
         RoomStyle style;
         FogSettings settings;
         float cellSize;
@@ -48,9 +49,10 @@ namespace DungeonGen
         Color current;
         bool initialized;
 
-        public void Init(DungeonGenerator gen, RoomStyle style, float cellSize, Vector3 origin, FogSettings settings)
+        public void Init(DungeonGenerator gen, RoomStyle style, float cellSize, Vector3 origin, FogSettings settings, PlayerRoomTracker tracker)
         {
             this.gen = gen;
+            this.tracker = tracker;
             this.style = style;
             this.cellSize = cellSize;
             this.origin = origin;
@@ -78,8 +80,22 @@ namespace DungeonGen
             // Corridors / untyped space: the style's default torch color.
             Color target = style.defaultTorchColor;
 
-            Vector3Int cell = Vector3Int.FloorToInt((pos - origin) / cellSize);
-            Room inside = gen.RoomAt(cell);
+            // WHICH ROOM the player is in comes from PlayerRoomTracker; the camera position
+            // above is still used for the PROXIMITY and VIEW terms below, which are about
+            // where you are looking from rather than where you are standing.
+            //
+            // BEHAVIOUR CHANGE, deliberate: this used to floor the CAMERA's position into a
+            // cell, while the map and the room readout floored the PLAYER's. Leaning through
+            // a doorway, or standing where a stairwell puts your eyes a cell above your feet,
+            // made the fog announce a room the map disagreed with. Feet win — "which room am
+            // I in" is about where you are standing.
+
+            Room inside = null;
+            if (tracker != null && tracker.HasPlayer)
+            {
+                tracker.Refresh();
+                inside = tracker.CurrentRoom;
+            }
             if (inside != null)
             {
                 target = style.For(inside.Type).torchColor;
