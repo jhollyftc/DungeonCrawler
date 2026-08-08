@@ -213,7 +213,7 @@ combined with wide prison cells and junction plazas, "no longer just straight ha
   existing kit and mesher paths with **zero changes to either**. A dedicated `CellType`
   would be read as solid-adjacent by every `!= CellType.Empty` test across the mesher and
   kit and would render as nothing. Identity lives in `DungeonGenerator.Alcoves` +
-  `AlcoveAt`/`IsAlcoveCell`, the same shape as `PrisonCells`/`Ladders`/`ColumnPoints`.
+  `AlcoveAt`/`IsAlcoveCell`, the same shape as `Prisons`/`Ladders`/`ColumnPoints`.
   **The cost of that choice is the self-hosting trap — see §12.**
 - **`RecessFits` is shared with prisons.** Extracted from `TryPlacePrisonAt`, it carries the
   rules that took several passes to settle: all cells Empty, solid above and below, the
@@ -480,9 +480,24 @@ They're runtime copies, so **destroy them on regenerate** or every F1 leaks a se
 Kit emissives are tinted to the room's TORCH COLOUR — same source as fog and the
 flame VFX (§7), so they can't drift, and a new room type gets correct candles free.
 **`PropInstancer.PlaceProps` takes the same replace/with pair**, so per-room tinting
-is available to every prop placer and not just the kit callback — added for kit
-sockets (§8), where a socket child goes through `PropInstancer` and would otherwise
-keep its authored colour, right in a warm corridor and wrong in a blue shrine.
+reaches every prop placer and not just the kit callback — see `PropTint` in §8, which
+is the one resolver all three prop passes share.
+
+**A CUSTOM SHADER ON KIT OR PROP GEOMETRY MUST DECLARE INSTANCING, AND FAILS SILENTLY
+IF IT DOESN'T** (real bug — the stained glass that "didn't glow" was never DRAWN).
+The kit draws through `Graphics.RenderMeshInstanced`, where each instance's transform
+lives in an instancing buffer that only `UNITY_SETUP_INSTANCE_ID` reads; without
+`#pragma multi_compile_instancing` + `UNITY_VERTEX_INPUT_INSTANCE_ID` +
+`UNITY_SETUP_INSTANCE_ID`, `TransformObjectToHClip` uses whatever single
+`unity_ObjectToWorld` happens to be bound and every instance collapses onto one
+another. **There is no error**, because `InstancedDungeonRenderer` force-sets
+`enableInstancing` on every material it harvests (`BuildProto`) which satisfies
+Unity's runtime check and suppresses the "material does not support instancing"
+message. The symptom is a submesh that simply isn't where it should be — and because
+a multi-material piece still draws its OTHER submeshes correctly, it reads as "that
+part looks unlit" rather than "that part is missing". Same family as the
+MaterialPropertyBlock rule above: anything authored against a normal `MeshRenderer`
+needs re-checking against `RenderMeshInstanced`.
 **`MaterialGlobalIlluminationFlags.EmissiveIsBlack` must be cleared explicitly**
 (cost an hour): Unity sets it on any material whose authored `_EmissionColor` is
 black — exactly the case when the source was previously driven by a property block —
@@ -532,7 +547,47 @@ textures too; we only want to band the *lighting*). Passes: ForwardLit, Outline
 - **Normal map** (`_BumpMap`, `_BumpScale`) — perturbs all lighting. Import as
   **Normal map** type. Strong normals + razor-hard bands = crawling band edges;
   `_BumpScale` trades relief vs. band cleanliness.
+- **Emission + per-instance FLICKER** (`_EmissionColor` HDR/black, `_EmissionMap`
+  white, `_FlickerAmount`, `_FlickerSpeed`, `_FlickerCellSize`). Added here rather
+  than as a new shader because a candle's WAX still needs proper lighting, so a
+  separate emissive shader would have been a near-copy of this one that then drifts —
+  and the candles were on URP/Lit, making them the one prop not toon-shaded.
+  Property names match URP/Lit so a material switches over keeping its values; the
+  `_EmissionMap` WHITE default is load-bearing, since colour-only emission with no map
+  assigned is how the candle is authored and a black default silently kills it.
+  Emission is applied **unbanded, after lighting, before fog** — unbanded because a
+  flame is a SOURCE, not a lit surface (`Ramp()` would darken a candle in shadow).
+  **No new `multi_compile`, so zero extra shader variants** and the preloaded
+  collections need no recapture — deliberate, given §5's invisible-NPC cost.
+- **THE SHADER IS THE ONLY PLACE A `StaticDecor` PIECE CAN ANIMATE.** That tier has
+  mesh-only instancing — no GameObject, so no `Light`, no `TorchFlicker`, nothing a
+  script can reach — and a MaterialPropertyBlock can't touch the instanced path (§5).
+- **A PER-ELEMENT ID MUST COLLAPSE TO ONE VALUE PER ELEMENT, OR THE ELEMENT SHEARS.**
+  The flicker phase is hashed from the instance origin, which is correct per PROP but
+  identical for every flame of a single candelabra mesh — they pulse in unison. Raw
+  `positionOS` is the obvious fix and is WRONG: it varies per VERTEX, so each vertex
+  of one flame picks its own phase and the flame shears instead of pulsing. Two things
+  that work: **vertex colour** (authored per flame, exact, and free because a mesh
+  without vertex colours reads white = a constant), and **`_FlickerCellSize`**, which
+  floors `positionOS` to a cell so a whole flame collapses onto one value — size it
+  larger than a flame and smaller than the gap between them; a flame straddling a
+  boundary tears, which is the failure mode to recognise. UVs are NOT a usable id when
+  the elements are duplicates of one mesh, because duplicates share UV islands exactly.
+  NB ToonLit now reads vertex colour on every mesh in the project for this.
 - Known API gotchas: `TransformObjectToHClip` (NOT `TransformObjectToWorldHClip`).
+
+**FOG IS NOT AUTOMATIC — a shader that omits it is the one surface that never
+recedes.** Three parts, all required: `#pragma multi_compile_fog`,
+`ComputeFogFactor(positionCS.z)` in the vertex stage, `MixFog` on the FINAL colour.
+It matters more here than in most projects because `DungeonFogController` drives
+`RenderSettings.fogColor` PER ROOM from the torch palette (§7), so skipping fog also
+opts a surface out of the room's colour identity — a stained-glass window in a blue
+shrine rendered as though it were in neutral air. The symptom is a surface that looks
+perfect up close and like a UI decal from across a room. Fog the emission too: fogging
+only the base leaves the glow punching through undimmed, the same decal read in
+subtler form. And note **bloom is post-process and runs AFTER fog**, so a bright HDR
+surface keeps blooming through any amount of haze — dimming the emission itself
+(a distance fade) is the only thing bloom then sees.
 
 **Sibling shaders that share ToonLit's conventions** (`_ShadowTint` ambient floor,
 `Ramp()` banding, Forward+ `LIGHT_LOOP_BEGIN/END` so torches light them) — they must,
@@ -614,6 +669,36 @@ One RoomStyle asset defines a room type's whole look. What it holds:
   WITHIN a list, which is the case the restrictive reading was written for.
   **The general shape: reusing one asset across contexts means its METADATA is
   context-scoped too, even when the asset isn't.**
+- **Wall variant FREQUENCY vs DISTRIBUTION — two dials answering different questions,
+  and only one of them existed.** The pick was `Hash(cell) % pool.Length`: every
+  UNCAPPED variant exactly equally likely, fakeable only by listing a prefab twice
+  (which also merges its flags most-restrictively — the trap above, at close range).
+  - **`WallAsset.weight`** is frequency. UNCAPPED assets only; a capped one is dealt
+    by the reservation pre-pass which already fully determines its count, so the
+    inspector hides weight on capped entries rather than advertising a dead setting.
+    Weights resolve PER BAND, so an asset eligible in Bottom and Middle competes
+    separately in each and its share depends on what else is eligible there.
+  - **`WallAsset.noiseRange` + `ValueNoise`** is distribution, which weights can never
+    touch. A per-face hash is WHITE NOISE — statistically even, spatially
+    structureless — so weighting only makes a variant RARER, never CLUSTERED: you get
+    one cracked wall here and another three cells away, forever, and never a damaged
+    SECTION. Sampling a smooth field at the face's position gives clusters because
+    neighbouring faces sample nearly the same value. Default range (0,1) is eligible
+    everywhere, so clustering is opt-in per asset and `kit.wallNoiseScale` 0 disables
+    the field entirely.
+  - They COMPOSE: noise decides what is ELIGIBLE at a face, weight decides the MIX
+    among those. Noise picks a region's character, weight fills it.
+  - **NOT `Mathf.PerlinNoise`** — Unity documents it as free to differ between
+    platforms and versions, which would break rule 4 in the one way that stays
+    invisible until two machines are compared. `ValueNoise` is built from
+    `DungeonKitPlacer.Hash`, the integer hash every placement pass already trusts.
+    Each floor gets its own field (y folded into the salt); a shared vertical field
+    aligns a tall room's damage into a stripe that reads as deliberate masonry.
+  - `Emit` split into `Emit` (uniform pick — still right for floors, ceilings, bars,
+    arches) and `EmitPrefab` (placement + socket recording for an already-chosen
+    prefab), so the weighted wall pick and the reserved capped-asset path share ONE
+    placement path. That path had already diverged once and needed its socket
+    recording bolted on separately.
 - **Hallway / prison / stair walls:** `hallwayWalls` and `prisonWalls` lists
   (band always Bottom). Stair cells resolve their owner: interior stairs carved
   INSIDE a room (their cells never leave `Room.Cells` — only the CellType
@@ -777,12 +862,40 @@ scatter just places nothing.
   hanging lantern on the same tile. Bypasses only the one-prop-per-tile visual
   rule; physical blocking (collider tiers, flood-fill) still applies.
 
-**Alcoves (AlcovePropPlacer + `RoomStyle.alcoveStyles`)** — one PropSet per `AlcoveKind`.
+**Recesses — alcoves AND prison cells (`RecessPropPlacer`)** — one pass, because a prison
+and an alcove are the SAME generator primitive: both come out of `RecessFits`, both are
+validated dead-end pockets hanging off one hallway cell. They differ only in the CellType
+they commit and in what contents they take. Contents arrive as a `System.Func<float,
+PropSet>` on `RecessTarget` so the shared pass never learns what an `AlcoveKind` is.
 Its own pass because neither existing one fits: `RoomPropPlacer` hard-gates on
 `CellType.Room` and needs zones/entrance/centroid; `HallwayPropPlacer` scatters ONE global
-set over every corridor cell, where an alcove needs per-kind content and a hero prop.
+set over every corridor cell, where a recess needs per-kind content and a hero prop.
 Everything else is reused unchanged (`PropSet`, anchors, `PropTier`, `PropInstancer`,
 `PropSnap`, `WallFaceRegistry`).
+- **The generalisation was cheap because the three placement helpers already used nothing
+  but `Cells`, `Direction` and `MouthCell`** — which is exactly `RecessTarget`. Worth
+  noticing when a second caller for any pass appears: if the helpers only touch a handful
+  of fields, the "type" they take is already an interface waiting to be named.
+- **`PrisonSpec` replaced `List<BoundsInt> PrisonCells`.** A bounding box cannot support a
+  `Feature` prop, which needs the recess's `Direction` frame — without it a bunk lands on a
+  random wall and the cell reads as scattered junk rather than a place someone was kept.
+  Every field it carries was already computed by `RecessFits` and thrown away. Two
+  consumers were also quietly WRONG on a WIDE prison, whose footprint is a 1x1 vestibule
+  plus a pocket behind rather than its bbox: the capped-wall reservation rescanned the bbox
+  for Prison cells, and `PrisonDoorMarker` resolved its index by bbox containment.
+- **WEIGHTED contents pools** (`RoomStyle.prisonProps`, `AlcoveStyleEntry.variants`) are
+  what stop every statue nook in a run looking identical — the per-cell hash varies WHERE
+  things land, never WHAT is there. The existing single `props` slot survives as a weight-1
+  pool entry, so authored data keeps working and variants EXTEND the pool. **The variant
+  roll is drawn UNCONDITIONALLY once per recess**: rolling it only when a pool has variants
+  would make the draw count depend on authoring, so adding a variant to one kind would
+  reshuffle every recess after it.
+- **`RecessTarget.NoBlocking` reserves a prison's MOUTH.** The no-flood-fill exemption is
+  narrower than it looks — a dead end cannot SEVER the dungeon, but it can SEAL ITSELF, and
+  a crate behind the bars is indistinguishable from a generation bug. Reserving the mouth
+  is what leaves the flood-fill genuinely nothing to check. Décor is still allowed there;
+  only collider tiers are refused. In `PlaceScatterLike` the filter runs BEFORE the hash
+  sort, so a refused cell doesn't consume a chance roll and silently thin the density.
 - **Runs BEFORE TorchPlacer** — §8's most-constrained-first rule taken to its conclusion:
   an alcove has ~3 wall faces and one authored hero prop, making it the tightest consumer
   of wall real estate in the dungeon, and it must claim its feature face before a sconce
@@ -796,9 +909,10 @@ Everything else is reused unchanged (`PropSet`, anchors, `PropTier`, `PropInstan
 - **No flood-fill, deliberately.** A dead-end pocket off one corridor cell cannot sever
   anything. Do NOT add alcove cells to the hallway BFS "for safety" — it would let a
   blocking prop veto itself for nothing.
-- Own salt block **12101-12104**, never a shared counter, so tuning this pass can't shift
-  hallway (12002/12003/12005) or room (110xx) placements.
-- `snapToInsideCorner` pays off unusually well here: an alcove is nearly all inside corners.
+- **A salt BLOCK PER CALLER**, never a shared counter: alcoves 12100+, prisons 12300+,
+  same offsets within each (feature/wall/scatter/ceiling/variant). Tuning prisons must not
+  reshuffle every alcove. Hallway is 12002/12003/12005, rooms 110xx.
+- `snapToInsideCorner` pays off unusually well here: a recess is nearly all inside corners.
 
 **Hallways (HallwayPropPlacer + RoomStyle.hallwayProps):** one GLOBAL corridor
 PropSet — debris, cobwebs, roots. Corridors aren't rooms (no zones/centroid/
@@ -931,10 +1045,44 @@ PATH**, so an instanced mesh literally cannot be un-drawn when the prop dies.
   and use the cached one.** If you need a body's velocity at the moment of an impact, you
   cannot ask for it after the impact.
 
+**Per-room prop TINT (`PropTint`)** — the prop-side counterpart to the kit's emissive
+tinting (§5/§7), so a candle on a shrine shelf burns the same cold blue as its torches
+instead of its authored orange. ONE resolver shared by the room, hallway and recess
+placers: they differ only in whether a `Room` is in play, and a corridor prop resolving
+to a different colour than the kit shell around it is precisely the mismatch this
+prevents. Corridors and recesses pass a null Room and take `defaultTorchColor`, the same
+fallback the kit uses for a cell in no room.
+- **Opt-in PER ENTRY, not per material** (`tintToRoomPalette` / `tintMaterial` /
+  `tintIntensity`): the same emissive material is often reused on something that must NOT
+  shift hue — a lantern with coloured glass, a rune whose colour is its meaning.
+- **`tintMaterial` is the CHILD's own material.** A socket child is a different prefab
+  with a different material from its parent, and `AddInstance` replaces only the exact
+  material handed to it — keying the swap off `kit.emissiveMaterial` matched nothing and
+  every socket child silently kept its authored colour.
+- Works on `StaticDecor`, which is the point: a glowing candle with no Light and no
+  GameObject, costing one batch per palette colour rather than one per prop.
+
 **Inspector UX:** PropSet entries and RoomStyle's nested lists have custom
 drawers (`Assets/Editor/`) — summary foldout labels instead of "Element N",
-and PropSet entries show only the fields their anchor uses. Editor-only; when
-adding a PropEntry field, add it to the drawer's VisibleFields too.
+and PropSet entries show only the fields their anchor uses.
+**A CUSTOM `PropertyDrawer` DOES NOT RUN DECORATOR DRAWERS, so `[Header]` on a drawn type
+is INERT.** `PropSetEntryDrawer` draws each field with `EditorGUI.PropertyField` on a
+child property and sizes the block with `GetPropertyHeight`; neither includes decorators,
+and had a header rendered anyway the height maths would have mislaid every field below it.
+PropEntry's section markers are therefore plain comments, and the headings you actually
+see come from the `§` tokens in `VisibleFields` — **which is also what decides WHICH
+fields show for the selected anchor, so a new PropEntry field must be registered there or
+it never appears in the inspector at all.**
+
+**RoomStyle is grouped by SPACE, not by subsystem** (Rooms / Hallways / Alcoves / Prisons
+/ Pits, each contiguous). Authoring happens one place at a time — "what does a prison look
+like" — and the old subsystem grouping meant three trips to three sections, where it was
+easy to fill in a prison's walls and forget its floor. **`DungeonKit` is grouped by ORIGIN
+CONVENTION** for the same reason, and doing so exposed that there are TWO independent
+conventions rather than one: whether `globalVisualOffset` applies, AND whether the
+per-piece nudge is rotated into the piece's frame or world-space. A lintel is kit-frame
+with a ROTATED nudge; a bridge is base-origin with a WORLD one. Field order is
+presentation only — Unity serializes by NAME, so regrouping never loses authored data.
 
 **Built out:** every anchor above (floor scatter, ceiling scatter/grid/
 wall-snap/inside-corner, wall-mounted, feature, near-prop, near-wall),
@@ -2094,6 +2242,14 @@ Cosmetic-first; combat is far off ("get the world together first").
     ⏳ open: interactive fog that WAKES as the player walks through it (the compute-
     shader approach that started the conversation) — deliberately deferred, the cheap
     version looks good enough that the cost isn't justified yet.
+    ✅ **`Custom/URP/TextureEmission`** — stained-glass windows: luminance-derived glow
+    mask, per-window variation and flicker hashed from world position, grazing boost,
+    distance fade, DepthOnly pass. Its two bugs are the general lessons: a custom shader
+    on kit geometry must declare INSTANCING and fails silently otherwise (§5), and FOG IS
+    NOT AUTOMATIC (§6).
+    ✅ **ToonLit emission + flicker** — candles glow and burn per-instance, with a
+    per-element id so one candelabra's flames don't pulse in unison (§6). The shader is
+    the only place a `StaticDecor` piece can animate at all.
 26. ⏳ NPC AI remaining phases: **call for help** (shout = a loud `NoiseEvent`; the
     `NpcRegistry` and death cry already exist — rate-limit or it alert-loops);
     **disarm/rearm** (a dropped weapon is NOT a `Carryable`, whose `Interact()`
@@ -2151,6 +2307,16 @@ Cosmetic-first; combat is far off ("get the world together first").
     hook is the model); fall damage (`DamageType.Fall` exists but is unwired); NPCs stranded
     in a pit rely on `NpcLocomotion.CheckFall` recovering them, which is verified-by-play
     rather than designed.
+    ✅ **PRISON CONTENTS** — prisons take authored props from a WEIGHTED pool, so one cell
+    holds a bunk and a bucket and the next a skeleton in chains. `AlcovePropPlacer` became
+    `RecessPropPlacer` over both (§8), since the two were always the same primitive.
+    ✅ **WALL VARIANT VARIETY** — per-asset `weight` (frequency) plus `ValueNoise` +
+    `noiseRange` (clustering), which are different questions and needed different answers
+    (§7). Damaged SECTIONS rather than an even sprinkle.
+    ⏳ open: the same clustering applied to FLOORS and ceilings — `ValueNoise` is already
+    generic and the floor pick is the same uniform `Hash % length`; per-kind kit walls and
+    floors for alcoves; an arch on the alcove mouth (pay the `BuildArchways` + `FrameFace`
+    pair cost together, §7, or posts land through arches).
 30. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
     doored rooms = lockable set), difficulty gradient by graph depth, equipment
     + SwayProfiles.
