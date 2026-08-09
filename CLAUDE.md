@@ -2437,6 +2437,81 @@ EVERY acquisition, so each caller overwrites the last. **Unlike the torch loop t
 need NOT reach zero**: a one-shot ends on its own, so there is no reassignment to hide, and
 staying faintly audible at the edge of the range is a legitimate choice.
 
+### Occlusion (`AudioOcclusion` + `AudioOcclusionManager`)
+
+Sound with geometry between it and the listener is quietened and, more importantly,
+LOWPASSED. Settings live on `DungeonVisualizer` beside `FogSettings`, because the manager
+auto-installs on first use and so cannot otherwise be authored before play.
+
+- **NOT VIA THE ROOM GRAPH** (the plan's own corrected premise). The Delaunay/MST graph
+  encodes "a corridor was carved between these two rooms", NOT "sound can travel between
+  them": two rooms sharing a wall are usually not graph-connected, and two that are can be
+  thirty metres apart through winding corridor. It would muffle the room you can hear
+  through the wall while passing sound freely down a corridor that should attenuate it —
+  wrong in both directions.
+- **TWO PATHS.** Loops register and are re-tested round-robin with smoothing (a creak must
+  un-muffle as you round the corner; smoothing stops a body crossing the sightline making
+  it stutter). One-shots take ONE raycast when they play — nothing later can correct a
+  sound that has already finished. The 8 POOLED voices are the exception and are tracked
+  continuously, because they carry the multi-second ambient clips where walking out of
+  earshot mid-clip is normal.
+- **`sourceSkin` IGNORES THE LAST STRETCH OF PATH NEXT TO THE SOURCE, AND IS LOAD-BEARING.**
+  Sound here is emitted FROM surfaces constantly, so a ray run all the way to the source
+  hits the geometry the sound is coming off. Two real cases: `SurfaceImpact` plays at the
+  CONTACT POINT, which is by definition exactly on a collider, so every arrow and sword
+  strike on a wall would have read as fully occluded; and **a wall torch has only
+  `wallGap` (0.3) − `wallMargin` (0.2) = 0.1m of clearance from the greybox collision
+  plane**, which is far too fine a margin to survive a raycast at a grazing angle down a
+  corridor. Note that pairing: `wallMargin` insets collision TOWARD the room (§5), so it
+  eats directly into the torch's standoff, and raising it past 0.3 would put torches behind
+  their own wall.
+- **`occludedVolume` AND `occludedCutoff` ARE NOT INDEPENDENT — they double-count.** A
+  lowpass at 900Hz is itself a large attenuation for BRIGHT material, and the ambient
+  library (drips, chains, chants) is almost all bright, so cutting the highs already
+  removes most of their energy; a further broadband ×0.4 made them vanish entirely. Erring
+  HIGH on volume (0.65–0.75) and letting the cutoff carry the character is the right
+  compromise, because the cutoff is what reads as BLOCKED where attenuation alone reads as
+  merely further away. If impacts ever feel under-muffled while ambience feels right, that
+  is the signal one global multiplier is not enough and it wants to move onto `AudioSpatial`
+  per sound family.
+- **EXEMPTION BY `spatialBlend`, NEVER A LIST.** Anything 2D — the player's own footsteps,
+  sword, bow, and the ambient beds — is not in the world and cannot be occluded by it. A
+  new 2D sound gets this right without being told.
+- **`blockerMask` MUST EXCLUDE THE NPC LAYER** (and Player, and Viewmodel): a goblin
+  between you and a torch is not a wall, and a crowd crossing the line would make
+  everything behind it flutter. Third instance of this rule after `FootstepSurface.probeMask`
+  and `NpcFootIK.groundMask`.
+- **FILTER-ONLY REGISTRATION EXISTS FOR SOURCES WHOSE VOLUME IS THEIR OWN STATE.**
+  `PhysicsDoorAudio` and `HangingCageAudio` `MoveTowards` on `volume` and then READ IT BACK
+  to decide whether to play at all, so a second writer would corrupt the accumulator rather
+  than merely fight it. Muffling alone is the better half anyway.
+- **A POOLED VOICE MUST BE SEEDED PER ACQUISITION** or a sound in the open inherits the
+  muffling of the impact before it — and `Begin` SNAPS rather than eases, because a NEW
+  sound should start correct rather than slide into correctness over the smoothing window.
+
+**BUILDING IT EXPOSED THREE BUGS THAT WERE NOTHING TO DO WITH OCCLUSION**, two of which
+were shipping silently — which is the argument for building a system that asks "can the
+player actually perceive this" earlier rather than later. Ambient one-shots were being
+placed INSIDE WALLS (the corridor scan sampled a ±4 cell box asking only "open, with a
+floor", which reaches into adjacent prisons and rooms); the bed crossfade could not be
+interrupted; and impacts would have occluded themselves at their own contact point.
+
+**AN AMBIENT ONE-SHOT IS NOW PLACED ONLY WHERE IT CAN BE HEARD** (`AmbientDirector.Audible`,
+one raycast per candidate). Deliberately asked of the occlusion system rather than by
+CellType, which gets two cases backwards: an ALCOVE is typed Hallway and is good ambience,
+while a prison MOUTH is genuinely audible from the corridor. It also self-corrects when the
+mask or `sourceSkin` is retuned. **`TorchAudioPool` does NOT yet do this** — it picks the
+nearest torches by raw distance, which preferentially picks ones through a thin wall, and
+that is the likeliest thing to revisit if torch crackle ever feels absent.
+
+**A CROSSFADE PARAMETERISED BY ONE CLOCK CANNOT BE INTERRUPTED.** `AmbientDirector.Layer`
+drove both sources from a shared `t` reset to 0 on every `Play`, so re-entering a space
+mid-fade recomputed the OUTGOING source as `master * (1 - 0)` and slammed it to full — the
+room's bed popping in every time you crossed a doorway twice. Tracking each source's own
+level (`MoveTowards`) makes interruption free, and interruption is the NORMAL case, because
+a doorway is exactly where people linger and turn around. Returning to a bed still fading
+out swaps the roles rather than calling `Play` again, which would restart it from sample 0.
+
 ### THE VOICE BUDGET (F7 — `AudioBudgetDebug`)
 
 Unity's real-voice limit is ~32. Past it, voices are STOLEN, and a stolen voice is not a
@@ -2698,9 +2773,19 @@ Cosmetic-first; combat is far off ("get the world together first").
     cannot disagree about which room you are in), `ReverbDirector` (computed from room
     size, driving a mixer BUS rather than a listener filter, in MILLIBELS not dB), and
     surface-aware footsteps that EXTENDED `SurfaceType` rather than forking it.
+    ✅ **step 9 (occlusion)** — pulled forward ahead of 7/8, since it depends on neither and
+    they are blocked on a content decision. Raycast-based, NOT the room graph; it promptly
+    exposed three unrelated bugs, two of them shipping silently (see §10b).
     ⏳ **7** music stems + Snapshots + `TensionSend` — needs the lifecycle decision first
     (music survives a scene reload via `DontDestroyOnLoad`, ambience must NOT, and F1 /
-    PgUp / the exit portal all reload); **8** ducking; **9** occlusion.
+    PgUp / the exit portal all reload), and a content decision: **layers that STACK or tracks
+    that SWAP**. Vertical layering needs stems authored same-tempo/key/length and
+    subset-complete (pad alone, pad+perc, and all three must each sound finished); most
+    sourced music is a finished mix, and library "stems" usually means MIX stems (drums,
+    bass, strings) which are not intensity layers. If it ends up finished tracks, the design
+    becomes HORIZONTAL — crossfading Explore/Combat cues on the same `TensionSend` — which is
+    legitimate but less responsive. `TensionSend` itself is identical either way, so build
+    the dial first and let placeholder loops prove it. **8** ducking (needs 7).
 26. ⏳ NPC AI remaining phases: **call for help** (shout = a loud `NoiseEvent`; the
     `NpcRegistry` and death cry already exist — rate-limit or it alert-loops);
     **disarm/rearm** (a dropped weapon is NOT a `Carryable`, whose `Interact()`
