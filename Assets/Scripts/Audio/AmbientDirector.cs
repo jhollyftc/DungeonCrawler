@@ -330,30 +330,10 @@ namespace DungeonGen
         }
 
         /// <summary>
-        /// Which profile applies where the player is standing. Order matters: a pit cell also
-        /// resolves to a Room (RoomAt falls through PitAt), and an alcove cell is CellType
-        /// Hallway, so the most specific space has to be asked about first.
+        /// Which profile applies where the player is standing. The resolution — and its
+        /// load-bearing ORDER — lives in AudioSpace, shared with ReverbDirector so ambience
+        /// and reverb can never disagree about which space you are in.
         /// </summary>
-        AudioProfile Resolve()
-        {
-            var style = vis.roomStyle;
-            var gen = vis.Generator;
-            if (gen == null || tracker == null || !tracker.HasPlayer) return null;
-
-            Vector3Int cell = tracker.CurrentCell;
-
-            PitSpec pit = tracker.CurrentPit;
-            if (pit != null) return style.PitAudio(pit.Owner != null ? pit.Owner.Type : RoomType.Generic);
-
-            Room room = tracker.CurrentRoom;
-            if (room != null) return style.AudioFor(room.Type);
-
-            if (gen.PrisonAt(cell) != null) return style.PrisonAudio();
-
-            AlcoveSpec alcove = gen.AlcoveAt(cell);
-            if (alcove != null) return style.AlcoveAudio(alcove.Kind);
-
-            return style.HallwayAudio();
-        }
+        AudioProfile Resolve() => AudioSpace.Resolve(vis, tracker).Profile;
     }
 }

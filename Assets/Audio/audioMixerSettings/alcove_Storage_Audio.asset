@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e27e0b293a2d5346930bbb573a59285, type: 3}
+  m_Name: alcove_Storage_Audio
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.AudioProfile
+  ambientBaseLayer: {fileID: 8300000, guid: 67a83247ccda9cb4d9c58d39379f4cee, type: 3}
+  ambientRoomLayer: {fileID: 0}
+  oneShotPool:
+  - {fileID: 8300000, guid: 2174658275ee61e44ab629fe005097a1, type: 3}
+  - {fileID: 8300000, guid: b262063310ffd924da4761502d67e22d, type: 3}
+  - {fileID: 8300000, guid: 92e8c807c754a1c49a6286b17a2da9b0, type: 3}
+  - {fileID: 8300000, guid: 7def720ac5c0bc94199bbe6a4877ea48, type: 3}
+  - {fileID: 8300000, guid: 96a0c1453bf1a164e893c09cc5bae0dc, type: 3}
+  - {fileID: 8300000, guid: 034d0b42a2dd8db448015a790ad0cecb, type: 3}
+  - {fileID: 8300000, guid: 49eba15f23470cc4282845b44507a87c, type: 3}
+  oneShotIntervalRange: {x: 5, y: 10}
+  oneShotSpatial:
+    spatialBlend: 1
+    minDistance: 0.5
+    maxDistance: 15
+    rolloff: 0
+    spread: 30
+  overrideReverb: 1
+  reverb:
+    decayTime: 0.6
+    room: -2100
+    roomHF: -1700
+  musicTensionBaseline: 0
+  voicePriority: 64

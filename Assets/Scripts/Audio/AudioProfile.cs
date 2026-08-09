@@ -20,11 +20,11 @@ namespace DungeonGen
     [System.Serializable]
     public struct ReverbSettings
     {
-        [Tooltip("Reverberation decay, seconds. Small stone cell ~0.6, corridor ~1.0, great hall ~2.5, a pit shaft longer still.")]
+        [Tooltip("Reverberation decay, SECONDS (the one parameter here in an intuitive unit). Prison cell ~0.5, alcove ~0.6, corridor ~1.1, small room ~0.8, great hall ~2.6, a pit shaft ~3.2. Mixer range is 0.1..20.")]
         public float decayTime;
-        [Tooltip("Overall reverb level, dB (mixer range is roughly -80..0). Less negative = wetter.")]
+        [Tooltip("Overall reverb level, MILLIBELS — NOT decibels. Unity's SFX Reverb effect takes mB across -10000..0, so 100 here is 1 dB and the engine's own default is -1000. Less negative = wetter.\n\nThis unit is the trap: authored as though it were dB, every value from -6 to -24 lands within a quarter of a decibel of FULLY WET, so a closet and a grand hall come out identically drenched and the size blend looks broken. Useful range is about -2500 (dry, tight) to -600 (cavernous).")]
         public float room;
-        [Tooltip("High-frequency reverb level, dB. More negative = darker, stone-damped tail; near 0 = bright and tiled.")]
+        [Tooltip("High-frequency reverb level, MILLIBELS (same -10000..0 scale as Room). More negative = darker, stone-damped tail; near 0 = bright and tiled. A dungeon wants this well below Room — around -1100 in a hall, -2400 down a pit, where the tail should be all low rumble.")]
         public float roomHF;
 
         public static ReverbSettings Lerp(ReverbSettings a, ReverbSettings b, float t) => new ReverbSettings
@@ -125,7 +125,7 @@ namespace DungeonGen
         [Header("Reverb")]
         [Tooltip("Author reverb for this space instead of deriving it from room SIZE. Off = the computed value, which is the normal case — a crypt wanting more wet than its dimensions imply is the exception this exists for.")]
         public bool overrideReverb = false;
-        public ReverbSettings reverb = new ReverbSettings { decayTime = 1.2f, room = -12f, roomHF = -18f };
+        public ReverbSettings reverb = new ReverbSettings { decayTime = 1.1f, room = -1400f, roomHF = -1400f };
 
         [Header("Music")]
         [Tooltip("Floor for the tension signal in this space (0-1). A shrine can sit uneasy while empty; a merchant room can refuse to get tense at all.")]

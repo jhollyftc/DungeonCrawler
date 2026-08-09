@@ -500,7 +500,7 @@ MonoBehaviour:
   - {fileID: 919132149155446097, guid: 683c5e18ac200ad4485a7c6adc038a25, type: 3}
   hallwayLintelPrefabs: []
   hallwayProps: {fileID: 11400000, guid: f091b7636f761184fb6292fa86c06da5, type: 2}
-  hallwayAudio: {fileID: 11400000, guid: f836fb44a2bf476439f792ebb4ede3ec, type: 2}
+  hallwayAudio: {fileID: 11400000, guid: d21f3280a60cf7c438731d4bbb240f82, type: 2}
   alcoveStyles:
   - kind: 0
     props: {fileID: 11400000, guid: 0ccff1c53f85006478704bb65cab13e6, type: 2}
@@ -514,7 +514,15 @@ MonoBehaviour:
   - kind: 3
     props: {fileID: 11400000, guid: 284721b688d17184db5d71c760919eee, type: 2}
     variants: []
-  alcoveAudio: []
+  alcoveAudio:
+  - kind: 0
+    profile: {fileID: 11400000, guid: 1b48ac8b16441994a8ec128a45edafa0, type: 2}
+  - kind: 1
+    profile: {fileID: 11400000, guid: 6e5b3c9d414348945894188fe04d7f5f, type: 2}
+  - kind: 2
+    profile: {fileID: 11400000, guid: 34535b6fe4920ef45909020401d4a5cb, type: 2}
+  - kind: 3
+    profile: {fileID: 11400000, guid: 5dc968ba97809624faa21e4e1bc25011, type: 2}
   prisonWalls:
   - prefab: {fileID: 5843945103381957244, guid: e1b95c79d79cba548b7ade94b37893e6, type: 3}
     bottom: 1
@@ -584,7 +592,7 @@ MonoBehaviour:
   prisonProps:
   - props: {fileID: 11400000, guid: e61c4e446a16c82428a34c9cf4edf536, type: 2}
     weight: 1
-  prisonAudio: {fileID: 0}
+  prisonAudio: {fileID: 11400000, guid: f836fb44a2bf476439f792ebb4ede3ec, type: 2}
   pitWalls:
   - prefab: {fileID: 6816111268289552834, guid: a507041bcc2604848b97158ebe1c3bea, type: 3}
     bottom: 1

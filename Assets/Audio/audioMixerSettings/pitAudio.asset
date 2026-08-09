@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e27e0b293a2d5346930bbb573a59285, type: 3}
+  m_Name: pitAudio
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.AudioProfile
+  ambientBaseLayer: {fileID: 8300000, guid: 67a83247ccda9cb4d9c58d39379f4cee, type: 3}
+  ambientRoomLayer: {fileID: 0}
+  oneShotPool:
+  - {fileID: 8300000, guid: a22c726c0d7b5204eac7481485e5c6c7, type: 3}
+  - {fileID: 8300000, guid: 5ef8160f8c345b64896480983a54ceb5, type: 3}
+  - {fileID: 8300000, guid: cc339d505d53c4f4a830b76be430ebe9, type: 3}
+  - {fileID: 8300000, guid: fd292486c3a15a84eb2fac173fcbd09d, type: 3}
+  oneShotIntervalRange: {x: 1, y: 2}
+  oneShotSpatial:
+    spatialBlend: 1
+    minDistance: 0.5
+    maxDistance: 10
+    rolloff: 0
+    spread: 30
+  overrideReverb: 1
+  reverb:
+    decayTime: 3.2
+    room: -700
+    roomHF: -2400
+  musicTensionBaseline: 0
+  voicePriority: 64
