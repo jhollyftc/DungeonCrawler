@@ -49,6 +49,8 @@ namespace DungeonGen
         public bool tintToRoomPalette = false;
         [Tooltip("The child's OWN emissive material, when tintToRoomPalette is on and the child glows without a Light. That material is swapped for the room's cached tinted variant.\n\nSet this whenever the child has its own glow material — a candle's wax-and-flame material is NOT the kit's wall-emissive material, and the swap only replaces the exact material it is given. Leave empty and the kit's emissiveMaterial is used, which is correct only for a child that literally shares the walls' emissive material.\n\nIgnored unless tintToRoomPalette is on. A child that glows via a Light needs nothing here.")]
         public Material tintMaterial;
+        [Tooltip("How brightly this child's emissive glows, independent of the room's colour. 0 = inherit the kit's global Emissive Intensity, which is the old behaviour.\n\nThis is the socket counterpart to a PropSet entry's tintIntensity, and it exists for the same reason: one emissive material and one room palette should be able to serve a dim shelf candle AND a blazing brazier. Without it every socketed glow in the dungeon shared a single global brightness.\n\nEmission only BLOOMS above 1 (§5), so values under 1 read as tinted-but-flat rather than dim. Ignored unless tintToRoomPalette is on.")]
+        public float tintIntensity = 0f;
 
         void OnDrawGizmosSelected()
         {

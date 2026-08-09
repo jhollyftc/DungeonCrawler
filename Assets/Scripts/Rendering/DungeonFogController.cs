@@ -40,6 +40,37 @@ namespace DungeonGen
         float cellSize;
         Vector3 origin;
 
+        /// <summary>Fog colour for a room type: its palette HUE at its own fog brightness.</summary>
+        public static Color FogColorFor(RoomStyle style, RoomType type)
+        {
+            var e = style.For(type);
+            return FogColor(e.torchColor, e.fogIntensity);
+        }
+
+        /// <summary>
+        /// HUE FROM THE PALETTE, BRIGHTNESS FROM ITS OWN DIAL.
+        ///
+        /// Fog used to be assigned the torch colour verbatim, which quietly welded two
+        /// unrelated authoring decisions together: pushing a torch colour's HDR intensity up
+        /// so the flame VFX would bloom also washed the fog out, and there was no way to have
+        /// a punchy flame in a deep dark room. The magnitude is dropped and replaced.
+        ///
+        /// The SHARED HUE is the part that must not be broken (§7): fog, firelight, flame VFX
+        /// and emissive kit all come from one colour so a blue shrine cannot end up with
+        /// orange haze. That invariant is about hue, not brightness, so per-consumer
+        /// brightness costs nothing.
+        ///
+        /// Normalizing by the MAX CHANNEL rather than by luminance keeps the most saturated
+        /// channel at 1.0, so an LDR palette colour (the common case, max channel already 1)
+        /// passes through UNCHANGED at fogIntensity 1 — the old behaviour, exactly, for every
+        /// room that was authored before HDR was pushed into these swatches.
+        /// </summary>
+        public static Color FogColor(Color palette, float fogIntensity)
+        {
+            Color hue = RoomStyle.Hue(palette);
+            return new Color(hue.r * fogIntensity, hue.g * fogIntensity, hue.b * fogIntensity, 1f);
+        }
+
         struct RoomEntry
         {
             public Bounds bounds; // world-space bbox (approach blending only)
@@ -64,7 +95,7 @@ namespace DungeonGen
                 var b = new Bounds();
                 b.SetMinMax((Vector3)r.Bounds.min * cellSize + origin,
                             (Vector3)r.Bounds.max * cellSize + origin);
-                rooms.Add(new RoomEntry { bounds = b, color = style.For(r.Type).torchColor });
+                rooms.Add(new RoomEntry { bounds = b, color = FogColorFor(style, r.Type) });
             }
             current = RenderSettings.fogColor;
             initialized = true;
@@ -77,8 +108,9 @@ namespace DungeonGen
             if (cam == null) return;
             Vector3 pos = cam.transform.position;
 
-            // Corridors / untyped space: the style's default torch color.
-            Color target = style.defaultTorchColor;
+            // Corridors / untyped space: the style's default torch color, at the default
+            // fog brightness.
+            Color target = FogColor(style.defaultTorchColor, style.DefaultFogIntensity);
 
             // WHICH ROOM the player is in comes from PlayerRoomTracker; the camera position
             // above is still used for the PROXIMITY and VIEW terms below, which are about
@@ -98,7 +130,7 @@ namespace DungeonGen
             }
             if (inside != null)
             {
-                target = style.For(inside.Type).torchColor;
+                target = FogColorFor(style, inside.Type);
             }
             else
             {

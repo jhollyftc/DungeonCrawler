@@ -16,9 +16,12 @@ namespace DungeonGen
         public struct Entry
         {
             public RoomType type;
-            [ColorUsage(false, true)] public Color torchColor; // HDR so it can be punchy
-            [Tooltip("Multiplier on the base torch intensity for this room type.")]
+            [Tooltip("The room's LIGHT COLOUR — one hue shared by the torch light, the flame VFX, the fog and any emissive kit or props, so they can never drift apart.\n\nITS HDR INTENSITY IS NOT THE ROOM'S BRIGHTNESS DIAL. The magnitude here scales the flame VFX and (implicitly) the light, because both consume the colour directly — but fog reads only the HUE and takes its brightness from fogIntensity below, and the light takes its own from intensityScale. Author the HUE here; author brightness in the per-consumer scales.")]
+            [ColorUsage(false, true)] public Color torchColor; // HDR so the flame can be punchy
+            [Tooltip("Multiplier on the base torch LIGHT intensity (TorchSettings.intensity) for this room type. Affects ONLY the Light component — not the flame VFX, not the fog.")]
             public float intensityScale;
+            [Tooltip("Brightness of the FOG in this room, independent of everything else.\n\nFog takes the HUE of torchColor and this as its magnitude, so pushing the torch colour's HDR intensity up to make flames bloom no longer washes the fog out — which is what made these two impossible to author separately. 1 reproduces a plain LDR torch colour exactly; lower for a darker, deeper room.")]
+            public float fogIntensity;
             [Tooltip("Multiplier on torch spacing (< 1 = more torches / brighter, > 1 = darker). 1 = default.")]
             public float spacingScale;
         }
@@ -26,6 +29,43 @@ namespace DungeonGen
         [Tooltip("Color used for corridor torches and any room type without an entry.")]
         [ColorUsage(false, true)] public Color defaultTorchColor = new Color(1f, 0.72f, 0.42f);
         public float defaultIntensityScale = 1f;
+        [Tooltip("Fog brightness for corridors and any room type without an entry. See Entry.fogIntensity.")]
+        public float defaultFogIntensity = 1f;
+
+        /// <summary>
+        /// defaultFogIntensity, treating 0 as unauthored.
+        ///
+        /// THIS ASSET PREDATES THE FIELD, and §9's lesson is that a ScriptableObject does not
+        /// reliably pick up a new field's C# initializer — the alcove budget read as all-zero
+        /// for exactly this reason and cost real debugging. A zero here would multiply every
+        /// fog colour in the dungeon by nothing and black the fog out globally, which is a far
+        /// worse failure than a wrong-but-visible value.
+        /// </summary>
+        public float DefaultFogIntensity => defaultFogIntensity > 0f ? defaultFogIntensity : 1f;
+
+        /// <summary>
+        /// A palette colour reduced to its HUE — scaled so the strongest channel is 1, which
+        /// preserves the ratios between channels (hue and saturation) and discards only the
+        /// magnitude.
+        ///
+        /// THE RULE THIS ENFORCES: `torchColor` supplies the HUE, and every consumer takes its
+        /// BRIGHTNESS from its own scalar. Before this, the colour's HDR magnitude silently
+        /// scaled the torch light AND the fog AND the flame VFX at once, so making a flame
+        /// bloom also flooded the walls and washed out the fog, and there was no way to want
+        /// one without the others. Brightness now lives in intensityScale (light),
+        /// fogIntensity (fog) and the raw colour magnitude (flame VFX — the one consumer that
+        /// genuinely wants HDR, since bloom is what a flame is).
+        ///
+        /// The shared-hue invariant (§7) is untouched: fog, firelight, flame and emissive kit
+        /// still come from ONE colour, so a blue shrine cannot end up with orange haze. That
+        /// rule was always about hue, never about brightness.
+        /// </summary>
+        public static Color Hue(Color c)
+        {
+            float m = Mathf.Max(c.r, Mathf.Max(c.g, c.b));
+            if (m <= 0.0001f) return Color.black;
+            return new Color(c.r / m, c.g / m, c.b / m, 1f);
+        }
         public float defaultSpacingScale = 1f;
 
         public List<Entry> entries = new List<Entry>
@@ -55,12 +95,20 @@ namespace DungeonGen
                 foreach (var e in entries) lookup[e.type] = e;
             }
             if (lookup.TryGetValue(type, out var entry) && entry.intensityScale > 0f)
+            {
+                // fogIntensity was added after these entries were authored, so every existing
+                // asset deserializes it as 0 — which would black out the fog in every styled
+                // room while corridors kept working. Treat 0 as "not authored" and fall back,
+                // exactly as intensityScale > 0 is already used to mean "this entry is real".
+                if (entry.fogIntensity <= 0f) entry.fogIntensity = DefaultFogIntensity;
                 return entry;
+            }
             return new Entry
             {
                 type = type,
                 torchColor = defaultTorchColor,
                 intensityScale = defaultIntensityScale,
+                fogIntensity = DefaultFogIntensity,
                 spacingScale = defaultSpacingScale,
             };
         }

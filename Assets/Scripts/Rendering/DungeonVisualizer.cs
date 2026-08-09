@@ -274,7 +274,10 @@ namespace DungeonGen
                     {
                         EmissiveMaterialVariants.debugLog = kit.debugEmissive;
                         Room r = gen.RoomAt(cell);
-                        Color c = r != null ? roomStyle.For(r.Type).torchColor : roomStyle.defaultTorchColor;
+                        // HUE ONLY — kit.emissiveIntensity is the brightness dial for glowing
+                        // kit pieces; the palette's own HDR magnitude must not multiply into it.
+                        Color c = RoomStyle.Hue(r != null ? roomStyle.For(r.Type).torchColor
+                                                          : roomStyle.defaultTorchColor);
                         tint = EmissiveMaterialVariants.Get(
                             kit.emissiveMaterial, c * kit.emissiveIntensity, kit.emissiveProperty);
                     }

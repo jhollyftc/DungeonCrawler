@@ -353,9 +353,24 @@ namespace DungeonGen
 
                 if (light != null)
                 {
-                    light.color = col;
+                    // HUE ONLY. Unity multiplies a Light's colour into its output, so an HDR
+                    // palette swatch brightened the light as well as the flame — raising a
+                    // room's colour intensity to make the fire bloom also flooded its walls,
+                    // which is exactly the coupling intensityScale is supposed to control.
+                    // Magnitude is dropped here and comes from intensityScale alone; the flame
+                    // VFX above still gets the raw HDR colour, because bloom IS the flame.
+                    light.color = RoomStyle.Hue(col);
                     light.intensity = s.intensity * intensityScale;
                     light.range = s.range;
+
+                    // HAND THE INTENSITY TO THE FLICKER, or it discards it. TorchFlicker
+                    // captures its base at Awake — which ran inside the Instantiate above,
+                    // BEFORE this line — and then rewrites light.intensity from that captured
+                    // value every frame. Without this the room's intensityScale survives a
+                    // single frame and is then overwritten by the prefab's authored intensity:
+                    // a brief bright flash at load, after which every value from 0 to 100
+                    // looks identical.
+                    if (flicker != null) flicker.SetBaseIntensity(light.intensity);
                     // Under discipline, start shadowless — the culler promotes
                     // only the nearest maxShadowCasters to cast each frame.
                     light.shadows = (s.disciplinedShadows && s.shadows != LightShadows.None)
@@ -380,15 +395,6 @@ namespace DungeonGen
             }
 
             Debug.Log($"[Dungeon] {accepted.Count} torches placed (from {slots.Count} candidate wall slots).");
-
-                    // HAND THE INTENSITY TO THE FLICKER, or it discards it. TorchFlicker
-                    // captures its base at Awake — which ran inside the Instantiate above,
-                    // BEFORE this line — and then rewrites light.intensity from that captured
-                    // value every frame. Without this the room's intensityScale survives a
-                    // single frame and is then overwritten by the prefab's authored intensity:
-                    // a brief bright flash at load, after which every value from 0 to 100
-                    // looks identical.
-                    if (flicker != null) flicker.SetBaseIntensity(light.intensity);
             return root;
         }
 

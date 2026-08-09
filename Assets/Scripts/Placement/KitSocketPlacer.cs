@@ -73,10 +73,19 @@ namespace DungeonGen
 
                 // Room palette for this piece, resolved once. Falls back to the corridor colour,
                 // same source the fog and flame VFX read (§7), so nothing can drift.
+                // TWO FORMS OF THE PALETTE, exactly as TorchPlacer keeps them apart.
+                //   RAW keeps the swatch's HDR magnitude and goes ONLY to the flame VFX, because
+                //   bloom IS the flame — normalizing it puts a socketed candle's fire below the
+                //   bloom threshold and it stops glowing at all.
+                //   HUE drops the magnitude and drives the Light's colour and the emissive
+                //   variant, whose brightness comes from their own dials instead. Otherwise
+                //   raising a room's colour intensity to make its flames bloom also blew out
+                //   every socketed candle in it, with no way to want one without the other.
                 Room room = gen.RoomAt(site.cell);
-                Color palette = style != null
+                Color paletteRaw = style != null
                     ? (room != null ? style.For(room.Type).torchColor : style.defaultTorchColor)
                     : Color.white;
+                Color palette = RoomStyle.Hue(paletteRaw);
 
                 foreach (var s in sockets)
                 {
@@ -136,8 +145,13 @@ namespace DungeonGen
                     if (s.tintToRoomPalette && style != null && tintSrc != null)
                     {
                         replaceMat = tintSrc;
+                        // Per-socket brightness, falling back to the kit's global. 0 means
+                        // "not authored" rather than "black", the same convention RoomStyle's
+                        // intensityScale and fogIntensity use — an emissive at literal zero is
+                        // indistinguishable from a broken tint, so it can't be a usable value.
+                        float glow = s.tintIntensity > 0f ? s.tintIntensity : kit.emissiveIntensity;
                         withMat = EmissiveMaterialVariants.Get(
-                            tintSrc, palette * kit.emissiveIntensity, kit.emissiveProperty);
+                            tintSrc, palette * glow, kit.emissiveProperty);
                     }
 
                     bool tintLights = s.tintToRoomPalette && style != null;
@@ -146,7 +160,7 @@ namespace DungeonGen
                         {
                             position = childPos,
                             rotation = childRot,
-                            configure = tintLights ? (System.Action<GameObject>)(go => TintLights(go, palette, flameProp)) : null,
+                            configure = tintLights ? (System.Action<GameObject>)(go => TintLights(go, palette, paletteRaw, flameProp)) : null,
                         } },
                         instancer != null ? tier : PropTier.FullGameObject,
                         // NAMED, not positional. PlaceProps takes `bool castShadows` before the
@@ -188,7 +202,7 @@ namespace DungeonGen
         /// TorchPlacer does for a computed torch, so an authored sconce and a computed one in
         /// the same room cannot burn different colours.
         /// </summary>
-        static void TintLights(GameObject go, Color palette, string flameProperty)
+        static void TintLights(GameObject go, Color palette, Color paletteRaw, string flameProperty)
         {
             // StaticDecor produces NO GameObject, and PlaceProps still invokes configure with null
             // there (so a decor placement can register a position). A light-tinting hook therefore
@@ -207,7 +221,7 @@ namespace DungeonGen
                 // bright core fading to smoke — and the palette owns only the hue. A missing
                 // property is not an error; the flame simply keeps its authored colour.
                 int id = Shader.PropertyToID(flameProperty);
-                if (flame.HasVector4(id)) flame.SetVector4(id, palette);
+                if (flame.HasVector4(id)) flame.SetVector4(id, paletteRaw);   // RAW: bloom is the flame
             }
         }
     }

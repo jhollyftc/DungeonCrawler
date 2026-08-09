@@ -65,10 +65,17 @@ namespace DungeonGen
             withMat = null;
             if (tintMaterial == null || style == null) return;
 
-            Color palette = room != null ? style.For(room.Type).torchColor : style.defaultTorchColor;
+            // HUE ONLY (RoomStyle.Hue): the palette supplies the colour, `intensity` supplies
+            // the brightness. Without this the swatch's own HDR magnitude multiplied in on top,
+            // so raising a room's colour intensity to make its FLAMES bloom also blew out every
+            // candle and glowing prop in the room, and tintIntensity could not be authored
+            // independently of it.
+            Color palette = RoomStyle.Hue(room != null ? style.For(room.Type).torchColor
+                                                       : style.defaultTorchColor);
             replaceMat = tintMaterial;
-            // Emission only BLOOMS above 1 (§5), and the palette is LDR — intensity is what
-            // lifts it into HDR range, exactly as kit.emissiveIntensity does for kit pieces.
+            // Emission only BLOOMS above 1 (§5), and the palette is normalized to a max channel
+            // of 1 — intensity is what lifts it into HDR range, exactly as kit.emissiveIntensity
+            // does for kit pieces.
             // Kept per-ENTRY rather than borrowed from the kit so a dim shelf candle and a
             // blazing brazier can share one material and one palette at different brightness.
             withMat = EmissiveMaterialVariants.Get(tintMaterial, palette * intensity);
