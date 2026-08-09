@@ -10,13 +10,20 @@ namespace DungeonGen
     /// it from sounding like a metronome. Also plays a landing thump when
     /// touching down from a fall.
     ///
-    /// All-stone dungeon for now, so one clip set. When surface variety
-    /// arrives (wood, water), this is where a downward raycast would pick the
-    /// set per material.
+    /// SURFACE-AWARE: each step probes downward and picks its clip from the
+    /// SurfaceLibrary, so a wooden bridge over a pit sounds wooden with no
+    /// authoring beyond the Surface the bridge already carries for sword hits.
+    /// `clips` below remains the fallback for any surface the library doesn't
+    /// answer for, so leaving the library empty keeps today's behaviour exactly.
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
     public class PlayerFootsteps : MonoBehaviour
     {
+        [Header("Surface")]
+        [Tooltip("Resolves the clip from what is underfoot. Leave its Library empty to use the fallback clips below for everything.")]
+        public FootstepSurface surface = new FootstepSurface();
+
+        [Header("Fallback clips (used when the surface has none authored)")]
         public AudioClip[] clips;
         public AudioClip landClip;
         [Tooltip("Meters of ground travel per step.")]
@@ -112,6 +119,15 @@ namespace DungeonGen
 
         void PlayStep()
         {
+            // Surface first; it owns its own volume and pitch, because a boot on gravel and a
+            // boot on stone are neither the same loudness nor the same tone.
+            if (surface.TryPick(transform, out AudioClip surfaceClip, out float surfaceVol, out float surfacePitch))
+            {
+                src.pitch = surfacePitch;
+                src.PlayOneShot(surfaceClip, surfaceVol * volume);
+                return;
+            }
+
             if (clips == null || clips.Length == 0) return;
 
             int i = 0;

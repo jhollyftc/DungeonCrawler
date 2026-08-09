@@ -43,6 +43,14 @@ namespace DungeonGen
             public AudioClip[] sfx;
             [Range(0f, 1f)] public float volume = 0.9f;
             public Vector2 pitchRange = new Vector2(0.92f, 1.08f);
+
+            [Header("Footsteps")]
+            [Tooltip("Walked-on sounds for this surface. Sits here rather than in a separate asset so ONE entry answers what a material does when struck AND when walked on — a wooden bridge cannot then chip like wood but thud like stone.\n\nEmpty = the footstep component falls back to its own authored clips, so leaving this unfilled changes nothing.")]
+            public AudioClip[] footsteps;
+            [Tooltip("Volume for this surface's footsteps, independent of the impact volume above — a sword striking stone and a boot on stone are not the same loudness.")]
+            [Range(0f, 1f)] public float footstepVolume = 0.8f;
+            [Tooltip("Random pitch spread per step. Same purpose as the impact jitter: a repeated clip must not sound stamped.")]
+            public Vector2 footstepPitchRange = new Vector2(0.92f, 1.08f);
         }
 
         [Tooltip("One entry per surface. A surface with no entry uses Default Entry.")]

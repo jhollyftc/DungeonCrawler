@@ -71,6 +71,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d39309ace19530c4695cf115ff3ba560, type: 3}
       insertIndex: -1
       addedObject: {fileID: -6761455889821167233}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d39309ace19530c4695cf115ff3ba560, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 8386886987713911557}
   m_SourcePrefab: {fileID: 100100000, guid: d39309ace19530c4695cf115ff3ba560, type: 3}
 --- !u!1 &1653914997044485433 stripped
 GameObject:
@@ -99,3 +102,16 @@ MeshCollider:
   m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 7899260805424612334, guid: d39309ace19530c4695cf115ff3ba560, type: 3}
+--- !u!114 &8386886987713911557
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1653914997044485433}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8ea6e79a15e84b4a84f7b400d7b5ed8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.Surface
+  type: 3

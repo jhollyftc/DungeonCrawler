@@ -39,7 +39,11 @@ namespace DungeonGen
         [Tooltip("Rolloff distance (m). Shorter than the voice's 25m: you should hear a goblin shout down a corridor but only hear its feet once it is genuinely near — that gap is what makes footsteps a useful proximity cue instead of ambience.")]
         [SerializeField] private float maxDistance = 12f;
 
-        [Header("Clips")]
+        [Header("Surface")]
+        [Tooltip("Resolves the clip from what is underfoot, so a goblin crossing a wooden bridge is audibly on wood. Its probeMask MUST exclude the NPC layer — inside a crowd the ray would otherwise land on a neighbour's capsule. Leave its Library empty to use the fallback clips below for everything.")]
+        [SerializeField] private FootstepSurface surface = new FootstepSurface();
+
+        [Header("Fallback clips (used when the surface has none authored)")]
         [SerializeField] private AudioClip[] clips;
         [Range(0f, 1f)][SerializeField] private float volume = 0.55f;
         [Tooltip("Random pitch spread per step, so a repeated clip doesn't sound stamped.")]
@@ -141,17 +145,36 @@ namespace DungeonGen
         {
             OnStep?.Invoke();
 
-            if (source == null || clips == null || clips.Length == 0) return;
+            if (source == null) return;
 
-            // Distance cull. AudioListener rather than a cached player reference: the listener
-            // is what actually decides audibility, and it survives the player rig being
-            // rebuilt on a dungeon regenerate.
-            if (cullDistance > 0f)
+            // CULL BEFORE THE SURFACE PROBE, not after. The probe is a raycast per footfall,
+            // and at the target population most steps happen out of earshot — culling first
+            // means the crowd's raycast cost scales with how many NPCs you can HEAR rather
+            // than how many exist. (It also has to precede the clip pick regardless, since a
+            // culled step must not consume the no-repeat slot.)
+            //
+            // AudioListener rather than a cached player reference: the listener is what
+            // actually decides audibility, and it survives the player rig being rebuilt on a
+            // dungeon regenerate. Shared via AudioCull — three copies of this test is how
+            // they drift apart.
+            if (cullDistance > 0f && AudioCull.TooFar(transform, cullDistance)) return;
+
+            float vol = volume;
+            if (speedVolumeInfluence > 0f)
             {
-                // Shared with the other NPC audio components (AudioCull): three copies of this
-                // test is how they drift apart. Listener cached and re-found on regenerate.
-                if (AudioCull.TooFar(transform, cullDistance)) return;
+                float t = Mathf.Clamp01(speed / Mathf.Max(0.01f, fullVolumeSpeed));
+                vol *= Mathf.Lerp(1f - speedVolumeInfluence, 1f, t);
             }
+
+            // Surface first; it carries its own volume and pitch.
+            if (surface.TryPick(transform, out AudioClip surfaceClip, out float surfaceVol, out float surfacePitch))
+            {
+                source.pitch = surfacePitch;
+                source.PlayOneShot(surfaceClip, surfaceVol * vol);
+                return;
+            }
+
+            if (clips == null || clips.Length == 0) return;
 
             // Random NO-REPEAT pick, house convention.
             int i = 0;
@@ -162,13 +185,6 @@ namespace DungeonGen
             }
             lastClipIndex = i;
             if (clips[i] == null) return;
-
-            float vol = volume;
-            if (speedVolumeInfluence > 0f)
-            {
-                float t = Mathf.Clamp01(speed / Mathf.Max(0.01f, fullVolumeSpeed));
-                vol *= Mathf.Lerp(1f - speedVolumeInfluence, 1f, t);
-            }
 
             source.pitch = 1f + Random.Range(-pitchJitter, pitchJitter);
             source.PlayOneShot(clips[i], vol);

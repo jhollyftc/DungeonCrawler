@@ -323,6 +323,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0c1d1ebb652567248b6bcf763be8dde5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PlayerFootsteps
+  surface:
+    library: {fileID: 11400000, guid: 37df9bb4b5dd2cb4d93c00877b2392ad, type: 2}
+    probeMask:
+      serializedVersion: 2
+      m_Bits: 4031
+    probeUp: 0.5
+    probeDown: 1.2
+    fallbackSurface: 0
+    debugSurface: 1
   clips:
   - {fileID: 8300000, guid: 74f45716a03abee43b65ac07d3889cc8, type: 3}
   - {fileID: 8300000, guid: 36864b5a566d46c49b4a07e7f5fc3423, type: 3}

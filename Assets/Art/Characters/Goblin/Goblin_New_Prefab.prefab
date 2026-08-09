@@ -2831,15 +2831,22 @@ MonoBehaviour:
   source: {fileID: 2451390780784884907}
   mixerGroup: {fileID: -2029272390745678996, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   maxDistance: 9
+  surface:
+    library: {fileID: 11400000, guid: 37df9bb4b5dd2cb4d93c00877b2392ad, type: 2}
+    probeMask:
+      serializedVersion: 2
+      m_Bits: 4031
+    probeUp: 0.5
+    probeDown: 1.2
+    fallbackSurface: 0
+    debugSurface: 0
   clips:
-  - {fileID: 8300000, guid: 72f526a6a9890f643a88e85a61c86c8a, type: 3}
-  - {fileID: 8300000, guid: 85016e0f2b01da248b9663dd49a161b0, type: 3}
-  - {fileID: 8300000, guid: 186de84b3207156479abe98f4958fed0, type: 3}
-  - {fileID: 8300000, guid: 1a91fcd19acf1e54bba0945d9f390849, type: 3}
-  - {fileID: 8300000, guid: 14e8a8d2158bec840b56c54f5266e692, type: 3}
-  - {fileID: 8300000, guid: 29841e7d5bbfb5b419c9ad16ca8bc4c1, type: 3}
-  - {fileID: 8300000, guid: dd1af302b8902684d9381de1f2d3a5af, type: 3}
-  - {fileID: 8300000, guid: 67c8b33e424ccdc4486edf538ab91c5a, type: 3}
+  - {fileID: 8300000, guid: 74f45716a03abee43b65ac07d3889cc8, type: 3}
+  - {fileID: 8300000, guid: 36864b5a566d46c49b4a07e7f5fc3423, type: 3}
+  - {fileID: 8300000, guid: 9d7d0636321123c44b7aafe2837cdbce, type: 3}
+  - {fileID: 8300000, guid: d5390f07959f567429ba564f2007674d, type: 3}
+  - {fileID: 8300000, guid: 949024ce5fc5f024aa2f545e3e18ca71, type: 3}
+  - {fileID: 8300000, guid: 7a7875eb68ee0e14db986d6bee9ce532, type: 3}
   volume: 0.149
   pitchJitter: -0.2
   stepDistance: 0.5

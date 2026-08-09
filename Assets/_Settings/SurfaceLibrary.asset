@@ -13,6 +13,12 @@ MonoBehaviour:
   m_Name: SurfaceLibrary
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.SurfaceLibrary
   impactMixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
+  impactSpatial:
+    spatialBlend: 1
+    minDistance: 3
+    maxDistance: 25
+    rolloff: 0
+    spread: 20
   entries:
   - surface: 1
     vfx: {fileID: 2219292488338847417, guid: c008c0df9793a6b418a4548dc3f6666c, type: 3}
@@ -23,6 +29,9 @@ MonoBehaviour:
     - {fileID: 8300000, guid: c8ca416b62501f7459a63d773164cb22, type: 3}
     volume: 1
     pitchRange: {x: 0.95, y: 1.05}
+    footsteps: []
+    footstepVolume: 0.8
+    footstepPitchRange: {x: 0.92, y: 1.08}
   - surface: 3
     vfx: {fileID: 5111661238283004553, guid: 0d943e5e64ea779429d0619573fe7010, type: 3}
     vfxLifetime: 2
@@ -33,6 +42,14 @@ MonoBehaviour:
     - {fileID: 8300000, guid: d39f946a797bffe42bb999eb3abd109d, type: 3}
     volume: 1
     pitchRange: {x: 0.95, y: 1.05}
+    footsteps:
+    - {fileID: 8300000, guid: 97f6032c28b3e2344b2a4c11c7cad723, type: 3}
+    - {fileID: 8300000, guid: 42e4f649ac07b4541a1f168b6c392fdf, type: 3}
+    - {fileID: 8300000, guid: 217d71467abfd5547afb68de7b12f0ff, type: 3}
+    - {fileID: 8300000, guid: b9f94d3a2fc328d49832293110cdaef6, type: 3}
+    - {fileID: 8300000, guid: 6b58eb120f7f5284282fa80dab3d1799, type: 3}
+    footstepVolume: 1
+    footstepPitchRange: {x: 0.92, y: 1.08}
   - surface: 4
     vfx: {fileID: 9136566953809437027, guid: 60ec151a604cd324496c5d0a81fd42c9, type: 3}
     vfxLifetime: 2
@@ -43,6 +60,9 @@ MonoBehaviour:
     - {fileID: 8300000, guid: fd532b40df7fd21438d2a4d050a5b386, type: 3}
     volume: 1
     pitchRange: {x: 0.95, y: 1.05}
+    footsteps: []
+    footstepVolume: 0.8
+    footstepPitchRange: {x: 0.92, y: 1.08}
   - surface: 2
     vfx: {fileID: 5221993095556742822, guid: c88fb5495505c7a48821eae21d6f7d86, type: 3}
     vfxLifetime: 2
@@ -53,6 +73,9 @@ MonoBehaviour:
     - {fileID: 8300000, guid: fd532b40df7fd21438d2a4d050a5b386, type: 3}
     volume: 1
     pitchRange: {x: 0.95, y: 1.05}
+    footsteps: []
+    footstepVolume: 0.8
+    footstepPitchRange: {x: 0.92, y: 1.08}
   defaultEntry:
     surface: 0
     vfx: {fileID: 9136566953809437027, guid: 60ec151a604cd324496c5d0a81fd42c9, type: 3}
@@ -64,3 +87,12 @@ MonoBehaviour:
     - {fileID: 8300000, guid: fd532b40df7fd21438d2a4d050a5b386, type: 3}
     volume: 0.9
     pitchRange: {x: 0.92, y: 1.08}
+    footsteps:
+    - {fileID: 8300000, guid: 74f45716a03abee43b65ac07d3889cc8, type: 3}
+    - {fileID: 8300000, guid: 36864b5a566d46c49b4a07e7f5fc3423, type: 3}
+    - {fileID: 8300000, guid: 9d7d0636321123c44b7aafe2837cdbce, type: 3}
+    - {fileID: 8300000, guid: d5390f07959f567429ba564f2007674d, type: 3}
+    - {fileID: 8300000, guid: 949024ce5fc5f024aa2f545e3e18ca71, type: 3}
+    - {fileID: 8300000, guid: 7a7875eb68ee0e14db986d6bee9ce532, type: 3}
+    footstepVolume: 1
+    footstepPitchRange: {x: 0.92, y: 1.08}
