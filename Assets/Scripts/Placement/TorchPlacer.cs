@@ -61,6 +61,10 @@ namespace DungeonGen
         public float cullDistance = 30f;
         [Tooltip("Torches checked per frame, round-robin. Keeps the per-frame cost flat and tiny regardless of how many torches exist.")]
         public int cullChecksPerFrame = 750;
+        [Header("Ambient loop (per-torch crackle)")]
+        [Tooltip("Fire crackle heard from individual torches, played by a POOL of voices reassigned to whichever torches are nearest — never one AudioSource per torch, which at dungeon torch counts would be 100+ permanent voices against a real budget of 32. Leave the clip list empty to disable. Positional rather than an ambient bed on purpose: a bed cannot pan, and walking a corridor past a sconce is the entire effect.")]
+        public TorchAudioSettings torchAudio = new TorchAudioSettings();
+
 
         public enum BakeMode { Realtime, Mixed, Baked }
     }
@@ -100,6 +104,19 @@ namespace DungeonGen
             // A slot is a floor-level walkable cell with a solid neighbor to
             // mount on. Keyed by (cell, direction). We then thin them by
             // spacing rather than by per-face dice.
+            // The crackle pool. Independent of the culler on purpose: torch AUDIO should work
+            // whether or not light culling is enabled, and the two answer different questions
+            // (which lights are worth drawing vs which torches are worth hearing) at very
+            // different ranges. Play mode only — a looping source in the editor while the
+            // dungeon is being authored is nobody's idea of a good time.
+            TorchAudioPool audioPool = null;
+            if (Application.isPlaying && s.torchAudio != null
+                && s.torchAudio.loopClips != null && s.torchAudio.loopClips.Length > 0)
+            {
+                audioPool = root.AddComponent<TorchAudioPool>();
+                audioPool.settings = s.torchAudio;
+            }
+
             var slots = new List<(Vector3Int cell, Vector3Int dir, CellType type)>();
             for (int i = 0; i < grid.Length; i++)
             {
@@ -443,6 +460,12 @@ namespace DungeonGen
         public float shadowUpdateInterval = 0.2f;
 
         struct Entry
+
+                // Register the torch's WORLD POSITION for the crackle pool. Registered from
+                // `pos` rather than from the light, so a torch with no Light (baked mode, or a
+                // sconce whose light was culled out of existence) still crackles — the fire is
+                // visible in the flame VFX either way.
+                if (audioPool != null) audioPool.Register(pos);
         {
             public Light Light;
             public Behaviour Flicker; // may be null

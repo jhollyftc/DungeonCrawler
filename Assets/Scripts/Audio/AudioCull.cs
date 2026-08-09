@@ -74,6 +74,14 @@ namespace DungeonGen
     {
         /// <summary>Music and ambient beds: continuous, and their absence is a hole.</summary>
         public const int Bed = 32;
+        /// <summary>
+        /// Positional ambience: the per-torch crackle. Below a bed because a bed's absence is
+        /// a hole in the whole world while one torch going quiet is local, but ABOVE player
+        /// actions because it is already pooled down to a handful of voices that are, by
+        /// construction, the nearest audible ones — if one of those is stolen you lose the
+        /// fire you are standing next to.
+        /// </summary>
+        public const int AmbientPoint = 48;
         /// <summary>The player's own weapon, bow, guard. Feedback on your own input.</summary>
         public const int PlayerAction = 64;
         /// <summary>Impacts and physics - the world reacting to something.</summary>
