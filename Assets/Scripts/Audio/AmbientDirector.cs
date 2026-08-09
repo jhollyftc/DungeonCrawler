@@ -69,7 +69,6 @@ namespace DungeonGen
         {
             AudioSource a, b;
             bool onB;
-            float t = 1f;          // 1 = settled on the active source
             AudioClip target;
 
             public Layer(Transform parent, string name, AudioMixerGroup group)
@@ -102,25 +101,50 @@ namespace DungeonGen
                 if (clip == target) return;
                 target = clip;
 
+                // WALKING BACK THROUGH A DOORWAY MID-FADE: if the source currently fading OUT
+                // already holds the clip we are returning to, just swap the roles. It then
+                // fades back up from wherever its volume had got to. Restarting it instead —
+                // which is what an unconditional Play() does — cuts the bed back to sample 0,
+                // audible as a hitch every time you cross a threshold twice.
+                AudioSource fading = onB ? a : b;
+                if (clip != null && fading.clip == clip && fading.isPlaying)
+                {
+                    onB = !onB;
+                    return;
+                }
+
                 AudioSource incoming = onB ? a : b;
                 incoming.clip = clip;
-                if (clip != null) incoming.Play();
+                // Only start it if it is not already running: assigning the same clip and
+                // calling Play again restarts playback from the beginning.
+                if (clip != null && !incoming.isPlaying) incoming.Play();
                 onB = !onB;
-                t = 0f;
             }
 
+            /// <summary>
+            /// EACH SOURCE EASES FROM ITS OWN CURRENT VOLUME. The previous version drove both
+            /// from one shared `t` that was reset to 0 on every Play — so re-entering a space
+            /// mid-fade recomputed the OUTGOING source as `master * (1 - 0)` and slammed it to
+            /// FULL VOLUME instantly. Walking back and forth across a doorway made the room's
+            /// bed pop in at full every time, which is what it was reported as.
+            ///
+            /// The general shape: a crossfade parameterised by one clock cannot be interrupted,
+            /// because the clock has no memory of where the levels actually were. Tracking the
+            /// levels themselves makes interruption free — and interruption is the normal case
+            /// here, since a doorway is a place people linger.
+            /// </summary>
             public void Tick(float dt, float fade, float master)
             {
-                if (t < 1f) t = fade > 0.01f ? Mathf.Min(1f, t + dt / fade) : 1f;
+                float step = fade > 0.01f ? dt / fade : 1f;
 
                 AudioSource inc = onB ? b : a;
                 AudioSource outg = onB ? a : b;
-                inc.volume = master * t;
-                outg.volume = master * (1f - t);
+                inc.volume = Mathf.MoveTowards(inc.volume, master, step);
+                outg.volume = Mathf.MoveTowards(outg.volume, 0f, step);
 
                 // Stop the faded-out source so it isn't holding a voice for silence — the
                 // budget reasoning in §5 applies to beds as much as to one-shots.
-                if (t >= 1f && outg.isPlaying) { outg.Stop(); outg.clip = null; }
+                if (outg.volume <= 0.001f && outg.isPlaying) { outg.Stop(); outg.clip = null; }
             }
         }
 
@@ -319,30 +343,6 @@ namespace DungeonGen
             return false;
         }
 
-        Vector3 CellCentre(Vector3Int c) =>
-            new Vector3((c.x + 0.5f) * vis.cellSize, c.y * vis.cellSize, (c.z + 0.5f) * vis.cellSize)
-            + transform.position;
-
-        /// <summary>
-        /// Created ONCE and deliberately NOT registered in DungeonVisualizer.GeneratedRoots.
-        /// That list is for roots rebuilt on every generate; these four sources are owned by a
-        /// persistent component and are RETARGETED rather than respawned, so listing them would
-        /// destroy the beds on every F1 and restart them from silence. The rule the list
-        /// encodes — "anything created per generate must be cleaned per generate" — is
-        /// satisfied by never creating these per generate.
-        /// </summary>
-        void EnsureLayers()
-        {
-            if (baseLayer != null) return;
-            var root = new GameObject("DungeonAmbient");
-            root.transform.SetParent(transform, false);
-            baseLayer = new Layer(root.transform, "Base", baseGroup);
-            roomLayer = new Layer(root.transform, "Room", roomGroup);
-        }
-
-        /// <summary>
-        /// Which profile applies where the player is standing. The resolution — and its
-        /// load-bearing ORDER — lives in AudioSpace, shared with ReverbDirector so ambience
         /// <summary>
         /// Is a point in open earshot of the player?
         ///
@@ -393,6 +393,30 @@ namespace DungeonGen
             return basePos + Vector3.up * (open * vis.cellSize * Mathf.Clamp01(t));
         }
 
+        Vector3 CellCentre(Vector3Int c) =>
+            new Vector3((c.x + 0.5f) * vis.cellSize, c.y * vis.cellSize, (c.z + 0.5f) * vis.cellSize)
+            + transform.position;
+
+        /// <summary>
+        /// Created ONCE and deliberately NOT registered in DungeonVisualizer.GeneratedRoots.
+        /// That list is for roots rebuilt on every generate; these four sources are owned by a
+        /// persistent component and are RETARGETED rather than respawned, so listing them would
+        /// destroy the beds on every F1 and restart them from silence. The rule the list
+        /// encodes — "anything created per generate must be cleaned per generate" — is
+        /// satisfied by never creating these per generate.
+        /// </summary>
+        void EnsureLayers()
+        {
+            if (baseLayer != null) return;
+            var root = new GameObject("DungeonAmbient");
+            root.transform.SetParent(transform, false);
+            baseLayer = new Layer(root.transform, "Base", baseGroup);
+            roomLayer = new Layer(root.transform, "Room", roomGroup);
+        }
+
+        /// <summary>
+        /// Which profile applies where the player is standing. The resolution — and its
+        /// load-bearing ORDER — lives in AudioSpace, shared with ReverbDirector so ambience
         /// and reverb can never disagree about which space you are in.
         /// </summary>
         AudioProfile Resolve() => AudioSpace.Resolve(vis, tracker).Profile;
