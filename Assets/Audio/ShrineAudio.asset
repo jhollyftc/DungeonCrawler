@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e27e0b293a2d5346930bbb573a59285, type: 3}
+  m_Name: ShrineAudio
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.AudioProfile
+  ambientBaseLayer: {fileID: 8300000, guid: 67a83247ccda9cb4d9c58d39379f4cee, type: 3}
+  ambientRoomLayer: {fileID: 8300000, guid: 4783e211394c29941b0a704c2e28dd7a, type: 3}
+  oneShotPool:
+  - {fileID: 8300000, guid: a6fa60769fab64443bf94db93fa98484, type: 3}
+  - {fileID: 8300000, guid: 5ae6696e4aa1cfc469e114ad6b61662d, type: 3}
+  - {fileID: 8300000, guid: c5b90c20394191543b8e9f1adf49e112, type: 3}
+  - {fileID: 8300000, guid: add96fb571c098148ac71f71fd5b8530, type: 3}
+  oneShotIntervalRange: {x: 3, y: 5}
+  oneShotSpatial:
+    spatialBlend: 1
+    minDistance: 0.5
+    maxDistance: 15
+    rolloff: 0
+    spread: 30
+  overrideReverb: 0
+  reverb:
+    decayTime: 1.2
+    room: -12
+    roomHF: -18
+  musicTensionBaseline: 0
+  voicePriority: 64
