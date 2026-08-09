@@ -342,7 +342,13 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 7a7875eb68ee0e14db986d6bee9ce532, type: 3}
   landClip: {fileID: 0}
   stepDistance: 1.2
-  volume: 0.5
+  scaleStrideBySpeed: 1
+  crouchStride: 0.8
+  sprintStride: 2
+  volume: 0.3
+  speedVolumeInfluence: 1
+  fullVolumeSpeed: 0
+  crouchVolumeMultiplier: 0.3
   pitchJitter: 0.08
   landVelocityThreshold: 4
   groundedGrace: 0.2
@@ -387,7 +393,7 @@ MonoBehaviour:
   maxAngularSpeed: 10
   freeCarryMass: 1
   heavyCarryMass: 60
-  minMoveSpeedMultiplier: 0.15
+  minMoveSpeedMultiplier: 0.25
   minTurnRateMultiplier: 0.2
   breakDistance: 2.5
   pickupCooldown: 0.25
