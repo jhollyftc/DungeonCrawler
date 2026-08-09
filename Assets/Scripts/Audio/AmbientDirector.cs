@@ -287,8 +287,16 @@ namespace DungeonGen
                     floorCells = RoomPropPlacer.ComputeZones(gen, room).Floor;
                 }
                 if (floorCells == null || floorCells.Count == 0) return false;
-                point = CellCentre(floorCells[Random.Range(0, floorCells.Count)]);
-                return true;
+
+                // A few tries so an L-room's bite, or a pit rim, cannot swallow the pick.
+                for (int i = 0; i < 4; i++)
+                {
+                    Vector3 p = PointInCell(floorCells[Random.Range(0, floorCells.Count)]);
+                    if (!Audible(p)) continue;
+                    point = p;
+                    return true;
+                }
+                return false;
             }
 
             // Corridor-like space: sample a few cells around the player and take the first
@@ -302,7 +310,10 @@ namespace DungeonGen
                 if (!grid.InBounds(c) || grid[c] == CellType.Empty) continue;
                 var below = c + Vector3Int.down;
                 if (grid.InBounds(below) && grid[below] != CellType.Empty) continue;  // no floor here
-                point = CellCentre(c);
+
+                Vector3 p = PointInCell(c);
+                if (!Audible(p)) continue;
+                point = p;
                 return true;
             }
             return false;
@@ -332,6 +343,56 @@ namespace DungeonGen
         /// <summary>
         /// Which profile applies where the player is standing. The resolution — and its
         /// load-bearing ORDER — lives in AudioSpace, shared with ReverbDirector so ambience
+        /// <summary>
+        /// Is a point in open earshot of the player?
+        ///
+        /// A ±4 CELL BOX REACHES STRAIGHT THROUGH WALLS. The corridor scan above only asks
+        /// "open cell, floor below", which is true of an adjacent PRISON, a neighbouring room,
+        /// or anything one cell of rock away — so drips were being placed where the player
+        /// physically could not hear them. Before occlusion existed that was invisible and
+        /// arguably a happy accident; with it, those one-shots muffle into nothing and the
+        /// ambience quietly thins out.
+        ///
+        /// Asking the occlusion system directly is better than restricting by CellType: an
+        /// ALCOVE is typed Hallway and a prison MOUTH is genuinely audible from the corridor,
+        /// so a type rule would reject good placements and accept bad ones. "Can the player
+        /// hear this" is the actual requirement, and it is one raycast.
+        ///
+        /// Costs at most a dozen casts per one-shot, which fire seconds apart.
+        /// </summary>
+        bool Audible(Vector3 worldPoint) => AudioOcclusion.Sample(worldPoint) < 0.5f;
+
+        /// <summary>
+        /// A point in the cell, raised to a random height within the OPEN COLUMN above it.
+        ///
+        /// Measured by walking UP from the cell until the grid closes, so a two-storey hall
+        /// genuinely uses two storeys while a corridor stays inside its one — the same
+        /// authored fraction means "somewhere in this space's height" in both, which an
+        /// authored metre range could not. A pit's opening column resolves the same way.
+        ///
+        /// NB it deliberately does not check what is BELOW: the caller has already required a
+        /// floor, and a bridge deck over a pit should sound like the deck, not the shaft.
+        /// </summary>
+        Vector3 PointInCell(Vector3Int c)
+        {
+            Vector3 basePos = CellCentre(c);
+
+            var grid = vis.Generator != null ? vis.Generator.Grid : null;
+            if (grid == null || current == null) return basePos;
+
+            int open = 1;
+            var probe = c + Vector3Int.up;
+            while (grid.InBounds(probe) && grid[probe] != CellType.Empty && open < 8)
+            {
+                open++;
+                probe += Vector3Int.up;
+            }
+
+            Vector2 r = current.oneShotHeightRange;
+            float t = Random.Range(Mathf.Min(r.x, r.y), Mathf.Max(r.x, r.y));
+            return basePos + Vector3.up * (open * vis.cellSize * Mathf.Clamp01(t));
+        }
+
         /// and reverb can never disagree about which space you are in.
         /// </summary>
         AudioProfile Resolve() => AudioSpace.Resolve(vis, tracker).Profile;
