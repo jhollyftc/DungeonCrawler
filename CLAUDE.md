@@ -1063,6 +1063,35 @@ PATH**, so an instanced mesh literally cannot be un-drawn when the prop dies.
   and use the cached one.** If you need a body's velocity at the moment of an impact, you
   cannot ask for it after the impact.
 
+**Props spawn KINEMATIC and wake on first contact (`PropPhysicsSleep`)** — a push, a
+pickup, damage, or the death of whatever they were resting on.
+- **NOT a CPU optimization, mostly.** Unity already auto-sleeps settled rigidbodies, so
+  the steady state was never expensive — what cost was the SETTLE, and the re-settle every
+  time a fight jostled the room. A fresh dungeon dropped and settled a hundred props at
+  once, and `ImpactAudio`'s retrigger gate is PER SOURCE, so a hundred props each settling
+  ONCE sails straight past it (§10b). The real win beyond audio is that props stay exactly
+  where the generator put them instead of drifting, sinking or squeezing through geometry
+  over a long run.
+- **`Wake()` WAS UNREACHABLE FROM A PUSH** (real field bug — "pushing props doesn't wake
+  them"). `CharacterControllerPhysicsPush` early-returns on `isKinematic` before
+  dispatching `IPushable`, and a sleeping prop IS kinematic, so the filter discarded the
+  very contact meant to wake it. The wake there is deliberately NARROW — only a
+  `PropPhysicsSleep` wakes. `PhysicsDoor` also goes kinematic on purpose (the standoff
+  jam, §10), and waking that would undo the one thing stopping a door shoved from both
+  sides launching the pusher through it.
+- **`WakeNeighbours` MUST MEASURE FROM COLLIDER BOUNDS, NOT A SPHERE AT THE PIVOT** (real
+  field bug — bowls left hovering after their table was destroyed). A table's pivot is at
+  its BASE, so any sphere small enough to be safe never reaches the tabletop where the
+  props actually are. Now an `OverlapBox` over the prop's bounds with a small margin: a
+  contact test, not a blast radius — a large one wakes a whole room from one nudge. Hooked
+  to `Health.OnDied` as well as `OnDamaged`, because it is the DEATH that removes the
+  support and `Wake()` short-circuits on an already-awake table.
+- **THE TRADE: a kinematic body does not fall.** Physics had quietly been correcting
+  placement all along, dropping anything spawned slightly high onto the floor.
+  `warnIfHovering` reports it rather than leaving it to be noticed visually — these are
+  PRE-EXISTING authoring errors that settling was hiding, not new bugs, so treat the
+  warnings as a backlog rather than a regression.
+
 **Per-room prop TINT (`PropTint`)** — the prop-side counterpart to the kit's emissive
 tinting (§5/§7), so a candle on a shrine shelf burns the same cold blue as its torches
 instead of its authored orange. ONE resolver shared by the room, hallway and recess
@@ -2099,6 +2128,133 @@ Formula-driven with authored override points (the user's explicit choice).
 
 ---
 
+## 10b. Audio (`SOUNDSYSTEM_PLAN.md` has the staged plan)
+
+Individual sound-producing components are documented beside the systems they belong to
+in §10 (`PhysicsDoorAudio`, `ImpactAudio`, `HangingCageAudio`, `NpcCombatAudio`,
+`PlayerBowAudio`, `PlayerFootsteps`). This section is the INFRASTRUCTURE under them —
+routing, ambience, the voice budget, and the authoring tools.
+
+**HOUSE PATTERN, stated once because every audio component follows it:** continuous
+sounds are a LOOPING source whose volume/pitch track a live value, driven from state
+every frame; discrete sounds are one-shots. The loop is never started/stopped by events
+— `PlayerBowAudio` reads `bow.IsDrawing` each frame precisely so that every exit path
+(fired, let down, weapon swapped, picked up a barrel) fades it out without each one
+having to remember to. `OnDisable` hard-stops, so a swap mid-action can't leave a creak
+looping forever.
+
+### Mixer routing
+
+`DungeonAudioMixer` with Master → SFX {Physics, Combat, Footsteps} / Ambient {Base,
+Room, OneShots} / Music, plus a Reverb bus fed by sends.
+
+- **AN UNASSIGNED MIXER GROUP BYPASSES THE MIXER ENTIRELY** — it goes straight to the
+  listener, NOT to Master as the name "output" suggests. So an unrouted source is
+  inaudible to every meter, immune to every volume slider, and looks exactly like a
+  source that isn't playing. The F7 overlay flags them as `<unrouted>` for this reason.
+- **`AudioBus.Route` vs `AudioBus.Assign` — the distinction is load-bearing.** `Route`
+  is null-TOLERANT: an owned source with no group configured keeps whatever it has.
+  `Assign` is UNCONDITIONAL, for POOLED sources — a pooled voice must be told its group
+  on every acquisition, because otherwise it inherits the PREVIOUS caller's group and a
+  footstep comes out of the Combat bus. That was a real bug, and it is invisible except
+  on the meters.
+- **The group is set on the COMPONENT, not on the AudioSource.** Most of these sources
+  are created at RUNTIME when the prefab has none, so an Output assigned in the inspector
+  would cover only the authored case.
+
+### One-shots
+
+**`AudioSource.PlayClipAtPoint` CANNOT BE MIXED.** It creates a hidden throwaway
+GameObject with no group, so every sound played through it bypasses the mixer by the rule
+above. `OneShotAudioPool` replaces it: an 8-voice ring, **one child GameObject per
+voice** (an AudioSource is positioned by its transform, so a shared object cannot place
+several sounds), taking an `AudioSpatial` per call.
+
+### Ambience
+
+`AmbientDirector` is a MANAGER, not a per-room component — two sources per layer so it
+can crossfade, and a one-shot ticker that picks a random floor cell via
+`RoomPropPlacer.ComputeZones(...).Floor` (with a debug gizmo, because "is it choosing a
+cell or just the centre?" is otherwise unanswerable).
+
+**IT WATCHES THE RESOLVED PROFILE, NOT `OnRoomChanged`.** Corridors, alcoves, prisons and
+pits all have `CurrentRoom == null`, so a room-change event fires for exactly one of the
+five spaces the game has. Watching what the profile RESOLVES TO covers all of them and
+needs no per-space cases.
+
+`PlayerRoomTracker` (`[DefaultExecutionOrder(-100)]`, frame-stamped `Refresh()`,
+self-installing from `DungeonVisualizer.Awake`) is the shared answer to "where is the
+player" — `CurrentCell`/`CurrentRoom`/`CurrentPit`. Same rule as §10's fog/map/room-label
+trio: one world→cell path so nothing can disagree.
+
+### THE VOICE BUDGET (F7 — `AudioBudgetDebug`)
+
+Unity's real-voice limit is ~32. Past it, voices are STOLEN, and a stolen voice is not a
+quieter voice — it is a sound that does not play.
+
+- **`AudioSource.isVirtual` IS THE METRIC, NOT SOURCE COUNT.** An idle source costs
+  essentially nothing; the project runs 341 sources against a peak of 14 playing. Counting
+  sources measures nothing and looks alarming.
+- **`playOnAwake` WITH A NULL CLIP IS A PERMANENT PHANTOM VOICE** (the big one — it was
+  186 of them against a budget of 32, peaking at 189 playing with 84 stolen). A source
+  told to play with no clip enters a playing state that NEVER COMPLETES: it reports
+  `isPlaying` forever while making no sound. Silent, invisible, and holding a slot each.
+  **`playOnAwake = false` in `Awake` cannot undo it** — it governs only a FUTURE start,
+  and the engine acts on the authored flag before `Awake` runs. `Stop()` is required, and
+  eight components now do both. Untick the flag on the prefab as well; the `Stop()` is the
+  defensive half.
+- **CULLING IS NOT ROLLOFF.** Rolloff makes a distant source QUIET; it still starts, still
+  holds a slot, and still competes. `AudioCull.TooFar(transform, distance)` (cached
+  listener) is the actual fix, and every one-shot component calls it.
+  **WHERE the cull sits matters**: `ImpactAudio` culls AFTER firing `OnImpact`, because
+  that event drives `DestructibleProp` damage and NPC alerting — culling above it would
+  mean a crate you cannot hear also cannot break. Distance decides whether you HEAR an
+  impact, not whether it HAPPENED. (Exactly the mistake the retrigger gate made once
+  already, §8.)
+- **`AudioSource.priority` IS INVERTED** — 0 is kept, 256 is dropped first. `AudioPriority`
+  names the tiers so nobody has to remember: Bed 32, PlayerAction 64, WorldImpact 96,
+  NpcVoice 140, NpcCombat 170, NpcFootstep 200. Beds are protected because a missing
+  ambient bed is more noticeable than a missing footstep in a crowd.
+- **THE SETTLE BURST WAS A SEPARATE, REAL PROBLEM** — see `PropPhysicsSleep` in §8. A
+  hundred props settling at generation each fire one impact, and `ImpactAudio`'s retrigger
+  gate is PER SOURCE, so a hundred single impacts sail straight past it.
+- **Measured outcome: 50 NPCs mid-fight (double the §11 target population) peaks at 14
+  voices with 0 stolen.** So the per-category budget allocations in the plan can stay
+  theoretical, and step 7's music stems will not trouble it.
+
+**DIAGNOSTIC LESSON, and it is the same one §12 keeps recording.** The overlay showed
+`111 / 84 / 50 / 25` — the SAME numbers in three consecutive screenshots taken during
+completely different gameplay. Identical numbers under changing conditions mean the count
+is not measuring the activity you think it is, and that was the whole answer sitting in
+plain view. Instead, two fixes (culling, then `PropPhysicsSleep`) were built against a
+plausible reading of "Physics is 111 of 189" BEFORE the cause was found. Both were worth
+keeping on their own merits; neither was the fix. **Interrogate a metric that doesn't
+move before optimizing against it.**
+
+### Normalizing audio files (`Tools/normalize-audio.ps1`, `Tools/sort-audio.ps1`)
+
+Authored clips arrived spanning 38 LU (−44.9 to −6.9 LUFS), which no amount of per-source
+volume tuning can fix — it just moves the problem to the next clip.
+
+- **INTEGRATED LUFS IS FOR PROGRAMS; PEAK IS FOR SHORT TRANSIENTS.** LUFS normalization
+  of a 200ms impact demands linear gain that the true-peak ceiling then refuses, because
+  the CREST FACTOR is huge — the clip is nearly all transient. 23 files missed target for
+  exactly this reason, ALL of them quieter than asked. Categories now carry a per-category
+  `Mode` (`lufs` / `peak`); after splitting, all 64 landed within 1 dB.
+- `-Measure` / `-Suggest` / `-Install`, with a verification pass after writing.
+  **`-Suggest` reports the MEDIAN plus named outliers**, not the worst member — the first
+  version recommended dropping the whole combat category from −16 to −24.5 because one
+  already-hot whoosh dragged it there.
+- **PowerShell 5.1 traps this cost time on:** a BOM-less `.ps1` is read as ANSI, so a
+  UTF-8 em-dash breaks parsing and the error is reported **on the file's last line**,
+  nowhere near the actual character. `2>&1` on a native exe wraps stderr in ErrorRecords
+  and sets `$?` false on a successful exit (hence `Invoke-Capture` via `ProcessStartInfo`).
+  `-f` formatting is culture-aware, so numbers go through an invariant `Num()`.
+- Installing a new batch requires **Unity CLOSED**, same as §12's asset-move rule and for
+  the same reason.
+
+---
+
 ## 11. Roadmap (agreed order)
 
 Cosmetic-first; combat is far off ("get the world together first").
@@ -2268,6 +2424,15 @@ Cosmetic-first; combat is far off ("get the world together first").
     ✅ **ToonLit emission + flicker** — candles glow and burn per-instance, with a
     per-element id so one candelabra's flames don't pulse in unison (§6). The shader is
     the only place a `StaticDecor` piece can animate at all.
+25c. ⏳ **Sound system** (`SOUNDSYSTEM_PLAN.md`; architecture in §10b). ✅ steps 1-5:
+    `DungeonAudioMixer` + routing every source through `AudioBus`; `PlayerRoomTracker`;
+    `AudioProfile` + per-space `RoomStyle` slots; `AmbientDirector` (beds, crossfade,
+    positional one-shots via `OneShotAudioPool`, since `PlayClipAtPoint` cannot be mixed);
+    and the VOICE BUDGET — `AudioCull`, `AudioPriority`, the F7 overlay, and the phantom
+    `playOnAwake` fix that was the whole problem (189 playing / 84 stolen → 14 / 0 at
+    double the target population). `Tools/normalize-audio.ps1` fixed a 38 LU spread across
+    the library. ⏳ **step 6** reverb by space + footstep surfaces (extend `SurfaceType`
+    with Gravel/Water); **7** music stems + `TensionSend`; **8** ducking; **9** occlusion.
 26. ⏳ NPC AI remaining phases: **call for help** (shout = a loud `NoiseEvent`; the
     `NpcRegistry` and death cry already exist — rate-limit or it alert-loops);
     **disarm/rearm** (a dropped weapon is NOT a `Carryable`, whose `Interact()`
