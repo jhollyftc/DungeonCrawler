@@ -2170,6 +2170,22 @@ above. `OneShotAudioPool` replaces it: an 8-voice ring, **one child GameObject p
 voice** (an AudioSource is positioned by its transform, so a shared object cannot place
 several sounds), taking an `AudioSpatial` per call.
 
+### Which space am I in — `AudioSpace`
+
+**ONE resolution, shared by `AmbientDirector` and `ReverbDirector`.** Its ORDER is
+load-bearing and invisible from any single call site: a pit cell ALSO resolves to a Room
+(`RoomAt` deliberately falls through `PitAt` so a pit is styled as part of its room, §4),
+and an alcove cell is `CellType.Hallway` (§4's grid-invisible design), so the most
+specific space must be asked about first — pit, room, prison, alcove, hallway. Two copies
+of that order would drift, and the symptom is ambience and reverb disagreeing about which
+room you are standing in. Same family as `ComputeZones`, `NeedsSlabBetween` and
+`PropSnap.NearStair`.
+
+It also carries `SizeCells`, which falls back to the BOUNDING BOX volume when `Cells` is
+empty — `Room` documents an empty `Cells` set as "treat as a full box (legacy safety)",
+so a perfectly ordinary room can report 0 cells and a size-driven consumer would then
+treat the grandest hall in the dungeon as a closet.
+
 ### Ambience
 
 `AmbientDirector` is a MANAGER, not a per-room component — two sources per layer so it
@@ -2186,6 +2202,72 @@ needs no per-space cases.
 self-installing from `DungeonVisualizer.Awake`) is the shared answer to "where is the
 player" — `CurrentCell`/`CurrentRoom`/`CurrentPit`. Same rule as §10's fog/map/room-label
 trio: one world→cell path so nothing can disagree.
+
+### Reverb (`ReverbDirector`)
+
+Computed from the room the generator already built, never hand-placed — the same
+philosophy as the pit rims and lintels. Interpolated between a `small` and a `hall`
+setting by `AudioSpace.SizeCells`, so a new room type sounds right with no authoring;
+`AudioProfile.overrideReverb` is the exception hatch.
+
+- **A MIXER BUS, NOT A LISTENER FILTER.** An `AudioReverbFilter` on the AudioListener
+  processes the ENTIRE final mix, so music would reverberate with the room. The mixer
+  expresses it correctly: `SFX` and `Ambient` **Send** to a `Reverb` group, `Music` never
+  sends and is dry by construction. **Chain order is signal order** — the `Receive` must
+  sit ABOVE the reverb effect, or the send arrives and leaves dry while the bus looks
+  correctly wired.
+- **THE PARAMETERS ARE MILLIBELS, NOT DECIBELS** (cost a full round of wrong defaults).
+  Unity's `SFX Reverb` takes `Room` / `Room HF` across **-10000..0 mB**; its own default
+  for `Room` is -1000. Authored as though they were dB, every value from -6 to -24 lands
+  within a quarter of a decibel of FULLY WET, so a closet and a grand hall come out
+  identically drenched and the size blend reads as broken code. Useful range is about
+  -2500 (dry, tight) to -600 (cavernous). Only `Decay Time` is in an intuitive unit.
+- **THE ROOM POPULATION IS BIMODAL** — satellite closets are ~2 cells, ordinary rooms are
+  60-150, nothing in between. So `smallCells` does NOT tune the closets (they clamp to
+  `small` at any value above ~3); it only decides where the smallest ORDINARY room sits.
+  Measured values put the blend at 10..165. Check this again if room sizing ever changes:
+  the first values (12/120) left the whole population in the upper half of the curve with
+  the two largest rooms clamped together.
+- **`AudioMixer.SetFloat` DOES NOT UPDATE THE MIXER WINDOW'S SLIDERS.** A script-driven
+  exposed parameter keeps showing its snapshot value, so a static slider is not evidence
+  the driver is dead. Use the `debugReverb` log. (Conversely a moving VU meter on the
+  Reverb group proves only that the SEND works, not that reverb is being applied.)
+- **A NEW `Send` DEFAULTS TO -80 dB, i.e. SILENT** — cost a debugging round. It is the
+  third default in this system whose failure mode is indistinguishable from correct
+  wiring, after an unassigned mixer group and `playOnAwake` with a null clip.
+- Corridors, prisons, alcoves and pits have no room to measure, so they take their
+  profile's reverb even when `overrideReverb` is off — for a corridor it is the only
+  number there is, and treating "not overridden" as "use the small default" would make
+  every corridor sound like a closet.
+
+### Footsteps and surfaces (`FootstepSurface`, `Surface.Below`)
+
+Each footfall probes downward and picks its clip from `SurfaceLibrary`, so a wooden
+staircase or bridge sounds wooden with no authoring beyond the `Surface` component the
+prefab already wants for sword hits.
+
+- **ONE `SurfaceType`, EXTENDED — never a second footstep enum.** The first draft proposed
+  a parallel `Stone/Gravel/Water/Bone/Wood`; two enums that both answer "what is this made
+  of" WILL drift, and the tell is a wooden bridge that sparks like stone under a sword but
+  thuds like wood underfoot. **APPEND ONLY** (`Gravel`, `Water` added): `Surface.type` is
+  serialized by INDEX on every tagged prop and NPC, so inserting in the middle silently
+  re-materials all of them — the reason `DamageType.Projectile` was appended too.
+- **SURFACE IS A PROPERTY OF THE CELL, NOT THE ROOM TYPE.** That is why it is a probe and
+  not a `RoomStyle` lookup: a per-room-type setting cannot express "you just stepped onto
+  a wooden bridge over a pit", which is one of the most distinctive moments the generator
+  produces.
+- **`probeMask` MUST EXCLUDE THE NPC LAYER** or a goblin in a crowd samples the surface of
+  whoever it is standing beside — the same rule `NpcFootIK.groundMask` carries. Both
+  authored components are masked; a new one will not be.
+- **The NPC cull runs BEFORE the probe**, so the crowd's raycast cost scales with how many
+  NPCs you can HEAR rather than how many exist.
+- **Fallback is the design, and it is why the debug log names WHICH SOURCE WON.** A
+  surface with no authored clips falls back to the component's own, so an unfilled library
+  changes nothing — but that also means a silently-failing library sounds IDENTICAL to a
+  working one while Stone is the only surface authored. The log states the reason the
+  library declined for exactly that reason.
+- NB the library path multiplies `Entry.footstepVolume` by the component's `volume`, so
+  moving a surface onto the library makes it quieter unless that is set to 1.
 
 ### THE VOICE BUDGET (F7 — `AudioBudgetDebug`)
 
@@ -2424,7 +2506,7 @@ Cosmetic-first; combat is far off ("get the world together first").
     ✅ **ToonLit emission + flicker** — candles glow and burn per-instance, with a
     per-element id so one candelabra's flames don't pulse in unison (§6). The shader is
     the only place a `StaticDecor` piece can animate at all.
-25c. ⏳ **Sound system** (`SOUNDSYSTEM_PLAN.md`; architecture in §10b). ✅ steps 1-5:
+25c. ⏳ **Sound system** (`SOUNDSYSTEM_PLAN.md`; architecture in §10b). ✅ steps 1-6:
     `DungeonAudioMixer` + routing every source through `AudioBus`; `PlayerRoomTracker`;
     `AudioProfile` + per-space `RoomStyle` slots; `AmbientDirector` (beds, crossfade,
     positional one-shots via `OneShotAudioPool`, since `PlayClipAtPoint` cannot be mixed);
@@ -2432,7 +2514,14 @@ Cosmetic-first; combat is far off ("get the world together first").
     `playOnAwake` fix that was the whole problem (189 playing / 84 stolen → 14 / 0 at
     double the target population). `Tools/normalize-audio.ps1` fixed a 38 LU spread across
     the library. ⏳ **step 6** reverb by space + footstep surfaces (extend `SurfaceType`
-    with Gravel/Water); **7** music stems + `TensionSend`; **8** ducking; **9** occlusion.
+    with Gravel/Water) — DONE, see below.
+    ✅ **step 6** — `AudioSpace` (the one space resolution, shared so ambience and reverb
+    cannot disagree about which room you are in), `ReverbDirector` (computed from room
+    size, driving a mixer BUS rather than a listener filter, in MILLIBELS not dB), and
+    surface-aware footsteps that EXTENDED `SurfaceType` rather than forking it.
+    ⏳ **7** music stems + Snapshots + `TensionSend` — needs the lifecycle decision first
+    (music survives a scene reload via `DontDestroyOnLoad`, ambience must NOT, and F1 /
+    PgUp / the exit portal all reload); **8** ducking; **9** occlusion.
 26. ⏳ NPC AI remaining phases: **call for help** (shout = a loud `NoiseEvent`; the
     `NpcRegistry` and death cry already exist — rate-limit or it alert-loops);
     **disarm/rearm** (a dropped weapon is NOT a `Carryable`, whose `Interact()`

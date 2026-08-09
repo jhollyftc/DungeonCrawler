@@ -508,14 +508,32 @@ Mark done inline as this progresses, same convention as CLAUDE.md §11.
    nothing changing.
 3. [x] **`AudioProfile`** (§3) + `RoomStyle` slots (per-type, hallway, alcove) +
    `DefaultAudioProfile`.
-4. [ ] **`AmbientDirector`** (§4) — base + room layers first; one-shot pool and
+4. [x] **`AmbientDirector`** (§4) — base + room layers first; one-shot pool and
    proximity points as a follow-up once the crossfade is stable. Root registered in
    `GeneratedRoots` if it creates one.
-5. [ ] **Voice budget instrumentation** (§5) — measure a real crowd fight, then set
+   **Built as a manager watching the RESOLVED PROFILE, not `OnRoomChanged`** —
+   corridors, alcoves, prisons and pits all have `CurrentRoom == null`, so that event
+   fires for exactly one of the five spaces the game has. `OneShotAudioPool` was
+   needed because `PlayClipAtPoint` creates a hidden object with no group and
+   therefore cannot be mixed at all.
+5. [x] **Voice budget instrumentation** (§5) — measure a real crowd fight, then set
    the per-category allocation. Do this BEFORE music stems, so the budget is known
    before more sources are added to it.
-6. [ ] **Reverb by space** (§9) **+ footstep surfaces** (§10) — both consume #2;
+   **Measured: peak 14 voices, 0 stolen, at 50 NPCs mid-fight — double the target
+   population.** So the per-category allocation below stays THEORETICAL; there is no
+   pressure to divide a budget with better than 2x headroom, and #7's stems will not
+   trouble it. The measurement found something else entirely: 186 phantom voices from
+   `playOnAwake` with a null clip (see §5 and CLAUDE.md §10b). Culling and priorities
+   were built first against a plausible misreading of the numbers, and were not the
+   fix — they are kept on their own merits.
+6. [x] **Reverb by space** (§9) **+ footstep surfaces** (§10) — both consume #2;
    do them together.
+   `AudioSpace` extracted from `AmbientDirector` so ambience and reverb cannot
+   disagree about which space you are in. **The reverb parameters are MILLIBELS, not
+   dB** — the r2 draft's values were authored as dB and would have left every space
+   fully wet; see §9. Footsteps EXTENDED `SurfaceType` rather than forking it, as
+   §10 required. Field-tuned: the room population is bimodal (closets ~2 cells,
+   ordinary rooms 60-150), so the size blend spans 10..165 and closets clamp.
 7. [ ] **Adaptive music stems + Snapshots + `TensionSend`** (§7) — scaffold with
    placeholder loops; needs the `DontDestroyOnLoad` decision from §6 in place.
 8. [ ] **Ducking** (§8).
