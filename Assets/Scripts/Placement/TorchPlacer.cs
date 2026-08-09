@@ -38,6 +38,12 @@ namespace DungeonGen
         public BakeMode bakeMode = BakeMode.Realtime;
         [Tooltip("Perlin intensity flicker. Automatically disabled in Baked mode.")]
         public bool flicker = true;
+        [Tooltip("How far the LIGHT's intensity swings, as a fraction of its base. 0.25 = rides between 0.75x and 1.25x. Read indirectly off walls, so it tolerates a lot more than the flame does.")]
+        [Range(0f, 1f)] public float flickerAmount = 0.25f;
+        [Tooltip("Flicker rate. Loosely matching this to the flame VFX's flipbook rate makes the two reinforce rather than beat against each other.")]
+        public float flickerSpeed = 6f;
+        [Tooltip("How hard the FLAME pulses, as a multiple of flickerAmount, driven from the SAME noise sample as the light so the fire and the light it casts cannot drift.\n\nUnder 1 is usually right: the flame is looked at DIRECTLY, where the light's full swing reads as strobing. 0 = a steady flame under a flickering light, which is close to what a real fire does at distance.")]
+        [Range(0f, 2f)] public float flameFlickerAmount = 0.6f;
 
         [Header("Disciplined shadows")]
         [Tooltip("Only the N torches nearest the camera cast shadows; the rest are shadowless fill lights. Point-light shadows are a 6-face cubemap each, so keep this small.")]
@@ -55,16 +61,16 @@ namespace DungeonGen
         [Tooltip("Name of the exposed HDR Color property in the flame VFX Graph. Must match exactly. The graph should multiply its color-over-life gradient by this so the flame keeps its bright-core-to-smoke SHAPE while taking the room's hue.")]
         public string flameColorProperty = "Color";
 
+        [Header("Ambient loop (per-torch crackle)")]
+        [Tooltip("Fire crackle heard from individual torches, played by a POOL of voices reassigned to whichever torches are nearest — never one AudioSource per torch, which at dungeon torch counts would be 100+ permanent voices against a real budget of 32. Leave the clip list empty to disable. Positional rather than an ambient bed on purpose: a bed cannot pan, and walking a corridor past a sconce is the entire effect.")]
+        public TorchAudioSettings torchAudio = new TorchAudioSettings();
+
         [Header("Culling")]
         [Tooltip("Only torch lights within this distance of the camera are enabled. Sconce meshes are never hidden — only the lights and flicker toggle.")]
         public bool cullTorchLights = true;
         public float cullDistance = 30f;
         [Tooltip("Torches checked per frame, round-robin. Keeps the per-frame cost flat and tiny regardless of how many torches exist.")]
         public int cullChecksPerFrame = 750;
-        [Header("Ambient loop (per-torch crackle)")]
-        [Tooltip("Fire crackle heard from individual torches, played by a POOL of voices reassigned to whichever torches are nearest — never one AudioSource per torch, which at dungeon torch counts would be 100+ permanent voices against a real budget of 32. Leave the clip list empty to disable. Positional rather than an ambient bed on purpose: a bed cannot pan, and walking a corridor past a sconce is the entire effect.")]
-        public TorchAudioSettings torchAudio = new TorchAudioSettings();
-
 
         public enum BakeMode { Realtime, Mixed, Baked }
     }
@@ -98,12 +104,6 @@ namespace DungeonGen
                 culler.shadowMode = s.shadows;
             }
 
-            bool Open(Vector3Int p) => grid.InBounds(p) && grid[p] != CellType.Empty;
-
-            // ---- Gather all valid wall-mount slots ----
-            // A slot is a floor-level walkable cell with a solid neighbor to
-            // mount on. Keyed by (cell, direction). We then thin them by
-            // spacing rather than by per-face dice.
             // The crackle pool. Independent of the culler on purpose: torch AUDIO should work
             // whether or not light culling is enabled, and the two answer different questions
             // (which lights are worth drawing vs which torches are worth hearing) at very
@@ -117,6 +117,12 @@ namespace DungeonGen
                 audioPool.settings = s.torchAudio;
             }
 
+            bool Open(Vector3Int p) => grid.InBounds(p) && grid[p] != CellType.Empty;
+
+            // ---- Gather all valid wall-mount slots ----
+            // A slot is a floor-level walkable cell with a solid neighbor to
+            // mount on. Keyed by (cell, direction). We then thin them by
+            // spacing rather than by per-face dice.
             var slots = new List<(Vector3Int cell, Vector3Int dir, CellType type)>();
             for (int i = 0; i < grid.Length; i++)
             {
@@ -167,6 +173,7 @@ namespace DungeonGen
             // exactly once instead of per-torch.
             int flameColorId = Shader.PropertyToID(s.flameColorProperty);
             bool flameTintWarned = false;
+            bool flameFlickerWarned = false;
 
             var accepted = new List<(Vector3Int cell, Vector3Int dir, CellType type)>();
             // Bucket accepted torches by wall plane for cheap distance checks.
@@ -283,9 +290,19 @@ namespace DungeonGen
                                 }
                                 flicker = go.GetComponentInChildren<TorchFlicker>();
                                 if (s.flicker && s.bakeMode != TorchSettings.BakeMode.Baked && flicker == null)
-                                {
                                     flicker = light.gameObject.AddComponent<TorchFlicker>();
+
+                                // SEED EVERY FLICKER, not just the ones created here. A
+                                // prefab-authored TorchFlicker arrives with whatever seed was
+                                // serialized — the SAME one on every torch in the dungeon — so
+                                // the whole place pulses in perfect unison, which reads as one
+                                // global brightness animation rather than as separate fires.
+                                if (flicker != null)
+                                {
                                     flicker.noiseSeed = seed;
+                                    flicker.amount = s.flickerAmount;
+                                    flicker.speed = s.flickerSpeed;
+                                    flicker.flameAmount = s.flameFlickerAmount;
                                 }
                                 flame = go.GetComponentInChildren<VisualEffect>(true);
                             } } },
@@ -312,8 +329,15 @@ namespace DungeonGen
                     }
                     if (s.flicker && s.bakeMode != TorchSettings.BakeMode.Baked)
                     {
-                        flicker = light.gameObject.AddComponent<TorchFlicker>();
+                        // Reuse an authored one rather than adding a second: two flickers on
+                        // one light both write intensity every frame, and the result is
+                        // whichever ran last, at an amplitude neither was tuned for.
+                        flicker = light.GetComponent<TorchFlicker>();
+                        if (flicker == null) flicker = light.gameObject.AddComponent<TorchFlicker>();
                         flicker.noiseSeed = Hash(c, 31) % 1000;
+                        flicker.amount = s.flickerAmount;
+                        flicker.speed = s.flickerSpeed;
+                        flicker.flameAmount = s.flameFlickerAmount;
                     }
                 }
 
@@ -354,9 +378,11 @@ namespace DungeonGen
                 // Tint the flame to match. The color-over-life gradient in the
                 // graph supplies the SHAPE (bright core -> smoke); this exposed
                 // property supplies the hue, so a blue-lit room burns blue.
+                bool flameHasColor = flame != null && flame.HasVector4(flameColorId);
+
                 if (flame != null && s.tintFlameToLight)
                 {
-                    if (flame.HasVector4(flameColorId))
+                    if (flameHasColor)
                         flame.SetVector4(flameColorId, col);
                     else if (!flameTintWarned)
                     {
@@ -365,6 +391,31 @@ namespace DungeonGen
                             $"'{s.flameColorProperty}' — flames won't tint to the room color. Add an exposed " +
                             $"HDR Color property with that exact name to the flame VFX Graph and multiply its " +
                             $"color-over-life gradient by it. (Warning shown once.)", flame);
+                    }
+                }
+
+                // FLAME FLICKER IS INDEPENDENT OF FLAME TINT. Whether the fire pulses and
+                // whether it takes the room's hue are different questions, and nesting the
+                // first inside the second meant turning tinting off silently froze the flame —
+                // with flameFlickerAmount visibly doing nothing across its whole range.
+                if (flame != null && flicker != null)
+                {
+                    if (flameHasColor)
+                    {
+                        // Pulse around whatever colour the flame ACTUALLY has: the room's if
+                        // it was just tinted, the graph's own authored one if not. Reading it
+                        // back is what lets an untinted flame still flicker without this
+                        // overwriting the colour the artist chose.
+                        Color flameBase = s.tintFlameToLight ? col : (Color)flame.GetVector4(flameColorId);
+                        flicker.SetFlame(flame, s.flameColorProperty, flameBase);
+                    }
+                    else if (!flameFlickerWarned)
+                    {
+                        flameFlickerWarned = true;
+                        Debug.LogWarning($"[Dungeon] Torch flame VFX has no exposed Vector4/Color property " +
+                            $"named '{s.flameColorProperty}', so flameFlickerAmount will do nothing — the " +
+                            $"flame cannot be pulsed without a property to scale. The LIGHT still flickers, " +
+                            $"which is why this looks like only the VFX setting is broken. (Warning shown once.)", flame);
                     }
                 }
 
@@ -409,6 +460,12 @@ namespace DungeonGen
                     if (flicker != null) flicker.enabled = false;
                     culler.Register(light, flicker);
                 }
+
+                // Register the torch's WORLD POSITION for the crackle pool. Registered from
+                // `pos` rather than from the light, so a torch with no Light (baked mode, or a
+                // sconce whose light was culled out of existence) still crackles — the fire is
+                // visible in the flame VFX either way.
+                if (audioPool != null) audioPool.Register(pos);
             }
 
             Debug.Log($"[Dungeon] {accepted.Count} torches placed (from {slots.Count} candidate wall slots).");
@@ -460,12 +517,6 @@ namespace DungeonGen
         public float shadowUpdateInterval = 0.2f;
 
         struct Entry
-
-                // Register the torch's WORLD POSITION for the crackle pool. Registered from
-                // `pos` rather than from the light, so a torch with no Light (baked mode, or a
-                // sconce whose light was culled out of existence) still crackles — the fire is
-                // visible in the flame VFX either way.
-                if (audioPool != null) audioPool.Register(pos);
         {
             public Light Light;
             public Behaviour Flicker; // may be null
