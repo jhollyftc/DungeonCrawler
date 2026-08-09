@@ -57,3 +57,10 @@ desktop.ini
 # Scratch scene copies — recreated by hand, not part of the project
 /[Aa]ssets/DungeonProcBACKUP.unity
 /[Aa]ssets/DungeonProcBACKUP.unity.meta
+
+# Audio normalization intermediates (Tools/normalize-audio.ps1).
+# normalized_audio/ is regenerable output. raw_sorted/ holds the PRE-normalization
+# originals and is currently the only copy of them - back it up outside the repo, or
+# remove this line and commit it, before deleting anything.
+/raw_sorted/
+/normalized_audio/
