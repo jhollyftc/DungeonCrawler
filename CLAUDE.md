@@ -2242,9 +2242,35 @@ setting by `AudioSpace.SizeCells`, so a new room type sounds right with no autho
 
 ### Footsteps and surfaces (`FootstepSurface`, `Surface.Below`)
 
-Each footfall probes downward and picks its clip from `SurfaceLibrary`, so a wooden
-staircase or bridge sounds wooden with no authoring beyond the `Surface` component the
-prefab already wants for sword hits.
+Each footfall resolves what is underfoot and picks its clip from `SurfaceLibrary`, so a
+wooden staircase or bridge sounds wooden with no authoring beyond the `Surface` component
+the prefab already wants for sword hits.
+
+**TWO LAYERS, AND THE SECOND ONE IS NOT OPTIONAL — MOST OF THE DUNGEON CANNOT CARRY A
+`Surface` AT ALL.** `DungeonMesher.Build` emits the ENTIRE shell — every floor, wall and
+ceiling — as ONE GameObject with ONE `MeshCollider`. A downward probe on an ordinary
+floor therefore always hits that single collider, which can only hold one `Surface` for
+the whole dungeon. **A `Surface` authored onto a floor prefab looks correct and silently
+does nothing**, because that prefab's collider is not in the world (§5: the kit is visual
+only; collision is the greybox). Stairs work only because stairs are among the handful of
+pieces that DO get their own collider GameObject — archways, doors, columns, ladders,
+corner pillars are the rest.
+1. **Probe** (`Surface.TryBelow`) — anything with its own collider: stairs, bridges,
+   doors, props. Per-CELL by construction, which is what makes "you just stepped onto a
+   wooden bridge over a pit" work with no extra authoring.
+2. **Cell lookup** — everything else. The generator already knows what a cell IS, so
+   `AudioSpace.ResolveAt` resolves the space and its `AudioProfile.floorSurface` answers.
+
+`TryBelow` returning "no `Surface` found" rather than collapsing into the fallback is the
+hinge the whole thing turns on. And the probe still WINS wherever it can answer, so the
+original rule — surface is a property of the CELL, not the room type — is preserved
+rather than reversed; the per-space value is only the floor beneath everything else.
+
+**Resolved from EACH ACTOR'S OWN position** (`ResolveAt(vis, cell)`, with `Resolve(tracker)`
+now a thin wrapper over it), so an NPC crossing a bridge sounds like wood while the player
+standing in the room does not. `AudioSpace.CellOf` matches `PlayerRoomTracker`'s
+world-to-cell conversion exactly instead of re-deriving it — golden rule 5's
+float-Y-at-a-storey-boundary trap.
 
 - **ONE `SurfaceType`, EXTENDED — never a second footstep enum.** The first draft proposed
   a parallel `Stone/Gravel/Water/Bone/Wood`; two enums that both answer "what is this made
@@ -2268,6 +2294,12 @@ prefab already wants for sword hits.
   library declined for exactly that reason.
 - NB the library path multiplies `Entry.footstepVolume` by the component's `volume`, so
   moving a surface onto the library makes it quieter unless that is set to 1.
+- **AN UNASSIGNED `RoomStyle` AUDIO SLOT FAILS PLAUSIBLY, NOT LOUDLY.** `PitAudio()` falls
+  back to the OWNING ROOM's profile (deliberately — a pit is styled as part of its room
+  everywhere else), so an empty `pitAudio` gave pits the room's floor surface AND the
+  room's reverb, with nothing wrong-looking anywhere. `PrisonAudio`/`AlcoveAudio` fall back
+  to the hallway the same way. When a space "sounds like the wrong space", check the slot
+  is filled before doubting the resolution.
 
 ### THE VOICE BUDGET (F7 — `AudioBudgetDebug`)
 
