@@ -362,6 +362,15 @@ namespace DungeonGen
             }
 
             Debug.Log($"[Dungeon] {accepted.Count} torches placed (from {slots.Count} candidate wall slots).");
+
+                    // HAND THE INTENSITY TO THE FLICKER, or it discards it. TorchFlicker
+                    // captures its base at Awake — which ran inside the Instantiate above,
+                    // BEFORE this line — and then rewrites light.intensity from that captured
+                    // value every frame. Without this the room's intensityScale survives a
+                    // single frame and is then overwritten by the prefab's authored intensity:
+                    // a brief bright flash at load, after which every value from 0 to 100
+                    // looks identical.
+                    if (flicker != null) flicker.SetBaseIntensity(light.intensity);
             return root;
         }
 

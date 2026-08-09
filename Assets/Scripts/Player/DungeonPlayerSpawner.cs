@@ -202,6 +202,11 @@ namespace DungeonGen
                 if (torchFlicker)
                 {
                     var f = torchGo.AddComponent<TorchFlicker>();
+                    // Correct already — AddComponent runs Awake synchronously and intensity was
+                    // set above — but stated explicitly so reordering these lines cannot
+                    // silently reintroduce the bug that discarded a generated torch's
+                    // intensity (see TorchFlicker.SetBaseIntensity).
+                    f.SetBaseIntensity(li.intensity);
                     f.amount = 0.12f; // gentler than wall torches — it's right in your face
                     f.speed = 5f;
                     f.noiseSeed = 777;
