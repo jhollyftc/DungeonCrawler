@@ -71,6 +71,10 @@ namespace DungeonGen
             // Measured: 186 phantom voices against a real-voice budget of 32.
             creakSource.Stop();
             creakSource.volume = 0f;
+            // MUFFLE-ONLY: this component MoveTowards on creakSource.volume every frame and
+            // reads it back to decide whether to play at all, so a second writer would corrupt
+            // that accumulator rather than merely fight it.
+            AudioOcclusion.RegisterFilterOnly(creakSource);
             AudioBus.Route(creakSource, mixerGroup);
         }
 

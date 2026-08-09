@@ -56,6 +56,15 @@ namespace DungeonGen
                     go.transform.SetParent(root.transform, false);
                     var s = go.AddComponent<AudioSource>();
                     s.playOnAwake = false;
+
+                    // Registered so occlusion keeps TRACKING while a voice plays, rather than
+                    // being resolved once and frozen. It matters here and not for a footstep
+                    // or an impact: those last a few hundred ms, during which the player
+                    // cannot get behind a wall, but an ambient chant or chain rattle runs for
+                    // SECONDS and walking out of earshot mid-clip is entirely normal.
+                    // The manager skips voices that are not playing, so the eight idle ones
+                    // cost nothing between sounds.
+                    AudioOcclusion.Register(s, 1f);
                     instance.sources[i] = s;
                 }
                 return instance;
@@ -88,9 +97,18 @@ namespace DungeonGen
 
             s.transform.position = point;
             s.clip = clip;
-            s.volume = volume;
             s.pitch = pitch;
-            spatial.ApplyTo(s);
+            spatial.ApplyTo(s);          // sets spatialBlend, which the occlusion gate reads
+
+            // OCCLUSION SEEDED HERE, then TRACKED by the manager for as long as this plays.
+            // Seeding unconditionally is what stops a pooled voice inheriting the muffling of
+            // whatever it played last — same reasoning as AudioBus.Assign being unconditional
+            // on this path — and `Begin` snaps rather than eases, because a NEW sound should
+            // start correct instead of sliding into correctness over the smoothing window.
+            float occ = AudioOcclusion.Manager.occlude && s.spatialBlend >= AudioOcclusion.PositionalBlend
+                ? AudioOcclusion.Sample(point) : 0f;
+            AudioOcclusion.Manager.Begin(s, volume, occ);
+
             AudioBus.Assign(s, group);   // pooled voice: assign unconditionally, see AudioBus
             s.Play();
         }

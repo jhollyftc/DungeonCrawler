@@ -144,7 +144,10 @@ namespace DungeonGen
 
             impactSource.pitch = Mathf.Lerp(forcePitchRange.x, forcePitchRange.y, force)
                                  * Random.Range(pitchRange.x, pitchRange.y);
-            impactSource.PlayOneShot(clip, volume);
+            // Occlude from the CONTACT POINT, not the prop's pivot. A barrel resting against a
+            // doorway can have its origin on the far side of the wall from where it was struck,
+            // and the point you heard is the point the sound came from.
+            AudioOcclusion.PlayOneShot(impactSource, clip, volume, point);
 
             if (debugAudio)
                 Debug.Log($"[ImpactAudio] {name} hit '{collision.collider.name}' at {speed:0.00} m/s → '{clip.name}' vol {volume:0.00} (force {force:0.00})");

@@ -45,6 +45,9 @@ namespace DungeonGen
         [Tooltip("Runtime fog color blending toward the current/approaching room's torch palette. Needs a RoomStyle and fog enabled in Lighting > Environment.")]
         public FogSettings fog = new FogSettings();
 
+        [Tooltip("Muffles and quietens sounds with geometry between them and the listener. Applied to the runtime AudioOcclusion manager at generation, so it is authorable HERE rather than on an object that only exists in play mode — the same reason FogSettings lives here and not on DungeonFogController.")]
+        public OcclusionSettings occlusion = new OcclusionSettings();
+
         public enum GeometryMode { GeneratedMesh, PrefabKit, InstancedKit }
 
         [Header("═══ DEBUG VIEW (gizmos only) ═══")]
@@ -344,6 +347,13 @@ namespace DungeonGen
                 RoomPropPlacer.Build(gen, kit, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
                 HallwayPropPlacer.Build(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
             }
+
+            // Push the authored occlusion settings into the runtime manager. Done at
+            // generation rather than at Awake because the manager auto-installs on first USE
+            // (a torch registering, an impact playing), which may be either side of Awake
+            // depending on what happens first — asking for it here creates it if it doesn't
+            // exist yet and reconfigures it if it does, so a regenerate re-applies changes.
+            if (occlusion != null && Application.isPlaying) occlusion.ApplyTo(AudioOcclusion.Manager);
 
             if (fog != null && fog.dynamicFogColor && roomStyle != null)
             {

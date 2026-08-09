@@ -176,7 +176,7 @@ namespace DungeonGen
             if (clips[i] == null) return;
 
             source.pitch = Random.Range(pitchRange.x, pitchRange.y);
-            source.PlayOneShot(clips[i], volume);
+            AudioOcclusion.PlayOneShot(source, clips[i], volume);
         }
     }
 }

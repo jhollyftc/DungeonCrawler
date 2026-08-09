@@ -170,7 +170,7 @@ namespace DungeonGen
             if (surface.TryPick(transform, out AudioClip surfaceClip, out float surfaceVol, out float surfacePitch))
             {
                 source.pitch = surfacePitch;
-                source.PlayOneShot(surfaceClip, surfaceVol * vol);
+                AudioOcclusion.PlayOneShot(source, surfaceClip, surfaceVol * vol);
                 return;
             }
 
@@ -187,7 +187,7 @@ namespace DungeonGen
             if (clips[i] == null) return;
 
             source.pitch = 1f + Random.Range(-pitchJitter, pitchJitter);
-            source.PlayOneShot(clips[i], vol);
+            AudioOcclusion.PlayOneShot(source, clips[i], vol);
         }
     }
 }

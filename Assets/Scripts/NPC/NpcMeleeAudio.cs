@@ -133,7 +133,7 @@ namespace DungeonGen
             if (whooshClips[i] == null) return;
 
             source.pitch = Random.Range(pitchRange.x, pitchRange.y);
-            source.PlayOneShot(whooshClips[i], volume);
+            AudioOcclusion.PlayOneShot(source, whooshClips[i], volume);
         }
     }
 }

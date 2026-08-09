@@ -132,6 +132,12 @@ namespace DungeonGen
                 src.priority = AudioPriority.AmbientPoint;
                 AudioBus.Assign(src, settings.mixerGroup);
 
+                // Registered as a LOOP: the occlusion manager owns this source's volume from
+                // here on, easing it around settings.volume. A torch heard through a wall in
+                // the next corridor is one of the most obvious bleed cases in the game, since
+                // the crackle is continuous and you walk past walls constantly.
+                AudioOcclusion.Register(src, settings.volume);
+
                 voices.Add(new Voice { src = src });
             }
         }

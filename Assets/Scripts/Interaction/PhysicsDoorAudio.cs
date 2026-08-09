@@ -83,6 +83,8 @@ namespace DungeonGen
                 creakSource.loop = true;
                 creakSource.playOnAwake = false;
                 creakSource.volume = 0f;
+                // MUFFLE-ONLY - creakSource.volume is this component's own accumulator.
+                AudioOcclusion.RegisterFilterOnly(creakSource);
             }
             if (impactSource != null)
                 impactSource.playOnAwake = false;
