@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Audio;
 
@@ -35,6 +36,22 @@ namespace DungeonGen
         public AudioMixerGroup baseGroup;
         [Tooltip("Mixer group for the per-space identity bed. Route to Ambient/RoomType.")]
         public AudioMixerGroup roomGroup;
+        [Tooltip("Mixer group for scattered ambient one-shots. Route to Ambient/OneShots.")]
+        public AudioMixerGroup oneShotGroup;
+
+        [Header("One-shots")]
+        [Tooltip("Volume for scattered one-shots, before the mixer.")]
+        [Range(0f, 1f)] public float oneShotVolume = 0.8f;
+        [Tooltip("Random pitch range per one-shot. A drip that is always the same pitch stops sounding like water within about four repeats.")]
+        public Vector2 oneShotPitchRange = new Vector2(0.9f, 1.1f);
+
+        [Header("Debug")]
+        [Tooltip("Scene-view gizmos: every candidate floor cell for the current space, and where recent one-shots actually fired. Turns 'they sound like they're all in the middle' into something you can look at — the distinction matters because a clip that is positioned correctly but STEREO reads as centred no matter where it is (3D panning needs mono), and only a picture separates the two.")]
+        public bool debugOneShots = false;
+        [Tooltip("How many recent one-shot positions to keep on screen.")]
+        [Range(1, 60)] public int debugHistory = 20;
+        [Tooltip("Seconds a marker stays visible.")]
+        public float debugLifetime = 12f;
 
         [Header("Feel")]
         [Tooltip("Seconds to crossfade when the space changes. Long enough that a doorway is a transition rather than a switch; short enough that a small room registers before you leave it. Room air spilling through a door is what this is imitating.")]
@@ -124,6 +141,7 @@ namespace DungeonGen
             if (!ReferenceEquals(p, current))
             {
                 current = p;
+                nextOneShot = -1f;   // re-arm; see TickOneShots
                 baseLayer.Play(p != null ? p.ambientBaseLayer : null);
                 roomLayer.Play(p != null ? p.ambientRoomLayer : null);
                 if (p != null) { baseLayer.SetPriority(p.voicePriority); roomLayer.SetPriority(p.voicePriority); }
@@ -132,7 +150,167 @@ namespace DungeonGen
             float dt = Time.deltaTime;
             baseLayer.Tick(dt, crossfadeSeconds, volume);
             roomLayer.Tick(dt, crossfadeSeconds, volume);
+            TickOneShots(dt);
         }
+
+        // ---------------- Scattered one-shots ----------------
+
+        float nextOneShot = -1f;
+        bool warnedNoOneShotGroup;
+        Room cachedFloorRoom;
+        List<Vector3Int> floorCells;
+
+        /// <summary>
+        /// ONE ticker for the whole dungeon, not a coroutine per room: only the space the
+        /// player is standing in is audible, so only it needs to tick. This is the cheap
+        /// version of "how many ambient sources exist at once", done before it becomes a
+        /// problem rather than after.
+        /// </summary>
+        void TickOneShots(float dt)
+        {
+            var p = current;
+            if (p == null || p.oneShotPool == null || p.oneShotPool.Length == 0) { nextOneShot = -1f; return; }
+
+            // Re-arm on entering a space, so a one-shot cannot fire the instant you cross a
+            // threshold (which reads as caused by you rather than by the room).
+            if (nextOneShot < 0f) { nextOneShot = Interval(p); return; }
+
+            nextOneShot -= dt;
+            if (nextOneShot > 0f) return;
+            nextOneShot = Interval(p);
+
+            AudioClip clip = p.oneShotPool[Random.Range(0, p.oneShotPool.Length)];
+            if (clip == null) return;
+            if (!TryPickPoint(out Vector3 point)) return;
+
+            // A source with NO mixer group does not route through the mixer at all — it goes
+            // straight to the AudioListener, bypassing every group INCLUDING Master. So an
+            // unassigned group is not "routes to Master", it is "invisible to the mixer": the
+            // sounds are plainly audible while no meter anywhere moves, and no volume slider
+            // or duck can touch them. That reads as "the mixer is broken" rather than as one
+            // empty field, so it says so once instead.
+            if (oneShotGroup == null && !warnedNoOneShotGroup)
+            {
+                warnedNoOneShotGroup = true;
+                Debug.LogWarning("[AmbientDirector] One Shot Group is unassigned, so ambient " +
+                                 "one-shots BYPASS THE MIXER ENTIRELY (straight to the listener — " +
+                                 "not even the Master meter moves, and no volume or duck applies). " +
+                                 "Assign it to Ambient/OneShots.", this);
+            }
+
+            // Reuses the SAME pool the surface impacts use, deliberately. §5 wants voices
+            // centrally owned, and a second private pool would be a second budget nobody is
+            // tracking — the F7 overlay would show them competing without showing why.
+            OneShotAudioPool.Play(clip, point, oneShotVolume,
+                                  Random.Range(oneShotPitchRange.x, oneShotPitchRange.y),
+                                  oneShotGroup, p.oneShotSpatial);
+
+            if (debugOneShots)
+            {
+                pings.Add(new Ping { pos = point, time = Time.time });
+                while (pings.Count > debugHistory) pings.RemoveAt(0);
+            }
+        }
+
+        struct Ping { public Vector3 pos; public float time; }
+        readonly List<Ping> pings = new List<Ping>();
+
+        /// <summary>
+        /// Draws the CANDIDATE SET and the OUTCOMES together, which is the whole point: a
+        /// scatter that looks correct against a floor plan but sounds centred is a CLIP
+        /// problem (a stereo clip cannot be panned meaningfully), while markers genuinely
+        /// bunched in the middle would be a placement problem. Only seeing both separates them
+        /// — the same instrument-before-hypothesising move that settled the crowd jitter and
+        /// the alcove rejection tally, both of which had confident wrong diagnoses first.
+        /// </summary>
+        void OnDrawGizmos()
+        {
+            if (!debugOneShots || !Application.isPlaying || vis == null) return;
+            float cs = vis.cellSize;
+
+            // Every cell a one-shot COULD have picked, for the room case.
+            if (floorCells != null && tracker != null && tracker.CurrentRoom != null)
+            {
+                Gizmos.color = new Color(0.3f, 0.8f, 1f, 0.25f);
+                foreach (var c in floorCells)
+                    Gizmos.DrawWireCube(CellCentre(c) + Vector3.up * 0.05f,
+                                        new Vector3(cs * 0.85f, 0.02f, cs * 0.85f));
+            }
+
+            // Where they actually fired, newest brightest.
+            for (int i = 0; i < pings.Count; i++)
+            {
+                float age = Time.time - pings[i].time;
+                if (age > debugLifetime) continue;
+                float k = 1f - age / Mathf.Max(0.01f, debugLifetime);
+                Gizmos.color = new Color(1f, 0.85f, 0.2f, 0.25f + 0.75f * k);
+                Gizmos.DrawSphere(pings[i].pos + Vector3.up * 0.3f, 0.12f + 0.25f * k);
+            }
+
+            // The listener, so "centred" can be judged relative to where you were standing.
+            if (tracker != null && tracker.HasPlayer && tracker.player != null)
+            {
+                Gizmos.color = new Color(1f, 1f, 1f, 0.9f);
+                Gizmos.DrawWireSphere(tracker.player.position + Vector3.up * 0.3f, 0.35f);
+            }
+        }
+
+        static float Interval(AudioProfile p) =>
+            Mathf.Max(0.25f, Random.Range(p.oneShotIntervalRange.x, p.oneShotIntervalRange.y));
+
+        /// <summary>
+        /// A world point on real FLOOR near the player.
+        ///
+        /// NOT a random point in the room's bounds. A bounds-random point lands in a pit
+        /// opening, inside an L-room's bite, or in a wall — a pit opening in particular passes
+        /// every "is this a room cell" test because it genuinely is one, it simply has no floor
+        /// (§12's category rule). `RoomPropPlacer.ComputeZones` is the single source of truth
+        /// for "which cells can something stand on", and it is what the prop placers already
+        /// use, so a drip cannot end up somewhere a crate could not.
+        ///
+        /// Corridors, alcoves and prisons have no Room and therefore no zones, so those scan a
+        /// small neighbourhood instead: open cell, solid directly below. Same test, less
+        /// machinery.
+        /// </summary>
+        bool TryPickPoint(out Vector3 point)
+        {
+            point = default;
+            var gen = vis.Generator;
+            if (gen == null || tracker == null || !tracker.HasPlayer) return false;
+
+            Room room = tracker.CurrentRoom;
+            if (room != null)
+            {
+                if (!ReferenceEquals(room, cachedFloorRoom))
+                {
+                    cachedFloorRoom = room;
+                    floorCells = RoomPropPlacer.ComputeZones(gen, room).Floor;
+                }
+                if (floorCells == null || floorCells.Count == 0) return false;
+                point = CellCentre(floorCells[Random.Range(0, floorCells.Count)]);
+                return true;
+            }
+
+            // Corridor-like space: sample a few cells around the player and take the first
+            // that has a floor. A handful of tries beats building and caching a set for a
+            // space the player is walking straight through.
+            var grid = gen.Grid;
+            Vector3Int at = tracker.CurrentCell;
+            for (int i = 0; i < 12; i++)
+            {
+                var c = new Vector3Int(at.x + Random.Range(-4, 5), at.y, at.z + Random.Range(-4, 5));
+                if (!grid.InBounds(c) || grid[c] == CellType.Empty) continue;
+                var below = c + Vector3Int.down;
+                if (grid.InBounds(below) && grid[below] != CellType.Empty) continue;  // no floor here
+                point = CellCentre(c);
+                return true;
+            }
+            return false;
+        }
+
+        Vector3 CellCentre(Vector3Int c) =>
+            new Vector3((c.x + 0.5f) * vis.cellSize, c.y * vis.cellSize, (c.z + 0.5f) * vis.cellSize)
+            + transform.position;
 
         /// <summary>
         /// Created ONCE and deliberately NOT registered in DungeonVisualizer.GeneratedRoots.

@@ -56,9 +56,6 @@ namespace DungeonGen
                     go.transform.SetParent(root.transform, false);
                     var s = go.AddComponent<AudioSource>();
                     s.playOnAwake = false;
-                    s.spatialBlend = 1f;                   // positional, as PlayClipAtPoint was
-                    s.rolloffMode = AudioRolloffMode.Linear;
-                    s.maxDistance = 25f;
                     instance.sources[i] = s;
                 }
                 return instance;
@@ -68,9 +65,16 @@ namespace DungeonGen
         /// <summary>
         /// Play `clip` at a world position through `group`. Pitch is honoured, which
         /// PlayClipAtPoint could not do.
+        ///
+        /// `spatial` is applied PER CALL, not once at pool construction: the voices are shared
+        /// between ambient one-shots and surface impacts, which want different falloff — a drip
+        /// in a cistern and a sword on stone have no reason to share a curve. The pool used to
+        /// hardcode ImpactAudio's values (linear, 1m to 25m) for both, which at dungeon scale
+        /// is barely any falloff at all: 83% volume at five metres, so near and far sounded
+        /// alike and everything seemed to be on top of you.
         /// </summary>
         public static void Play(AudioClip clip, Vector3 point, float volume, float pitch,
-                                AudioMixerGroup group)
+                                AudioMixerGroup group, AudioSpatial spatial)
         {
             if (clip == null) return;
             var pool = Instance;
@@ -86,7 +90,8 @@ namespace DungeonGen
             s.clip = clip;
             s.volume = volume;
             s.pitch = pitch;
-            AudioBus.Route(s, group);
+            spatial.ApplyTo(s);
+            AudioBus.Assign(s, group);   // pooled voice: assign unconditionally, see AudioBus
             s.Play();
         }
     }

@@ -21,6 +21,16 @@ namespace DungeonGen
         [Tooltip("Mixer group for POSITIONED impact one-shots — the hits with no AudioSource of their own (a sword striking a wall, debris from a shattered crate). Route to SFX/Physics.\n\nIt lives here rather than on each hit source because those callers have no source to carry a group on; the library is the one thing every impact already goes through. Hits that DO pass an sfxSource keep that source's own routing.\n\nEmpty = straight to Master, i.e. today's behaviour.")]
         public UnityEngine.Audio.AudioMixerGroup impactMixerGroup;
 
+        [Tooltip("3D falloff for those positional impact one-shots. Separate from the ambient one-shot settings on AudioProfile because a sword on stone and a drip in a cistern have no reason to share a curve — the pool used to hardcode one set of values for both.\n\nImpacts generally want to carry further than ambience: a crate shattering across the room is information you want.")]
+        public AudioSpatial impactSpatial = new AudioSpatial
+        {
+            spatialBlend = 1f,
+            minDistance = 3f,
+            maxDistance = 25f,
+            rolloff = AudioRolloffMode.Logarithmic,
+            spread = 20f,
+        };
+
         [Serializable]
         public class Entry
         {

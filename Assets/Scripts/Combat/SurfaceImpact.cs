@@ -46,7 +46,7 @@ namespace DungeonGen
                     // no volume control, and no DUCKING, despite a surface impact being the
                     // very event the ducking design keys off. The pool is routable, and it
                     // gets pitch variation too, which PlayClipAtPoint could not do.
-                    OneShotAudioPool.Play(clip, point, e.volume, pitch, lib.impactMixerGroup);
+                    OneShotAudioPool.Play(clip, point, e.volume, pitch, lib.impactMixerGroup, lib.impactSpatial);
                 }
             }
         }

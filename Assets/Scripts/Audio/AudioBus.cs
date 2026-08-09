@@ -23,10 +23,33 @@ namespace DungeonGen
     /// </summary>
     public static class AudioBus
     {
-        /// <summary>Point a source at a group. Tolerates both being null.</summary>
+        /// <summary>
+        /// Point an OWNED source at a group, leaving it alone when the group is unassigned.
+        ///
+        /// The null tolerance is deliberate HERE: the source belongs to one component for its
+        /// whole life, so an empty field means "don't override whatever the inspector already
+        /// set on the AudioSource" rather than "route to Master".
+        /// </summary>
         public static void Route(AudioSource src, AudioMixerGroup group)
         {
             if (src != null && group != null) src.outputAudioMixerGroup = group;
+        }
+
+        /// <summary>
+        /// Point a SHARED/POOLED source at a group, INCLUDING clearing it to null.
+        ///
+        /// A pooled voice is reused by unrelated callers, so "leave it as it was" means
+        /// "inherit whoever used this voice last" — an ambient drip would play through
+        /// SFX/Physics because that voice previously served a sword impact, and a caller with
+        /// no group assigned would silently keep someone else's routing. The symptom is a mixer
+        /// group whose meter never moves while its sounds are plainly audible, which reads as
+        /// "the mixer isn't working" rather than as a routing bug.
+        ///
+        /// Assign every time, unconditionally. Null here genuinely means Master.
+        /// </summary>
+        public static void Assign(AudioSource src, AudioMixerGroup group)
+        {
+            if (src != null) src.outputAudioMixerGroup = group;
         }
     }
 }
