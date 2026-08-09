@@ -605,6 +605,6 @@ MonoBehaviour:
     weight: 1
     noiseRange: {x: 0, y: 1}
   pitFloorPrefabs:
-  - {fileID: 919132149155446097, guid: b1179402ceeba484d9840c2aab725486, type: 3}
-  pitAudio: {fileID: 0}
+  - {fileID: 8674753709914803891, guid: 1974bac4c60105e4aa9cc9cdd3ec3a85, type: 3}
+  pitAudio: {fileID: 11400000, guid: 97ea5984b48576849abb089ca900d467, type: 2}
   defaultAudioProfile: {fileID: 11400000, guid: 92b21d87fbc3a4f4d85fc2b8ed7dc4e5, type: 2}

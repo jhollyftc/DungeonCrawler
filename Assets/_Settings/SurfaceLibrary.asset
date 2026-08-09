@@ -76,6 +76,19 @@ MonoBehaviour:
     footsteps: []
     footstepVolume: 0.8
     footstepPitchRange: {x: 0.92, y: 1.08}
+  - surface: 7
+    vfx: {fileID: 0}
+    vfxLifetime: 2
+    sfx: []
+    volume: 1
+    pitchRange: {x: 0.95, y: 1.05}
+    footsteps:
+    - {fileID: 8300000, guid: 1b9d45c996492b646a95ebefd0f2b907, type: 3}
+    - {fileID: 8300000, guid: 7ce5160217c39bc4bab3cdce0c5a8d13, type: 3}
+    - {fileID: 8300000, guid: 73bbdd40882247b4b9ee3979a04a0dc3, type: 3}
+    - {fileID: 8300000, guid: fe5df802adda129408e11b7c89b61dad, type: 3}
+    footstepVolume: 1
+    footstepPitchRange: {x: 0.92, y: 1.08}
   defaultEntry:
     surface: 0
     vfx: {fileID: 9136566953809437027, guid: 60ec151a604cd324496c5d0a81fd42c9, type: 3}

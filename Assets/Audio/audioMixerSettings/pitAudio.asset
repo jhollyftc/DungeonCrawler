@@ -26,6 +26,7 @@ MonoBehaviour:
     maxDistance: 10
     rolloff: 0
     spread: 30
+  floorSurface: 7
   overrideReverb: 1
   reverb:
     decayTime: 3.2

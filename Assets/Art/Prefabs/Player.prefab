@@ -269,8 +269,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.FirstPersonController
   cam: {fileID: 6328108747647057218}
-  walkSpeed: 3
-  sprintSpeed: 5
+  walkSpeed: 2.5
+  sprintSpeed: 4.5
   jumpHeight: 1.1
   gravity: -20
   lookSensitivity: 2.2
@@ -330,8 +330,9 @@ MonoBehaviour:
       m_Bits: 4031
     probeUp: 0.5
     probeDown: 1.2
+    useCellFallback: 1
     fallbackSurface: 0
-    debugSurface: 1
+    debugSurface: 0
   clips:
   - {fileID: 8300000, guid: 74f45716a03abee43b65ac07d3889cc8, type: 3}
   - {fileID: 8300000, guid: 36864b5a566d46c49b4a07e7f5fc3423, type: 3}
@@ -340,8 +341,8 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 949024ce5fc5f024aa2f545e3e18ca71, type: 3}
   - {fileID: 8300000, guid: 7a7875eb68ee0e14db986d6bee9ce532, type: 3}
   landClip: {fileID: 0}
-  stepDistance: 2.4
-  volume: 0.4
+  stepDistance: 1.2
+  volume: 0.5
   pitchJitter: 0.08
   landVelocityThreshold: 4
   groundedGrace: 0.2
@@ -415,14 +416,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.HeadBob
   cameraTransform: {fileID: 6328108747647057218}
-  verticalAmplitude: 0.045
-  horizontalAmplitude: 0.035
+  verticalAmplitude: 0.08
+  horizontalAmplitude: 0.07
   rollAmplitude: 0.4
-  speedForFullBob: 4
+  speedForFullBob: 2.5
   offsetSmoothing: 14
   heavyVerticalMultiplier: 1.9
   heavyRollMultiplier: 1.5
-  fallbackStepDistance: 2.4
+  fallbackStepDistance: 1.2
 --- !u!114 &8254297746429988832
 MonoBehaviour:
   m_ObjectHideFlags: 0

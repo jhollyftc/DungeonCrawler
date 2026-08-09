@@ -31,7 +31,10 @@ namespace DungeonGen
         [Tooltip("How far below the feet to look. Long enough to cross the capsule's skin width and any small step, short enough not to find the floor below a ledge.")]
         public float probeDown = 1.2f;
 
-        [Tooltip("Surface used when the probe hits nothing, or hits something untagged. Stone is the untagged world (§ Surface), which is what a dungeon mostly is.")]
+        [Tooltip("When the probe finds no Surface component, ask the GENERATOR what this cell is and use that space's AudioProfile.floorSurface. This is what makes a pit floor or a prison floor sound different, since the whole dungeon shell is ONE collider and cannot carry per-cell Surface components. Off = probe only, i.e. everything untagged is fallbackSurface.")]
+        public bool useCellFallback = true;
+
+        [Tooltip("Last resort: the probe found nothing tagged AND the cell lookup could not answer (no generator, or no AudioProfile for that space). Stone is the untagged world, which is what a dungeon mostly is.")]
         public SurfaceType fallbackSurface = SurfaceType.Stone;
 
         [Tooltip("Log every step's resolved surface. The fastest way to find a bridge or water plane that is missing its Surface component.")]
@@ -51,7 +54,7 @@ namespace DungeonGen
         {
             clip = null; volume = 1f; pitch = 1f;
 
-            SurfaceType surface = Surface.Below(feet, probeUp, probeDown, probeMask, fallbackSurface);
+            SurfaceType surface = Resolve(feet);
             LastSurface = surface;
 
             // The log must say WHICH SOURCE WON, not just what was underfoot. "Stepped on Stone"
@@ -84,6 +87,50 @@ namespace DungeonGen
             if (debugSurface)
                 Debug.Log($"[FootstepSurface] {Name(feet)} on {surface} -> LIBRARY '{clip.name}' (vol {volume:0.00})");
             return true;
+        }
+
+        /// <summary>
+        /// What is underfoot, in TWO LAYERS, because one alone cannot cover the dungeon.
+        ///
+        /// 1. THE PROBE, for anything with its own collider GameObject — stairs, bridges,
+        ///    doors, columns, props. Per-CELL by construction, which is what makes "you just
+        ///    stepped onto a wooden bridge over a pit" work with no extra authoring.
+        /// 2. THE CELL, for everything else. `DungeonMesher` emits the entire shell as ONE
+        ///    GameObject with ONE MeshCollider, so ordinary floors are physically incapable
+        ///    of carrying a per-cell Surface — a Surface authored on a floor prefab looks
+        ///    right and does nothing. The generator already knows what that cell IS, so the
+        ///    space's `AudioProfile.floorSurface` answers instead.
+        ///
+        /// The original design was probe-only, on the reasoning that surface is a property of
+        /// the CELL and not of the room type. That reasoning was right and is preserved: the
+        /// probe still WINS wherever it can answer, so the per-space value is only ever the
+        /// floor beneath everything else.
+        ///
+        /// Resolved from the FEET's OWN position, not the player's, so an NPC crossing a
+        /// bridge sounds like wood while the player standing in the room does not.
+        /// </summary>
+        SurfaceType Resolve(Transform feet)
+        {
+            if (Surface.TryBelow(feet, probeUp, probeDown, probeMask, out SurfaceType tagged))
+                return tagged;
+
+            if (!useCellFallback || feet == null) return fallbackSurface;
+
+            DungeonVisualizer v = Vis();
+            if (v == null) return fallbackSurface;
+
+            AudioSpace space = AudioSpace.ResolveAt(v, AudioSpace.CellOf(v, feet.position));
+            if (space.Profile == null) return fallbackSurface;
+            return space.Profile.floorSurface;
+        }
+
+        // Cached like AudioCull's listener, and re-found the same way: the dungeon is rebuilt
+        // on F1/PgUp and the portal, so a held reference goes stale.
+        static DungeonVisualizer cachedVis;
+        static DungeonVisualizer Vis()
+        {
+            if (cachedVis == null) cachedVis = Object.FindFirstObjectByType<DungeonVisualizer>();
+            return cachedVis;
         }
 
         /// <summary>Log why the library declined and fall back. Always returns false.</summary>

@@ -122,6 +122,10 @@ namespace DungeonGen
         [Tooltip("How this space's one-shots sit in 3D. PER SPACE on purpose: a drip in a great hall should carry further than one in a prison cell, and a pit's sounds should reach up out of it.\n\nIf everything sounds like it is on top of you, the usual causes are a large Min Distance (the radius of full volume) or Linear rolloff — see the field tooltips. The other common cause is not here at all: a STEREO clip cannot be panned meaningfully, so tick Force To Mono on positional clips.")]
         public AudioSpatial oneShotSpatial = AudioSpatial.Default;
 
+        [Header("Footsteps")]
+        [Tooltip("What the FLOOR of this space is made of, for footstep sounds.\n\nThis is a FALLBACK, and it exists because most of the dungeon cannot be tagged with a Surface component. DungeonMesher emits the entire shell — every floor, wall and ceiling — as ONE GameObject with ONE MeshCollider, so a Surface on a floor prefab tags nothing and is silently ignored. Anything with its OWN collider (stairs, bridges, doors, columns, props) still wins via the downward probe, which is what keeps 'you just stepped onto a wooden bridge' working.\n\nSo: set this per space (a pit floor is Water or Gravel, a prison is Stone), and tag the exceptions with Surface components.")]
+        public SurfaceType floorSurface = SurfaceType.Stone;
+
         [Header("Reverb")]
         [Tooltip("Author reverb for this space instead of deriving it from room SIZE. Off = the computed value, which is the normal case — a crypt wanting more wet than its dimensions imply is the exception this exists for.")]
         public bool overrideReverb = false;

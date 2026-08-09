@@ -67,18 +67,41 @@ namespace DungeonGen
         /// </summary>
         public static SurfaceType Below(Transform feet, float rayUp, float rayDown, LayerMask mask,
                                         SurfaceType fallback = SurfaceType.Stone)
+            => TryBelow(feet, rayUp, rayDown, mask, out SurfaceType t) ? t : fallback;
+
+        /// <summary>
+        /// As <see cref="Below"/>, but reports whether a Surface component was actually FOUND
+        /// rather than collapsing "hit untagged geometry" into the fallback.
+        ///
+        /// THE DISTINCTION IS LOAD-BEARING, because most of the dungeon cannot be tagged this
+        /// way at all. `DungeonMesher.Build` emits the ENTIRE shell — every floor, wall and
+        /// ceiling — as ONE GameObject with ONE MeshCollider, so a Surface on it would tag the
+        /// whole dungeon a single material. Only the handful of kit pieces that get their own
+        /// collider GameObject (stairs, archways, doors, columns, ladders, corner pillars) and
+        /// ordinary props are reachable by this probe.
+        ///
+        /// So "false" means "you hit the greybox shell, ask the GENERATOR what this cell is"
+        /// — which is exactly what FootstepSurface does next. Authoring a Surface onto a floor
+        /// prefab looks correct and silently does nothing; this is why.
+        /// </summary>
+        public static bool TryBelow(Transform feet, float rayUp, float rayDown, LayerMask mask,
+                                    out SurfaceType type)
         {
-            if (feet == null) return fallback;
+            type = SurfaceType.Stone;
+            if (feet == null) return false;
 
             // Start ABOVE the feet: a capsule rests fractionally inside the floor collider, and
             // a ray starting inside a collider does not report it (the CheckSphere lesson from
             // ViewmodelCollision and MeleeAttack, in its raycast form).
             Vector3 origin = feet.position + Vector3.up * rayUp;
-            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, rayUp + rayDown,
-                                mask, QueryTriggerInteraction.Ignore))
-                return Of(hit.collider, fallback);
+            if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, rayUp + rayDown,
+                                 mask, QueryTriggerInteraction.Ignore))
+                return false;
 
-            return fallback;
+            var s = hit.collider.GetComponentInParent<Surface>();
+            if (s == null) return false;
+            type = s.type;
+            return true;
         }
     }
 }

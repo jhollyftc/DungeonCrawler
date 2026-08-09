@@ -58,18 +58,35 @@ namespace DungeonGen
 
         public static AudioSpace Resolve(DungeonVisualizer vis, PlayerRoomTracker tracker)
         {
+            if (vis == null || tracker == null || !tracker.HasPlayer)
+                return new AudioSpace { Kind = SpaceKind.None };
+            return ResolveAt(vis, tracker.CurrentCell);
+        }
+
+        /// <summary>
+        /// World position to cell, matching `PlayerRoomTracker` exactly rather than
+        /// re-deriving it — golden rule 5's float-Y-at-a-storey-boundary trap lives here.
+        /// </summary>
+        public static Vector3Int CellOf(DungeonVisualizer vis, Vector3 worldPos)
+            => Vector3Int.FloorToInt((worldPos - vis.transform.position) / vis.cellSize);
+
+        /// <summary>
+        /// Resolve for an ARBITRARY cell rather than the player's. This is what lets NPCs
+        /// resolve their OWN space — an NPC's footsteps must reflect the floor it is standing
+        /// on, not the floor the player happens to be standing on somewhere else.
+        /// </summary>
+        public static AudioSpace ResolveAt(DungeonVisualizer vis, Vector3Int cell)
+        {
             var result = new AudioSpace { Kind = SpaceKind.None };
-            if (vis == null || tracker == null || !tracker.HasPlayer) return result;
+            if (vis == null) return result;
 
             var style = vis.roomStyle;
             var gen = vis.Generator;
             if (style == null || gen == null) return result;
 
-            Vector3Int cell = tracker.CurrentCell;
-
-            // Pit FIRST — a pit cell resolves to a Room as well, so asking about rooms
-            // first would mean a chasm never gets its own acoustics.
-            PitSpec pit = tracker.CurrentPit;
+            // Pit FIRST — a pit cell resolves to a Room as well (RoomAt falls through PitAt),
+            // so asking about rooms first would mean a chasm never gets its own acoustics.
+            PitSpec pit = gen.PitAt(cell);
             if (pit != null)
             {
                 RoomType owner = pit.Owner != null ? pit.Owner.Type : RoomType.Generic;
@@ -81,7 +98,7 @@ namespace DungeonGen
                 return result;
             }
 
-            Room room = tracker.CurrentRoom;
+            Room room = gen.RoomAt(cell);
             if (room != null)
             {
                 result.Kind = SpaceKind.Room;
