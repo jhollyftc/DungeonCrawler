@@ -426,6 +426,23 @@ colliders/lights/logic). Four **PropTier**s:
 decides instanced-vs-GameObject, independent of what it does. High-count static →
 instanced; movers/interactives → GameObject.
 
+**A VFX GRAPH PROPERTY CONSUMED IN *INITIALIZE* IS READ ONCE PER PARTICLE, AT BIRTH — TO
+ANIMATE LIVE PARTICLES IT MUST BE IN *UPDATE* (or Output).** Cost a real debugging round
+on the torch flame. The symptom is maximally misleading: selecting the VisualEffect in
+play mode showed the exposed HDR Color oscillating correctly across a >2x range, which
+normally means "it works", while **every visible particle was holding the colour it
+captured when it spawned**. With a flicker period (~0.17s at speed 6) far shorter than
+particle lifetime, particles from many different phases coexist on screen and average out,
+so the fire reads perfectly FLAT while its driving property is demonstrably moving.
+**The discriminating test is to slow the driver right down** (`flickerSpeed` 0.3): if it
+pulses then, the property is being read at birth and the period was simply shorter than
+the lifetime; if it is still flat, the value is not reaching the output at all. Same
+discipline as "does moving the camera bring the NPC back?" — find the test that SEPARATES
+the causes rather than one that confirms a guess.
+**It silently affects TINTING too**, which is the part that hides for months: colour
+applied at spawn means a shrine's flame FADES to blue over a particle lifetime instead of
+being blue, and that happens at generation time before the player ever arrives.
+
 **`TorchFlicker` OWNS `Light.intensity` OUTRIGHT — anything writing it after spawn must go
 through `SetBaseIntensity`, or the value is silently discarded.** The flicker captures its
 base in `Awake` and then rewrites the light from that base EVERY `Update`. `Awake` runs
@@ -439,6 +456,25 @@ as `PlayerRoomTracker` frame-stamping instead of trusting `DefaultExecutionOrder
 `BaseIntensity` is exposed for readers wanting the un-flickered value. General shape: **a
 component that drives a property every frame from a cached base is a WRITE-ONLY OWNER of
 that property**, and every other writer needs a way in.
+It also drives the **flame VFX from the SAME noise sample** (`flameAmount`, a multiple of
+the light's `amount`, defaulting BELOW 1 — the light is read indirectly off walls and
+tolerates a lot, the flame is looked at directly and the same swing reads as strobing). One
+sample for both is the point: a second noise source in the graph would run on its own clock
+and drift, so the fire would brighten while the light it casts dimmed. The pulse SCALES the
+HDR colour rather than lerping toward black, so the room's hue survives.
+**AUTHORING `TorchFlicker` ON A TORCH PREFAB USED TO FAIL SILENTLY TWICE OVER** — worth
+knowing because adding it there is the obvious instinct, and `TorchPlacer` adds it for you
+so you never need to: its `Light` lookup was same-GameObject-only (on a prefab it lands on
+the root while the Light sits on a child, so the component is present, enabled, correctly
+configured and does NOTHING), and `noiseSeed` was only assigned on the auto-added path, so
+every torch carried the same serialized seed and the whole dungeon pulsed in unison. Both
+fixed; the tunables live on `TorchSettings` so there is one source of truth.
+**NESTING ONE FEATURE'S SETUP INSIDE ANOTHER'S CONDITION MAKES A DIAL LOOK DEAD.** Flame
+flicker was wired inside `if (tintFlameToLight)`, so turning tinting off froze the flame and
+`flameFlickerAmount` did nothing across its entire range. Whether the fire PULSES and
+whether it takes the room's HUE are different questions; when not tinting, the base colour
+is now read back off the graph so an untinted flame still flickers around the artist's
+colour.
 
 **Torch culling (TorchCullingManager)** — sliced per-frame distance cull of torch
 lights + **disciplined shadows**: only the nearest `maxShadowCasters` (default 3)
@@ -2363,6 +2399,44 @@ float-Y-at-a-storey-boundary trap.
   to the hallway the same way. When a space "sounds like the wrong space", check the slot
   is filled before doubting the resolution.
 
+### Positional loops (`TorchAudioPool`) — and why a loop is not a one-shot
+
+Per-torch fire crackle. **Positional rather than an ambient bed because a bed cannot PAN** —
+walking a corridor past a sconce and hearing it swing across you and fall behind is the
+whole effect, and corridors are where torches are sparse enough to locate individually.
+
+- **A LOOP HOLDS ITS VOICE FOR AS LONG AS IT PLAYS**, unlike a one-shot that frees the slot
+  when the clip ends. So one AudioSource per torch is 100+ PERMANENT voices against a
+  budget of 32 — the phantom-voice shape again, except these ones actually mix, which makes
+  it worse. A fixed pool is reassigned to whichever torches are nearest, bounding cost by
+  what can be PERCEIVED rather than by what exists. Exactly `maxShadowCasters`' logic.
+- **HYSTERESIS ON THE STEAL (`stealMargin`) IS REQUIRED, NOT POLISH.** Two torches at
+  near-equal distance swap rank on the smallest movement and a looping source jumping
+  between them stutters — the oscillation `NpcBrain.approachHysteresis` and
+  `investigateRadius` exist to stop. **Shadow casters need no equivalent**, because a shadow
+  popping between two distant torches is invisible; audio is not. Same query, different
+  tolerance.
+- **THE ROLLOFF MUST REACH ZERO AT `maxDistance`.** That single property is what lets a
+  voice be released or stolen there with NO fade machinery — the switch happens while the
+  source is already silent. Linear guarantees it; a custom curve is the author's
+  responsibility (checked at startup, warning names the actual end value); **Logarithmic is
+  deliberately not offered** since it never reaches zero and would click on every steal. The
+  symptom of getting this wrong is a click each time you walk past a torch, which reads as a
+  bad loop point rather than a rolloff setting.
+- Voices start at a **random point in the loop** — every one starting at t=0 makes a
+  corridor crackle in lockstep, which reads as one wide sound rather than several fires.
+- `AudioPriority.AmbientPoint` (48): below a bed, whose absence is a hole in the whole
+  world, but above player actions, because the pooled voices are by construction the nearest
+  audible ones.
+
+**`AudioSpatial` CAN NOW CARRY A CUSTOM ROLLOFF CURVE**, which is how impact falloff
+(`SurfaceLibrary.impactSpatial` → every melee hit, thrown prop and arrow, via the one
+`SurfaceImpact.Spawn` seam) is authored. It was previously refused on the grounds that a
+curve baked onto a pooled voice would leak to the next caller — real, but `ApplyTo` runs on
+EVERY acquisition, so each caller overwrites the last. **Unlike the torch loop this curve
+need NOT reach zero**: a one-shot ends on its own, so there is no reassignment to hide, and
+staying faintly audible at the edge of the range is a legitimate choice.
+
 ### THE VOICE BUDGET (F7 — `AudioBudgetDebug`)
 
 Unity's real-voice limit is ~32. Past it, voices are STOLEN, and a stolen voice is not a
@@ -2426,6 +2500,17 @@ volume tuning can fix — it just moves the problem to the next clip.
   nowhere near the actual character. `2>&1` on a native exe wraps stderr in ErrorRecords
   and sets `$?` false on a successful exit (hence `Invoke-Capture` via `ProcessStartInfo`).
   `-f` formatting is culture-aware, so numbers go through an invariant `Num()`.
+- **THE FOLDER A FILE SITS IN *IS* ITS LOUDNESS TARGET**, so filing is not bookkeeping — it
+  silently decides how loud the sound ends up. `sort-audio` had `Torch_Flame` in
+  `ambient_beds`, correct while the plan still assumed room-level fire and wrong once the
+  crackle became positional; left there it would have authored every torch 2 LU quiet and
+  presented as a mixing problem. `proximity` (-22) exists for positional loops: louder than
+  a bed, which sits behind everything, because you walk right past the source.
+- **A DYNAMIC-MODE FALLBACK IS WORSE FOR A LOOP THAN FOR A ONE-SHOT.** Two-pass loudnorm
+  applies one constant gain, leaving the waveform — and the loop SEAM — untouched. When it
+  cannot reach the target linearly it falls back to time-varying gain: a one-shot merely
+  sounds squashed, a loop ticks audibly once per cycle forever, and you will hunt that as a
+  bad loop point. Re-export a missed loop closer to target rather than pushing harder.
 - Installing a new batch requires **Unity CLOSED**, same as §12's asset-move rule and for
   the same reason.
 
