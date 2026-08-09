@@ -52,8 +52,22 @@ param(
 #   peak = true peak, for short transients
 # Peak targets sit below the -1 dBTP ceiling so summed sources have room before clipping.
 $Categories = @{
+    # LOOPS AND BEDS -> lufs. Integrated loudness is a measure for continuous PROGRAM
+    # material, which is exactly what a loop is, and it is what makes two different fire
+    # recordings sit at the same perceived level rather than the same peak.
+    #
+    # LINEAR MODE MATTERS MORE FOR A LOOP THAN FOR A ONE-SHOT. Two-pass loudnorm applies a
+    # single constant gain, so the waveform - and therefore the loop SEAM - is untouched.
+    # When it cannot reach the target linearly it falls back to DYNAMIC gain, which varies
+    # over time and can leave the seam pumping: a one-shot just sounds slightly squashed,
+    # a loop ticks audibly once per cycle, forever. If a loop file misses its target, RE-EXPORT
+    # it closer to the target rather than letting the script push harder.
     'ambient_beds'     = @{ Mode = 'lufs'; Target = -24.0 }
     'physics_loops'    = @{ Mode = 'lufs'; Target = -23.0 }
+    # Positional ambient loops: the per-torch crackle. Louder than a bed because you walk
+    # right past the source, and the falloff does the rest - a bed sits behind everything,
+    # a proximity loop is meant to be noticed and then left behind.
+    'proximity'        = @{ Mode = 'lufs'; Target = -22.0 }
     'music'            = @{ Mode = 'lufs'; Target = -17.0 }
 
     'ambient_oneshots' = @{ Mode = 'peak'; Target =  -6.0 }

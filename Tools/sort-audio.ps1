@@ -38,8 +38,16 @@ param(
 # Check those before running with -Apply.
 $Rules = @(
     @{ Pattern = '^Dungeon_Ambient.*Loop';        Category = 'ambient_beds' }
-    @{ Pattern = 'Torch_Flame';                   Category = 'ambient_beds' }
     @{ Pattern = '^Cave_water_drips';             Category = 'ambient_beds' }   # a bed, not a one-shot: plural + no index
+
+    # POSITIONAL loops, not beds. A torch crackle is played by TorchAudioPool from the
+    # position of an individual sconce, so it pans and falls behind you as you walk a
+    # corridor; a bed cannot do that. It was filed under ambient_beds when the plan still
+    # assumed room-level fire, and the folder decides the normalization target, so leaving
+    # it there would quietly author every torch 2 LU too quiet.
+    @{ Pattern = 'Torch_Flame';                   Category = 'proximity' }
+    @{ Pattern = 'torch.*(crackle|loop)';         Category = 'proximity' }
+    @{ Pattern = 'brazier|campfire|fire_?loop';   Category = 'proximity' }
 
     @{ Pattern = '^water_drip_\d';                Category = 'ambient_oneshots' }
     @{ Pattern = '^Ritual_Chant';                 Category = 'ambient_oneshots' }
