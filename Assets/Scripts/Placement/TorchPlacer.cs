@@ -314,6 +314,24 @@ namespace DungeonGen
                         col = e.torchColor;
                         intensityScale = e.intensityScale;
                     }
+                    else
+                    {
+                        // CORRIDORS TAKE THE STYLE'S DEFAULT, not TorchSettings.color. Every
+                        // other consumer of the palette already did this — fog, props, kit
+                        // emissives and sockets all fall back to defaultTorchColor for a cell
+                        // with no room — so leaving torches on their own swatch meant a
+                        // corridor's FIRE and its HAZE came from two different colours. That is
+                        // precisely the drift §7 exists to prevent, and it showed up as hallway
+                        // props taking the hallway hue while the torches beside them did not.
+                        //
+                        // NB deliberately NOT style.For(RoomType.Generic): a corridor is not an
+                        // unauthored room, it is its own place, and a Generic entry must not
+                        // silently become the corridor palette. Same distinction hallwayAudio
+                        // draws against the default audio profile.
+                        col = style.defaultTorchColor;
+                        intensityScale = style.defaultIntensityScale > 0f
+                            ? style.defaultIntensityScale : 1f;
+                    }
                 }
 
                 // Tint the flame to match. The color-over-life gradient in the
