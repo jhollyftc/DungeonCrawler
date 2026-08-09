@@ -71,6 +71,42 @@ $DefaultCategory = @{ Mode = 'peak'; Target = -4.0 }
 function Num { param([double] $v, [int] $dp = 2) return $v.ToString("F$dp", [cultureinfo]::InvariantCulture) }
 
 # ---------------------------------------------------------------------------
+# ffmpeg reports DIGITAL SILENCE as "-inf", not as a number, and PowerShell's [double]
+# cast throws on it ("Cannot convert value -inf to type System.Double"). The error names
+# the pscustomobject line rather than the file, so a single empty clip anywhere in the
+# batch aborts the run with no clue which file caused it.
+#
+# Also parses with InvariantCulture explicitly: ffmpeg always emits "-14.2", but a
+# comma-decimal locale would read that as a thousands separator and silently return
+# -142. Same reason Num() formats invariantly on the way out.
+# ---------------------------------------------------------------------------
+function ToNum {
+    param([string] $s)
+    if ([string]::IsNullOrWhiteSpace($s)) { return [double]::NaN }
+    $t = $s.Trim()
+    if ($t -match '^-\s*inf')  { return [double]::NegativeInfinity }
+    if ($t -match '^\+?\s*inf') { return [double]::PositiveInfinity }
+    if ($t -match '^nan')      { return [double]::NaN }
+    $d = 0.0
+    if ([double]::TryParse($t, [Globalization.NumberStyles]::Float, [cultureinfo]::InvariantCulture, [ref] $d)) { return $d }
+    return [double]::NaN
+}
+
+# True for a measurement that cannot be normalized: silence (-inf) or a failed parse.
+function BadNum { param([double] $v) return ([double]::IsNaN($v) -or [double]::IsInfinity($v)) }
+
+# Format an ffmpeg measurement for feeding BACK into an ffmpeg filter string. Non-finite
+# values are floored, because "-Infinity" in a loudnorm argument is a parse error at the
+# other end - and measured_thresh in particular comes back as -inf on very quiet material
+# even when the integrated loudness itself is a perfectly good number.
+function NumS {
+    param([string] $s, [double] $floor = -99, [int] $dp = 2)
+    $v = ToNum $s
+    if (BadNum $v) { $v = $floor }
+    return Num $v $dp
+}
+
+# ---------------------------------------------------------------------------
 # PS 5.1 wraps a native exe's stderr in ErrorRecords and reports failure on a successful
 # exit when you pipe it. ProcessStartInfo reads the stream directly and avoids all of it.
 # ---------------------------------------------------------------------------
@@ -145,6 +181,7 @@ Write-Host ("{0} file(s)" -f $files.Count) -ForegroundColor Cyan
 Write-Host ""
 
 $rows = @()
+$skipped = @()
 $inRoot = (Resolve-Path $In).Path
 foreach ($f in $files) {
     $rel = $f.FullName.Substring($inRoot.Length).TrimStart('\', '/')
@@ -156,15 +193,27 @@ foreach ($f in $files) {
     if ($null -eq $m) { Write-Warning ("could not measure: {0}" -f $rel); continue }
     $dur = Get-Duration $f.FullName
 
-    $rows += [pscustomobject]@{
-        Rel = $rel; Cat = $cat; Mode = $spec.Mode; Target = [double] $spec.Target
-        I = [double] $m.input_i; TP = [double] $m.input_tp
-        Dur = $dur; Meas = $m; Path = $f.FullName
-        # Headroom is what a LINEAR gain can spend before the peak hits the ceiling.
-        Room = $TruePeakCeiling - [double] $m.input_tp
+    $mI  = ToNum $m.input_i
+    $mTP = ToNum $m.input_tp
+
+    # A SILENT file cannot be normalized: there is no gain that raises silence to a
+    # target, so skip it loudly and NAME it rather than aborting the whole batch. Almost
+    # always an export that captured the wrong track, or a trim that landed on empty air.
+    if ((BadNum $mI) -or (BadNum $mTP)) {
+        Write-Warning ("SILENT or unmeasurable, skipped: {0}   (I={1}  TP={2})" -f $rel, $m.input_i, $m.input_tp)
+        $skipped += $rel
+        continue
     }
 
-    $now = if ($spec.Mode -eq 'peak') { [double] $m.input_tp } else { [double] $m.input_i }
+    $rows += [pscustomobject]@{
+        Rel = $rel; Cat = $cat; Mode = $spec.Mode; Target = [double] $spec.Target
+        I = $mI; TP = $mTP
+        Dur = $dur; Meas = $m; Path = $f.FullName
+        # Headroom is what a LINEAR gain can spend before the peak hits the ceiling.
+        Room = $TruePeakCeiling - $mTP
+    }
+
+    $now = if ($spec.Mode -eq 'peak') { $mTP } else { $mI }
     $unit = if ($spec.Mode -eq 'peak') { 'dBTP' } else { 'LUFS' }
     $shrt = if ($dur -gt 0 -and $dur -lt 0.4 -and $spec.Mode -eq 'lufs') { '  SHORT for LUFS' } else { '' }
     Write-Host ("{0,-44} {1,-17} {2,7:N1} {3}  ->{4,6:N1}{5}" -f `
@@ -234,8 +283,8 @@ foreach ($r in $rows) {
         # what "make these consistent" should ever mean.
         $af = ('loudnorm=I={0}:TP={1}:LRA=11:measured_I={2}:measured_TP={3}:measured_LRA={4}:' +
                'measured_thresh={5}:offset={6}:linear=true:print_format=summary') -f `
-               (Num $r.Target), (Num $TruePeakCeiling), (Num $m.input_i), (Num $m.input_tp), `
-               (Num $m.input_lra), (Num $m.input_thresh), (Num $m.target_offset)
+               (Num $r.Target), (Num $TruePeakCeiling), (NumS $m.input_i), (NumS $m.input_tp), `
+               (NumS $m.input_lra 0), (NumS $m.input_thresh), (NumS $m.target_offset 0)
     }
 
     $enc = Invoke-Capture 'ffmpeg' ('-hide_banner -nostats -y -i "{0}" -af {1} -ar {2} -c:a pcm_s16le "{3}"' -f `
@@ -247,7 +296,10 @@ foreach ($r in $rows) {
     # that nobody checked is how the first pass produced 23 silent misses.
     $after = Measure-Audio $dest
     if ($null -eq $after) { Write-Warning ("could not verify: {0}" -f $r.Rel); continue }
-    $got = if ($r.Mode -eq 'peak') { [double] $after.input_tp } else { [double] $after.input_i }
+    $got = if ($r.Mode -eq 'peak') { ToNum $after.input_tp } else { ToNum $after.input_i }
+    # A verified file measuring -inf means the ENCODE produced silence from audible input,
+    # which is a worse failure than a missed target and must not be reported as a near miss.
+    if (BadNum $got) { Write-Warning ("VERIFY: output is SILENT: {0}" -f $r.Rel); continue }
     $unit = if ($r.Mode -eq 'peak') { 'dBTP' } else { 'LUFS' }
 
     $flag = ''
@@ -322,6 +374,13 @@ if ($misses.Count -eq 0) {
         $why = if ($x.Mode -eq 'lufs') { '  (LUFS mode - crest factor may be capping it; see -Suggest)' } else { '' }
         Write-Host ("  {0,-44} got {1,6:N1} {2}, wanted {3,6:N1}{4}" -f $x.Rel, $x.Got, $x.Unit, $x.Want, $why)
     }
+}
+
+if ($skipped.Count -gt 0) {
+    Write-Host ""
+    Write-Host ("{0} file(s) SKIPPED as silent/unmeasurable - these were NOT written:" -f $skipped.Count) -ForegroundColor Red
+    foreach ($s in $skipped) { Write-Host ("  {0}" -f $s) }
+    Write-Host "  Check the export: an all-silent clip is usually the wrong track or an empty trim."
 }
 
 Write-Host ""
