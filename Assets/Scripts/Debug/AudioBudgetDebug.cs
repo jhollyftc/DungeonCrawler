@@ -43,6 +43,9 @@ namespace DungeonGen
         int peakPlaying, peakVirtual;
         readonly Dictionary<string, int> byGroup = new Dictionary<string, int>();
         readonly Dictionary<string, int> virtualByGroup = new Dictionary<string, int>();
+        readonly Dictionary<string, int> peakByGroup = new Dictionary<string, int>();
+        readonly Dictionary<string, int> peakVirtualByGroup = new Dictionary<string, int>();
+        float peakAt = -1f;
         float nextScan;
 
         void Awake() => maxRealVoices = AudioSettings.GetConfiguration().numRealVoices;
@@ -81,8 +84,24 @@ namespace DungeonGen
                 }
             }
 
-            if (playing > peakPlaying) peakPlaying = playing;
-            if (virtualized > peakVirtual) peakVirtual = virtualized;
+            // SNAPSHOT THE BREAKDOWN AT THE PEAK, not just the scalar. The live per-group
+            // numbers are whatever is playing when you happen to look, and the moment worth
+            // seeing is over before you can read it - a screenshot mid-fight showed 8 voices
+            // while the peak had been 189. A high-water MARK tells you there is a problem;
+            // a high-water BREAKDOWN tells you which category caused it.
+            if (playing > peakPlaying)
+            {
+                peakPlaying = playing;
+                peakByGroup.Clear();
+                foreach (var kv in byGroup) peakByGroup[kv.Key] = kv.Value;
+                peakAt = Time.unscaledTime;
+            }
+            if (virtualized > peakVirtual)
+            {
+                peakVirtual = virtualized;
+                peakVirtualByGroup.Clear();
+                foreach (var kv in virtualByGroup) peakVirtualByGroup[kv.Key] = kv.Value;
+            }
         }
 
         void OnGUI()
@@ -100,12 +119,24 @@ namespace DungeonGen
                 sb.AppendLine(v > 0 ? $"  {kv.Key,-12} {kv.Value,3}   ({v} STOLEN)"
                                     : $"  {kv.Key,-12} {kv.Value,3}");
             }
+            if (peakByGroup.Count > 0)
+            {
+                float ago = peakAt < 0f ? 0f : Time.unscaledTime - peakAt;
+                sb.AppendLine("");
+                sb.AppendLine($"AT PEAK ({peakPlaying} voices, {ago:N0}s ago)");
+                foreach (var kv in peakByGroup)
+                {
+                    peakVirtualByGroup.TryGetValue(kv.Key, out int pv);
+                    sb.AppendLine(pv > 0 ? $"  {kv.Key,-12} {kv.Value,3}   ({pv} STOLEN)"
+                                         : $"  {kv.Key,-12} {kv.Value,3}");
+                }
+            }
             if (peakVirtual > 0)
             {
                 sb.AppendLine("");
-                sb.AppendLine("VOICES ARE BEING STOLEN — raise cull distances,");
-                sb.AppendLine("or lower AudioSource.priority NUMBERS on the beds");
-                sb.AppendLine("(Unity's scale is inverted: lower = kept).");
+                sb.AppendLine("VOICES ARE BEING STOLEN — LOWER cull distances so fewer");
+                sb.AppendLine("sources play at all, and set AudioSource.priority so the");
+                sb.AppendLine("ones worth keeping win (scale is INVERTED: lower = kept).");
             }
 
             var style = new GUIStyle(GUI.skin.box)
@@ -120,6 +151,10 @@ namespace DungeonGen
         }
 
         /// <summary>Clear the watermarks — call before a measured run.</summary>
-        public void ResetPeaks() { peakPlaying = 0; peakVirtual = 0; }
+        public void ResetPeaks()
+        {
+            peakPlaying = 0; peakVirtual = 0; peakAt = -1f;
+            peakByGroup.Clear(); peakVirtualByGroup.Clear();
+        }
     }
 }

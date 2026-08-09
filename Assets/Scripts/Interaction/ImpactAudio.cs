@@ -28,6 +28,10 @@ namespace DungeonGen
         [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
         [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
 
+        [Header("Crowd control")]
+        [Tooltip("Do not play at all beyond this distance from the listener (m). Rolloff only makes a distant impact QUIET — the source still starts and still holds a voice slot. This matters more here than anywhere else because impacts are the most NUMEROUS sound in the game: a measured crowd fight peaked at 111 simultaneous Physics voices, 84 of them being stolen.\n\n0 disables the cull.")]
+        [SerializeField] private float cullDistance = 20f;
+
         [Header("Clips")]
         [Tooltip("Impact sounds. Several = free variation, so a barrel bouncing twice doesn't sound like a copy-paste.")]
         [SerializeField] private AudioClip[] impactClips;
@@ -76,6 +80,13 @@ namespace DungeonGen
                 impactSource.maxDistance = 25f;
             }
             impactSource.playOnAwake = false;
+            // AND STOP IT. playOnAwake only governs a FUTURE start - it cannot undo one already
+            // underway, and the engine acts on the authored flag before this runs. A source set to
+            // play on awake with NO CLIP enters a playing state that never completes, so it reports
+            // isPlaying forever while making no sound: silent, invisible, and holding a voice slot.
+            // Measured: 186 phantom voices against a real-voice budget of 32.
+            impactSource.Stop();
+            impactSource.priority = AudioPriority.WorldImpact;
             AudioBus.Route(impactSource, mixerGroup);
         }
 
@@ -114,6 +125,13 @@ namespace DungeonGen
 
             Vector3 point = collision.contactCount > 0 ? collision.GetContact(0).point : transform.position;
             OnImpact?.Invoke(point, force);
+
+            // CULL AFTER OnImpact, NEVER BEFORE. That event is what DestructibleProp turns
+            // into damage and what NPC alerting listens to — culling above this line would
+            // mean a crate you cannot hear also cannot break, which is the exact mistake the
+            // retrigger gate above already made once and carries a comment about. Distance
+            // decides whether you HEAR the impact, not whether it HAPPENED.
+            if (AudioCull.TooFar(transform, cullDistance)) return;
 
             if (impactClips == null || impactClips.Length == 0)
             {

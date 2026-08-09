@@ -29,6 +29,10 @@ namespace DungeonGen
         [Tooltip("Mixer group this component's audio routes to. Set it HERE rather than on the AudioSource: the source is created at RUNTIME when the prefab has none, and an Output assigned in the inspector would cover only the authored case. Empty = straight to Master, i.e. today's behaviour.")]
         [SerializeField] private UnityEngine.Audio.AudioMixerGroup mixerGroup;
 
+        [Header("Crowd control")]
+        [Tooltip("Do not play at all beyond this distance from the listener (m). Rolloff only makes a distant goblin QUIET — the source still starts, still holds a voice slot, and still competes for the real-voice budget. This was the only NPC audio component WITHOUT a cull, so at ~25 roamers every grunt and death cry in the dungeon was bidding for a voice.\n\nSet a little higher than the melee/footstep culls: a death cry carries further than a footstep, and hearing something die off-screen is information worth keeping.")]
+        [SerializeField] private float cullDistance = 22f;
+
         /// <summary>The voice source (grunts/death cry) — NpcFace follows its amplitude to open the jaw.</summary>
         public AudioSource Source => source;
 
@@ -83,6 +87,14 @@ namespace DungeonGen
                 source.maxDistance = 25f;
             }
             source.playOnAwake = false;
+            // AND STOP IT. playOnAwake only governs a FUTURE start - it cannot undo one already
+            // underway, and the engine acts on the authored flag before this runs. A source set to
+            // play on awake with NO CLIP enters a playing state that never completes, so it reports
+            // isPlaying forever while making no sound: silent, invisible, and holding a voice slot.
+            // Measured: 186 phantom voices against a real-voice budget of 32.
+            source.Stop();
+            source.priority = AudioPriority.NpcVoice;
+
             AudioBus.Route(source, mixerGroup);
         }
 
@@ -142,6 +154,17 @@ namespace DungeonGen
         void PlayOneShot(AudioClip[] clips, ref int lastIndex, float volume)
         {
             if (source == null || clips == null || clips.Length == 0) return;
+
+            // CULL BEFORE PLAYING, not by rolloff. maxDistance only makes a distant goblin
+            // QUIET - the source still starts, still holds a slot, and still competes for the
+            // real-voice budget. This component was the only NPC audio without a cull, so at
+            // ~25 roamers every grunt and death cry in the dungeon was bidding for a voice.
+            // Measured: a crowd fight peaked at 189 playing with 84 stolen.
+            //
+            // NB this also stops NpcFace opening the jaw for that goblin, since the face
+            // follows this source's amplitude. That is correct rather than a side effect: a
+            // goblin too far to be heard is too far for its mouth to be read.
+            if (AudioCull.TooFar(transform, cullDistance)) return;
 
             int i = 0;
             if (clips.Length > 1)

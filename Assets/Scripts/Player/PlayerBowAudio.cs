@@ -73,6 +73,12 @@ namespace DungeonGen
                 source.spatialBlend = 0f;   // 2D — the player's own bow
             }
             source.playOnAwake = false;
+            // AND STOP IT. playOnAwake only governs a FUTURE start - it cannot undo one already
+            // underway, and the engine acts on the authored flag before this runs. A source set to
+            // play on awake with NO CLIP enters a playing state that never completes, so it reports
+            // isPlaying forever while making no sound: silent, invisible, and holding a voice slot.
+            // Measured: 186 phantom voices against a real-voice budget of 32.
+            source.Stop();
             AudioBus.Route(source, mixerGroup);
 
             if (drawLoopSource == null)
