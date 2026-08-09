@@ -64,8 +64,13 @@ namespace DungeonGen
         public float minDistance;
         [Tooltip("Beyond this the sound is inaudible (Linear) or nearly so (Logarithmic). 25 was the impact-tuned default and is very far for ambience — a drip audible three rooms away is one you cannot locate.")]
         public float maxDistance;
-        [Tooltip("Logarithmic falls off fast near the source and trails away — physically natural, and much stronger near/far cue. Linear is even across the whole range, which flattens distance. Custom is unsupported here (it needs a per-source curve).")]
+        [Tooltip("Logarithmic falls off fast near the source and trails away — physically natural, and a much stronger near/far cue. Linear is even across the whole range, which flattens distance. Ignored when Custom Rolloff below is ticked.")]
         public AudioRolloffMode rolloff;
+
+        [Tooltip("Author the falloff shape yourself instead of using the mode above. Worth it for impacts: an arrow hitting stone across the room should be clearly distant without vanishing, which is a shape neither Linear nor Logarithmic gives you.")]
+        public bool customRolloff;
+        [Tooltip("Volume against distance: x = distance / maxDistance (x=1 IS maxDistance), y = volume multiplier.\n\nUnlike an ambient loop this does NOT have to reach 0 at x=1 — a one-shot ends on its own, so there is no reassignment to hide. Ending slightly above zero is a legitimate choice for impacts you want to stay faintly audible at the edge of the range.")]
+        public AnimationCurve rolloffCurve;
         [Tooltip("Angle over which the source is spread across the speakers. 0 = a hard point (sharpest direction, can feel severe on headphones), 30-60 softens it without losing the direction.")]
         [Range(0f, 360f)] public float spread;
 
@@ -84,9 +89,25 @@ namespace DungeonGen
             s.spatialBlend = spatialBlend;
             s.minDistance = Mathf.Max(0.01f, minDistance);
             s.maxDistance = Mathf.Max(s.minDistance + 0.01f, maxDistance);
-            // Custom would read an AnimationCurve off the source, which a pooled voice reused
-            // by every caller cannot carry — fall back rather than silently misbehave.
-            s.rolloffMode = rolloff == AudioRolloffMode.Custom ? AudioRolloffMode.Logarithmic : rolloff;
+            // A CURVE IS RE-APPLIED PER ACQUISITION, which is what makes it safe on a pooled
+            // voice. The earlier concern — that a curve baked onto a shared source would leak
+            // to whoever used it next — is real, but ApplyTo runs on EVERY play, so each
+            // caller overwrites the last one's shape. A caller that doesn't want a curve sets
+            // rolloffMode back to Linear/Logarithmic here, which likewise overrides.
+            //
+            // Order matters: maxDistance is set above, and the curve's x axis is normalized
+            // against it, so setting the curve first would bake in the wrong range.
+            if (customRolloff && rolloffCurve != null && rolloffCurve.length > 0)
+            {
+                s.rolloffMode = AudioRolloffMode.Custom;
+                s.SetCustomCurve(AudioSourceCurveType.CustomRolloff, rolloffCurve);
+            }
+            else
+            {
+                // A bare Custom with no curve authored would leave whatever the previous
+                // caller set, so fall back rather than silently inherit.
+                s.rolloffMode = rolloff == AudioRolloffMode.Custom ? AudioRolloffMode.Logarithmic : rolloff;
+            }
             s.spread = spread;
         }
     }
