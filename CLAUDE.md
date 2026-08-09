@@ -426,6 +426,20 @@ colliders/lights/logic). Four **PropTier**s:
 decides instanced-vs-GameObject, independent of what it does. High-count static →
 instanced; movers/interactives → GameObject.
 
+**`TorchFlicker` OWNS `Light.intensity` OUTRIGHT — anything writing it after spawn must go
+through `SetBaseIntensity`, or the value is silently discarded.** The flicker captures its
+base in `Awake` and then rewrites the light from that base EVERY `Update`. `Awake` runs
+DURING `Instantiate`, i.e. before the placer configuring the light has run a single line —
+so `TorchPlacer`'s intensity survived exactly one frame and was then overwritten by the
+prefab's authored value forever. **The symptom was "`intensityScale` does nothing, 0 and
+100 look identical, but there is a brief bright flash at load"** — a value being REPLACED
+rather than scaled. `Awake` cannot fix this itself (it runs before the caller exists), so
+the dependency is explicit rather than a matter of execution order — the same discipline
+as `PlayerRoomTracker` frame-stamping instead of trusting `DefaultExecutionOrder`.
+`BaseIntensity` is exposed for readers wanting the un-flickered value. General shape: **a
+component that drives a property every frame from a cached base is a WRITE-ONLY OWNER of
+that property**, and every other writer needs a way in.
+
 **Torch culling (TorchCullingManager)** — sliced per-frame distance cull of torch
 lights + **disciplined shadows**: only the nearest `maxShadowCasters` (default 3)
 torches cast shadows; the rest are shadowless fill. **Point-light shadows are a
@@ -642,6 +656,47 @@ or they don't look like they belong to the same world:
 ## 7. RoomStyle — per-type architectural identity (ScriptableObject)
 
 One RoomStyle asset defines a room type's whole look. What it holds:
+- **THE PALETTE SUPPLIES THE HUE; EVERY CONSUMER OWNS ITS OWN BRIGHTNESS.** `torchColor`
+  is one HDR swatch read by five systems, and its MAGNITUDE used to scale all of them at
+  once — raising a room's colour intensity to make its flames bloom also flooded the walls
+  with light, washed out the fog, and blew out every candle and glowing kit piece in the
+  room. `intensityScale`, which only ever touched the Light, looked inert by comparison.
+  **`RoomStyle.Hue()`** is the single normalizer (scale so the strongest channel is 1 —
+  this preserves the channel RATIOS, hence hue and saturation, and discards only
+  magnitude). Brightness now lives here:
+
+  | consumer | dial |
+  |---|---|
+  | torch light | `Entry.intensityScale` |
+  | fog | `Entry.fogIntensity` |
+  | emissive kit | `kit.emissiveIntensity` |
+  | socket emissive | `PropSocket.tintIntensity`, else the kit's |
+  | prop emissive | `PropEntry.tintIntensity` |
+  | **flame VFX** | **the raw HDR magnitude — bloom IS the flame** |
+
+  The shared-hue invariant below is untouched: everything still comes from ONE colour, so
+  a blue shrine cannot get orange haze. **That rule was always about hue, never
+  brightness.**
+  **THE FLAME IS THE EXCEPTION AND MUST KEEP THE RAW COLOUR.** `KitSocketPlacer` fed one
+  palette to both the Light and the flame VFX, so normalizing at the source dropped
+  socketed candles and fireplace fires below the bloom threshold — it now carries both
+  forms, as `TorchPlacer` already did. Any new consumer must decide which form it wants.
+  **0 MEANS "NOT AUTHORED", NEVER "BLACK"**, for `intensityScale`, `fogIntensity` and
+  `tintIntensity` alike — an emissive or a fog colour at literal zero is indistinguishable
+  from a broken tint, so zero cannot be a usable value. `intensityScale = 0` therefore
+  discards the WHOLE entry (colour included) and falls back to the defaults; use 0.05 for
+  near-dark. And since `RoomStyle` predates `fogIntensity`, `DefaultFogIntensity` treats 0
+  as unauthored — §9's ScriptableObject-initializer lesson, where a raw zero would have
+  multiplied every fog colour by nothing and blacked out the dungeon.
+- **CORRIDORS TAKE `defaultTorchColor`, AND `TorchPlacer` WAS THE ONE CONSUMER THAT
+  FORGOT** (real field bug: "hallway props take the hallway hue, torches don't"). It
+  seeded its colour from `TorchSettings.color` and only reassigned when `RoomAt` returned
+  a room, so roomless cells silently kept the torch settings' own swatch while fog, props,
+  kit emissives and sockets all used the style default — a corridor's FIRE and its HAZE
+  came from two different colours. Deliberately NOT `style.For(RoomType.Generic)`: a
+  corridor is not an unauthored room, it is its own place, and a real Generic entry must
+  not silently become the corridor palette. Same distinction `hallwayAudio` draws against
+  the default audio profile.
 - **Torch palette** per type: color (HDR), intensity scale, spacing scale.
   Corridors/untyped use the defaults. This is type-driven lighting — a shrine
   glows cold-blue, a treasury gold, *before any prop exists*. Cheapest, highest-
@@ -989,6 +1044,13 @@ the recess; a fireplace wall gets its fire where the hearth is.
   "can I add variety without a framerate cliff": bounded by one extra batch per
   palette colour, not by candle count. Default OFF (most sockets hold shields,
   banners and rubble, where tinting would be wrong).
+  **The tinted `Light` and the tinted flame VFX take DIFFERENT FORMS of the palette** —
+  hue for the light, raw HDR for the flame — see §7. Feeding one to both is what would
+  drop a socketed candle's fire below the bloom threshold.
+- **`PropSocket.tintIntensity`** is the socket counterpart to a `PropEntry`'s, and exists
+  for the same reason: one emissive material and one room palette should serve a dim shelf
+  candle AND a blazing brazier. Without it every socketed glow in the dungeon shared
+  `kit.emissiveIntensity`. 0 = inherit the kit's (§7's not-authored convention).
 - **`tintMaterial` is the CHILD'S own glow material**, not the kit's. A candle's
   wax-and-flame material is not the walls' emissive material, and `AddInstance`
   replaces only the exact material handed to it — keying the swap off
