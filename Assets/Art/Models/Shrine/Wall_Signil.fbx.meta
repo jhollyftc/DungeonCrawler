@@ -8,7 +8,7 @@ ModelImporter:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Signil_Emissive_Material
-    second: {fileID: 2100000, guid: 0e980d34d4b435c4baa20194794b6cc9, type: 2}
+    second: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule

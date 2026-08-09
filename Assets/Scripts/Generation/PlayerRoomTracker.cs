@@ -86,7 +86,7 @@ namespace DungeonGen
             // prefab. Same lookup DungeonMapper already used.
             if (player == null)
             {
-                var fpc = Object.FindObjectOfType<FirstPersonController>();
+                var fpc = Object.FindFirstObjectByType<FirstPersonController>();
                 if (fpc != null) player = fpc.transform;
             }
             if (player == null) return;

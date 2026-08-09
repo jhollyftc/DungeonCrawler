@@ -26,6 +26,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 1
+    tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+    tintIntensity: 25
     guaranteed: 0
     count: 0
     chancePerCell: 0
@@ -57,6 +60,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 3
     chancePerCell: 1
@@ -88,6 +94,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 1
     chancePerCell: 1
@@ -121,6 +130,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 1
     chancePerCell: 0.263
@@ -152,6 +164,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 1
     chancePerCell: 1
