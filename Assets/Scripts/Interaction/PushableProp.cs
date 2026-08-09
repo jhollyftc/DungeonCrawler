@@ -31,10 +31,12 @@ namespace DungeonGen
         [SerializeField] private float maxDepenetrationVelocity = 0.5f;
 
         private Rigidbody body;
+        private PropPhysicsSleep sleeper;
 
         private void Awake()
         {
             body = GetComponent<Rigidbody>();
+            sleeper = GetComponent<PropPhysicsSleep>();
             body.maxDepenetrationVelocity = maxDepenetrationVelocity;
         }
 
@@ -45,6 +47,10 @@ namespace DungeonGen
 
         public void Push(Vector3 contactPoint, Vector3 pushDirection, float force)
         {
+            // WAKE BEFORE THE KINEMATIC GUARD. A sleeping prop IS kinematic, so testing first
+            // would refuse the very push meant to wake it — the prop would be permanently
+            // inert and read as "pushing is broken" rather than as an ordering mistake.
+            if (sleeper != null) sleeper.Wake();
             if (body == null || body.isKinematic) return;
 
             Vector3 v = body.linearVelocity;
@@ -60,6 +66,7 @@ namespace DungeonGen
         /// </summary>
         public void PushBurst(Vector3 contactPoint, Vector3 pushDirection, float impulse)
         {
+            if (sleeper != null) sleeper.Wake();      // before the guard — see Push()
             if (body == null || body.isKinematic) return;
             Apply(contactPoint, pushDirection, impulse);
         }

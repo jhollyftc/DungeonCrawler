@@ -269,8 +269,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.FirstPersonController
   cam: {fileID: 6328108747647057218}
-  walkSpeed: 4
-  sprintSpeed: 6
+  walkSpeed: 3
+  sprintSpeed: 5
   jumpHeight: 1.1
   gravity: -20
   lookSensitivity: 2.2
@@ -332,7 +332,7 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 7a7875eb68ee0e14db986d6bee9ce532, type: 3}
   landClip: {fileID: 0}
   stepDistance: 2.4
-  volume: 0.8
+  volume: 0.4
   pitchJitter: 0.08
   landVelocityThreshold: 4
   groundedGrace: 0.2
@@ -1534,8 +1534,16 @@ PrefabInstance:
     m_TransformParent: {fileID: 1952851230373220695}
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: d6d1f25dc6ad6fe4d9c65b3e7b09cd22, type: 3}
-      propertyPath: m_LocalScale.z
+      propertyPath: m_LocalScale.x
       value: 200
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: d6d1f25dc6ad6fe4d9c65b3e7b09cd22, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 100
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: d6d1f25dc6ad6fe4d9c65b3e7b09cd22, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 300
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: d6d1f25dc6ad6fe4d9c65b3e7b09cd22, type: 3}
       propertyPath: m_LocalPosition.x

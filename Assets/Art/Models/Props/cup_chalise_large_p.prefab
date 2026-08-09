@@ -68,6 +68,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 4a70025f7379bb043860b07d479f71a3, type: 3}
       insertIndex: -1
       addedObject: {fileID: -5791776141035323307}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 4a70025f7379bb043860b07d479f71a3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 8427300934012092964}
   m_SourcePrefab: {fileID: 100100000, guid: 4a70025f7379bb043860b07d479f71a3, type: 3}
 --- !u!1 &6024735331904383948 stripped
 GameObject:
@@ -154,3 +157,20 @@ MonoBehaviour:
   holdDistance: 0.8
   throwSpeed: 15
   throwSpin: 8
+--- !u!114 &8427300934012092964
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6024735331904383948}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 057553cf5b0944e4b9f88ff99c5469f8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropPhysicsSleep
+  sleepOnStart: 1
+  wakeNeighbourRadius: 0.75
+  warnIfHovering: 1
+  hoverCheckDelay: 1.5
+  hoverTolerance: 0.08

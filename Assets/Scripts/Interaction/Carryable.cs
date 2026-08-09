@@ -40,13 +40,23 @@ namespace DungeonGen
         /// <summary>The body the carry rig drives. Cached — carried props are queried every FixedUpdate.</summary>
         public Rigidbody Body { get; private set; }
 
-        void Awake() => Body = GetComponent<Rigidbody>();
+        void Awake()
+        {
+            Body = GetComponent<Rigidbody>();
+            sleeper = GetComponent<PropPhysicsSleep>();
+        }
+        PropPhysicsSleep sleeper;
 
         public string Prompt => $"Pick up {displayName}";
 
         public void Interact(Transform interactor)
         {
             if (interactor == null) return;
+
+            // Picking a prop up hands it to physics, same as pushing it. The carry rig drives
+            // a DYNAMIC body deliberately (§10 — a kinematic carry would walk props through
+            // walls), so a still-sleeping prop must wake before the rig takes hold of it.
+            if (sleeper != null) sleeper.Wake();
 
             // The interactor component may live on the player root OR on the eye,
             // depending on how the prefab is rigged, so look both up and out.

@@ -50,8 +50,22 @@ namespace DungeonGen
         private void OnControllerColliderHit(ControllerColliderHit hit)
         {
             Rigidbody body = hit.collider.attachedRigidbody;
-            if (body == null || body.isKinematic)
-                return;
+            if (body == null) return;
+
+            // A prop that spawns asleep IS kinematic, so the filter below would discard the
+            // very contact meant to wake it — the wake inside PushableProp.Push can never be
+            // reached, and the prop stays inert forever while reading as "pushing is broken".
+            //
+            // Deliberately narrow: ONLY a PropPhysicsSleep wakes here. PhysicsDoor also goes
+            // kinematic on purpose (the standoff jam, §10), and waking that would undo the
+            // one thing keeping a shoved-from-both-sides door from launching the pusher
+            // through it.
+            if (body.isKinematic)
+            {
+                var sleeper = body.GetComponent<PropPhysicsSleep>();
+                if (sleeper != null && !sleeper.IsAwake) sleeper.Wake();
+            }
+            if (body.isKinematic) return;   // still kinematic = genuinely not pushable
 
             // Don't push objects we're standing on.
             if (hit.moveDirection.y < standingOnThreshold)

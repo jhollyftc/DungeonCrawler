@@ -44,7 +44,7 @@ AudioSource:
   OutputAudioMixerGroup: {fileID: 0}
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 0}
-  m_PlayOnAwake: 1
+  m_PlayOnAwake: 0
   m_Volume: 1
   m_Pitch: 1
   Loop: 0
@@ -244,6 +244,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0867625478681ad4f8d9770fb054fab8, type: 3}
       insertIndex: -1
       addedObject: {fileID: -3430098156394823837}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0867625478681ad4f8d9770fb054fab8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -4624957499443908923}
   m_SourcePrefab: {fileID: 100100000, guid: 0867625478681ad4f8d9770fb054fab8, type: 3}
 --- !u!4 &550847751847463983 stripped
 Transform:
@@ -333,6 +336,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ImpactAudio
   impactSource: {fileID: 4918441836057813526}
   mixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
+  cullDistance: 20
   impactClips:
   - {fileID: 8300000, guid: 8aeb1eeec4743cb42a75a6e114ec36c9, type: 3}
   - {fileID: 8300000, guid: c585d985fc6cd8048b0de388582d7341, type: 3}
@@ -398,3 +402,20 @@ MonoBehaviour:
   playSurfaceSfx: 0
   sfxSource: {fileID: 0}
   debugImpact: 0
+--- !u!114 &-4624957499443908923
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 931912726832256661}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 057553cf5b0944e4b9f88ff99c5469f8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropPhysicsSleep
+  sleepOnStart: 1
+  wakeNeighbourMargin: 0.15
+  warnIfHovering: 1
+  hoverCheckDelay: 1.5
+  hoverTolerance: 0.08

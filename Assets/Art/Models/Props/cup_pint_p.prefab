@@ -68,6 +68,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: e505d63b2cad74d4181c54110c46282b, type: 3}
       insertIndex: -1
       addedObject: {fileID: -7313534295109680361}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: e505d63b2cad74d4181c54110c46282b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -4827483298170647593}
   m_SourcePrefab: {fileID: 100100000, guid: e505d63b2cad74d4181c54110c46282b, type: 3}
 --- !u!1 &452042194511091349 stripped
 GameObject:
@@ -154,3 +157,20 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.004105619, y: 0.0030949595, z: 0.0031158442}
   m_Center: {x: -0.0004664692, y: -0.000021083859, z: -0.0015773008}
+--- !u!114 &-4827483298170647593
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 452042194511091349}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 057553cf5b0944e4b9f88ff99c5469f8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropPhysicsSleep
+  sleepOnStart: 1
+  wakeNeighbourRadius: 0.75
+  warnIfHovering: 1
+  hoverCheckDelay: 1.5
+  hoverTolerance: 0.08

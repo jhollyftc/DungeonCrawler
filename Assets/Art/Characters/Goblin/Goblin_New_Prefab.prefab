@@ -41,10 +41,10 @@ AudioSource:
   m_GameObject: {fileID: 1543278870322341060}
   m_Enabled: 1
   serializedVersion: 4
-  OutputAudioMixerGroup: {fileID: 0}
+  OutputAudioMixerGroup: {fileID: -5347128251453312461, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 0}
-  m_PlayOnAwake: 1
+  m_PlayOnAwake: 0
   m_Volume: 1
   m_Pitch: 1
   Loop: 0
@@ -200,8 +200,8 @@ AudioSource:
   OutputAudioMixerGroup: {fileID: -2029272390745678996, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 0}
-  m_PlayOnAwake: 1
-  m_Volume: 1
+  m_PlayOnAwake: 0
+  m_Volume: 0.5
   m_Pitch: 1
   Loop: 0
   Mute: 0
@@ -658,11 +658,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -3714003574039648521, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.8506997
+      value: 0.8468864
       objectReference: {fileID: 0}
     - target: {fileID: -3714003574039648521, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0.52565193
+      value: 0.5317739
       objectReference: {fileID: 0}
     - target: {fileID: -3714003574039648521, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.y
@@ -990,11 +990,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8332496597460359287, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.43504024
+      value: 0.42853498
       objectReference: {fileID: 0}
     - target: {fileID: 8332496597460359287, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0.900411
+      value: 0.9035252
       objectReference: {fileID: 0}
     - target: {fileID: 8332496597460359287, guid: 43f74f2bcebc3fe4da5eba8da3312bb4, type: 3}
       propertyPath: m_LocalRotation.y
@@ -2469,6 +2469,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.NpcCombatAudio
   source: {fileID: 3724694676383649636}
   mixerGroup: {fileID: -5347128251453312461, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
+  cullDistance: 20
   hurtClips:
   - {fileID: 8300000, guid: 050b752e6693e71449305eeaf4b7ce11, type: 3}
   - {fileID: 8300000, guid: 1a4ebd93f82f36e43ac1203cd5a50875, type: 3}
