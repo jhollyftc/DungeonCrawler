@@ -88,9 +88,7 @@ namespace DungeonGen
 
         FirstPersonController controller;
         PlayerCarry carry;
-        Camera fovCam;      // WORLD camera, never the viewmodel overlay — see TickDrawFov
-        float baseFov;
-        bool haveBaseFov;
+        PlayerFov fov;      // the single owner of the WORLD camera FOV (never the viewmodel overlay)
         bool hasDraw, hasDrawAmount, hasRelease;
         bool releaseIsTrigger;          // see the parameter scan in Awake
         bool clearReleaseNextUpdate;    // bool-authored Release needs manual clearing
@@ -115,8 +113,7 @@ namespace DungeonGen
 
             // Same resolution order PlayerMelee uses for its bash FOV kick, so both find the
             // same WORLD camera and can't end up driving different ones.
-            if (controller != null && controller.cam != null) fovCam = controller.cam.GetComponent<Camera>();
-            if (fovCam == null && aimSource != null) fovCam = aimSource.GetComponent<Camera>();
+            fov = PlayerFov.Ensure(this);
 
             if (animator != null && animator.runtimeAnimatorController != null)
             {
@@ -158,12 +155,11 @@ namespace DungeonGen
             CancelDraw(relax: true);
 
             // Restore the FOV IMMEDIATELY, not by easing. A loadout swap disables this
-            // component, so Update stops running and a zoomed FOV would be stranded — and
-            // PlayerMelee captures its own baseFov lazily, so it would then adopt the zoomed
-            // value as "base" and every bash after that would be measured from the wrong
-            // number. PlayerLoadout happens to disable this in the same call that enables
-            // melee, and OnDisable fires synchronously, so this runs first either way.
-            if (fovCam != null && haveBaseFov) fovCam.fieldOfView = baseFov;
+            // component, so Update stops running. NOTHING TO RESTORE ANY MORE: PlayerFov owns
+            // the FOV and eases home the moment nothing requests an offset, which is what
+            // retired the old hazard here - a stranded zoom being adopted as another
+            // system's lazily-captured "base", after which every effect measured from the
+            // wrong number.
         }
 
         void Update()
@@ -295,17 +291,17 @@ namespace DungeonGen
         /// </summary>
         void TickDrawFov()
         {
-            if (fovCam == null || drawFovZoom == 0f) return;
+            if (fov == null || drawFovZoom == 0f) return;
 
-            // Captured lazily on first use, not in Awake: the camera's FOV can legitimately
-            // be authored or changed before the first draw.
-            if (!haveBaseFov) { baseFov = fovCam.fieldOfView; haveBaseFov = true; }
-
-            // Subtracted, so a POSITIVE drawFovZoom zooms IN. Scaled by the live draw, so
-            // letting down eases the FOV back out on its own.
-            float target = baseFov - drawFovZoom * (drawing ? draw : 0f);
-            fovCam.fieldOfView = Mathf.MoveTowards(fovCam.fieldOfView, target,
-                                                   drawFovSpeed * Time.deltaTime);
+            // REQUESTED, not written. PlayerFov owns the camera's FOV and eases home on its
+            // own when nothing asks, which replaces both the lazy base capture and the manual
+            // restore in OnDisable — and, more importantly, means this can no longer fight
+            // another effect that is active at the same time.
+            //
+            // NEGATIVE, so a POSITIVE drawFovZoom zooms IN. Scaled by the live draw, so
+            // letting down eases the FOV back out for free.
+            if (!drawing || draw <= 0f) return;
+            fov.AddOffset(-drawFovZoom * draw, drawFovSpeed);
         }
 
         void SyncNockedArrow()

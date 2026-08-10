@@ -260,9 +260,7 @@ namespace DungeonGen
         }
         readonly List<Plowed> plowed = new List<Plowed>();
 
-        Camera fovCam;            // world camera, for the bash FOV kick
-        float baseFov;
-        bool haveBaseFov;
+        PlayerFov fov;            // the single owner of the WORLD camera FOV
 
         bool carriedLastFrame;
         // Latches the moment a throw consumes an LMB press, cleared only on full
@@ -309,8 +307,7 @@ namespace DungeonGen
 
             // The WORLD camera for the bash FOV kick (not the viewmodel overlay, which
             // keeps its own FOV so only the world dollies).
-            if (controller != null && controller.cam != null) fovCam = controller.cam.GetComponent<Camera>();
-            if (fovCam == null && melee.aimSource != null) fovCam = melee.aimSource.GetComponent<Camera>();
+            fov = PlayerFov.Ensure(this);
 
             if (swordSway == null)
                 Debug.LogWarning("[PlayerMelee] No sword ViewmodelSway assigned — the sweep works but the sword won't visibly swing.", this);
@@ -1090,10 +1087,13 @@ namespace DungeonGen
         /// </summary>
         void TickFov()
         {
-            if (fovCam == null || bashFovBump == 0f) return;
-            if (!haveBaseFov) { baseFov = fovCam.fieldOfView; haveBaseFov = true; }
-            float target = bashCharging ? baseFov + bashFovBump : baseFov;
-            fovCam.fieldOfView = Mathf.MoveTowards(fovCam.fieldOfView, target, bashFovSpeed * Time.deltaTime);
+            if (fov == null || bashFovBump == 0f) return;
+            // REQUESTED per frame rather than written: PlayerFov owns the camera's FOV and
+            // eases home when nothing asks, so this no longer needs a lazy base capture or a
+            // restore on disable — and cannot fight the throw heave, which is active at the
+            // same time because carrying does not disable melee.
+            if (!bashCharging) return;
+            fov.AddOffset(bashFovBump, bashFovSpeed);
         }
 
         /// <summary>
@@ -1329,9 +1329,9 @@ namespace DungeonGen
             // to exit. Second call is a no-op — ReleasePlowed clears the list.
             ReleasePlowed();
 
-            // Don't leave a widened FOV or a half-wound shield behind if disabled mid-charge.
+            // Don't leave a half-wound shield behind if disabled mid-charge. The FOV needs no
+            // restore: PlayerFov eases home once this stops requesting an offset.
             bashCharging = false;
-            if (fovCam != null && haveBaseFov) fovCam.fieldOfView = baseFov;
         }
 
         // ---------------- Gizmo ----------------

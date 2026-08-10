@@ -402,11 +402,13 @@ MonoBehaviour:
   windupHeavy: 0.32
   windupPullBack: 0.45
   windupDrop: 0.35
-  windupCameraPitch: -14
-  windupCameraLean: 1
+  windupCameraPitch: -20
+  windupCameraLean: 0.32
   windupCameraDrop: 0.1
   releaseCameraPitch: 3.4
   releaseCameraPunch: 0.03
+  windupFovWiden: 6
+  windupFovSpeed: 60
   releaseSelfImpulse: 1.1
   dropKey: 101
   throwMouseButton: 0
@@ -1344,8 +1346,8 @@ MonoBehaviour:
   maxPosition: 0.035
 --- !u!1001 &1248173569293614554
 PrefabInstance:
-  maxSustainedRotation: 14
-  maxSustainedPosition: 0.16
+  maxSustainedRotation: 20
+  maxSustainedPosition: 0.32
   sustainSpeed: 9
   m_ObjectHideFlags: 0
   serializedVersion: 2

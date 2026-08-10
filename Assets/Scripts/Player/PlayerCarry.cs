@@ -83,6 +83,11 @@ namespace DungeonGen
         [Tooltip("Forward camera jolt (m) on release, at full load. The lunge.")]
         public float releaseCameraPunch = 0.03f;
 
+        [Tooltip("Degrees the WORLD FOV WIDENS at full wind-up. Buys drama with none of the clipping risk a big camera dolly carries: the camera stays inside the player's capsule, so it cannot end up inside a wall behind you. Same sign as PlayerMelee's bashFovBump (a lunge wants the world rushing at you) and the opposite of PlayerBow's aim zoom. 0 = off.")]
+        public float windupFovWiden = 6f;
+        [Tooltip("FOV change speed (deg/sec). Faster than the wind-up itself reads as a snap; slower reads as the world falling away as you load.")]
+        public float windupFovSpeed = 60f;
+
         [Tooltip("Forward shove given to the PLAYER on release, at full load (m/s). A real heave moves you. Small on purpose — this goes through the same decaying external velocity the shield bash uses, so it can carry you off a ledge if overdone. 0 disables it.")]
         public float releaseSelfImpulse = 1.1f;
 
@@ -158,6 +163,7 @@ namespace DungeonGen
 
         CameraKick cameraKick;
         FirstPersonController moveController;
+        PlayerFov fovDirector;
 
         void Awake()
         {
@@ -168,6 +174,12 @@ namespace DungeonGen
             // reapplying, so driving it is what keeps the throw from becoming a fourth writer
             // fighting the controller's crouch and the bob for one transform.
             cameraKick = GetComponentInChildren<CameraKick>(true);
+
+            // AUTO-INSTALLED rather than required on the prefab. Three components now ask for
+            // this, and a missing one is SILENT — the effect simply never happens, which reads
+            // as "the setting does nothing" and sends you tuning a number that was never being
+            // used. Adding it costs nothing and removes a whole class of that.
+            fovDirector = PlayerFov.Ensure(this);
 
             if (cam == null)
             {
@@ -297,6 +309,12 @@ namespace DungeonGen
             cameraKick.SetSustained(
                 new Vector3(windupCameraPitch * amount, 0f, 0f),
                 new Vector3(0f, -windupCameraDrop * amount, -windupCameraLean * amount));
+
+            // Requested per frame through the one FOV owner, so it composes with the bash
+            // bump and the bow zoom instead of fighting them - carrying does NOT disable
+            // melee, so this is the case that forced PlayerFov to exist.
+            if (fovDirector != null && windupFovWiden != 0f)
+                fovDirector.AddOffset(windupFovWiden * amount, windupFovSpeed);
         }
 
         /// <summary>
