@@ -397,7 +397,17 @@ MonoBehaviour:
   minTurnRateMultiplier: 0.2
   breakDistance: 2.5
   pickupCooldown: 0.25
-  viewmodelReturnDelay: 0.15
+  viewmodelReturnDelay: 0.35
+  windupLight: 0.09
+  windupHeavy: 0.32
+  windupPullBack: 0.45
+  windupDrop: 0.35
+  windupCameraPitch: -14
+  windupCameraLean: 1
+  windupCameraDrop: 0.1
+  releaseCameraPitch: 3.4
+  releaseCameraPunch: 0.03
+  releaseSelfImpulse: 1.1
   dropKey: 101
   throwMouseButton: 0
   voiceSource: {fileID: 0}
@@ -1334,6 +1344,9 @@ MonoBehaviour:
   maxPosition: 0.035
 --- !u!1001 &1248173569293614554
 PrefabInstance:
+  maxSustainedRotation: 14
+  maxSustainedPosition: 0.16
+  sustainSpeed: 9
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Modification:
