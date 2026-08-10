@@ -469,6 +469,75 @@ Shader "Dungeon/ToonLit"
             half4 DepthFrag(Varyings input) : SV_Target { return 0; }
             ENDHLSL
         }
+
+        // ------------------------------------------------------------------
+        // DepthNormals — REQUIRED, and its absence is invisible until something
+        // reads the depth texture.
+        //
+        // URP does not always build _CameraDepthTexture from the DepthOnly pass. With
+        // SSAO enabled and its Source set to DepthNormals (and AfterOpaque off), the
+        // renderer runs a DEPTH-NORMALS PREPASS instead, drawing only shaders that have
+        // THIS pass — and populates the depth texture from it. A shader with a perfect
+        // DepthOnly pass and no DepthNormals pass therefore vanishes from the depth
+        // texture entirely.
+        //
+        // Nothing complains. The surfaces still render, still cast shadows, still look
+        // correct. What silently stops working is everything DOWNSTREAM of scene depth:
+        // ToonWater's foam and shallow/deep blend found nothing behind them, and SSAO was
+        // not being applied to a single toon-shaded surface in the dungeon — which is to
+        // say, to almost the whole game.
+        //
+        // Diagnosed by a controlled test worth copying: two identical cubes with vertical
+        // sides intersecting the water, one ToonLit and one URP/Lit. Same geometry, same
+        // intersection; only the URP/Lit one produced foam. Holding the geometry constant
+        // is what ruled out an earlier (wrong) explanation about surface slope.
+        // ------------------------------------------------------------------
+        Pass
+        {
+            Name "DepthNormals"
+            Tags { "LightMode"="DepthNormals" }
+            ZWrite On
+
+            HLSLPROGRAM
+            #pragma vertex DepthNormalsVert
+            #pragma fragment DepthNormalsFrag
+            // Instancing, for the same reason every other pass here declares it: the kit
+            // draws through Graphics.RenderMeshInstanced, and a pass without it collapses
+            // every instance onto one transform — silently (§5).
+            #pragma multi_compile_instancing
+
+            struct AttributesDN
+            {
+                float4 positionOS : POSITION;
+                float3 normalOS   : NORMAL;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct VaryingsDN
+            {
+                float4 positionCS : SV_POSITION;
+                float3 normalWS   : TEXCOORD0;
+            };
+
+            VaryingsDN DepthNormalsVert(AttributesDN input)
+            {
+                VaryingsDN o;
+                UNITY_SETUP_INSTANCE_ID(input);
+                o.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                o.normalWS = TransformObjectToWorldNormal(input.normalOS);
+                return o;
+            }
+
+            half4 DepthNormalsFrag(VaryingsDN input) : SV_Target
+            {
+                // Geometric normal, not the normal MAP. SSAO and the water read this for
+                // occlusion and surface orientation, where per-vertex is plenty; feeding
+                // the bump map in would also make the crawling-band tradeoff (§6) show up
+                // in ambient occlusion, which is not a trade worth making here.
+                return half4(normalize(input.normalWS), 0.0);
+            }
+            ENDHLSL
+        }
     }
     FallBack "Universal Render Pipeline/Lit"
 }
