@@ -1532,6 +1532,42 @@ Formula-driven with authored override points (the user's explicit choice).
   rather than dragging it forever. Two-handed: the viewmodel stows while carrying
   (hands full). Throw speed is authored per-prop (`Carryable.throwSpeed`), NOT derived
   from mass (mass already governs flight/impact); the throw grunt is pitched by mass.
+- **THE THROW IS A HEAVE, NOT AN EVENT** — press, wind up, then launch. **The viewmodel is
+  STOWED while carrying, so there are no arms to animate**: the weight can only be told by
+  the CAMERA and by the PROP, which is the constraint that shapes the whole thing. Every
+  term scales off `CarryLoad01`, so a prop's `Rigidbody.mass` still moves its whole
+  heaviness together.
+  - **The prop animates itself, nearly free.** The carry rig already force-drives the body
+    toward `HoldPoint()` under the `maxCarryForce` clamp, so pulling that point back and
+    down during the wind-up makes a heavy prop LAG into the coil while a light one snaps to
+    it — one offset, two weights, nothing authored per prop.
+  - **`CameraKick.SetSustained` exists because the spring cannot hold a pose.** An impulse
+    system starts returning the instant it fires, so "lean back and hold it while the throw
+    loads" comes out as a twitch no matter how large the impulse — raising the numbers makes
+    a bigger twitch, not a longer lean. The held layer carries its own LARGER caps, which is
+    defensible because **it is angular VELOCITY that nauseates, not angle**: a slow
+    deliberate lean tolerates far more than a fast jolt of the same size.
+  - **`SetSustained` is FRAME-STAMPED, NOT LATCHED** — stop calling and it eases home.
+    `ViewmodelSway.SetAttackPose` IS a latch and that is exactly how a blocked sword stuck
+    mid-pose (see it in §10), so a throw interrupted by the prop being destroyed or the
+    player dying leaves the camera upright with no explicit clear anywhere.
+  - **`Release()` clears `IsWindingUp`**, because it is the one choke point for "no longer
+    holding anything". Clearing it only at launch would let a prop destroyed mid-heave leave
+    the flag set, `Update` returning early forever, and pickups silently dead.
+  - **FOV IS THE CHEAP DRAMA AND A CAMERA DOLLY IS THE EXPENSIVE KIND.** A large backward
+    camera offset leaves the player's capsule and can end up inside the wall behind them —
+    trivially reproduced by winding up with your back to a wall — whereas widening the FOV
+    costs nothing in clipping risk. Practical ceiling on the dolly is ~0.25–0.4m; past that
+    it needs a backward clearance clamp of the `ViewmodelCollision` shape. NB the lean also
+    compounds into the prop, since `HoldPoint()` is measured from `cam.position`.
+  - **The grunt belongs to the DRIVE, not the coil.** It was briefly moved to the wind-up on
+    the reasoning that the exertion IS the heave; wrong — you brace quietly through a
+    wind-up and vocalise on the exertion that follows, and played early it covers the
+    loading phase while the throw itself lands silent.
+  - The release step uses `FirstPersonController.AddImpulse`, the same decaying external
+    velocity the shield bash lunges with, so it folds into the one `cc.Move` and cannot push
+    the player through a wall. **Forward, not recoil**: physically a heave shoves you back,
+    but from inside the head that reads as being pushed rather than as throwing.
 - **Encumbrance** — one mass signal, `PlayerCarry.CarryLoad01` (0 below
   `freeCarryMass`, 1 at `heavyCarryMass`), drives EVERYTHING that means "heavy":
   carry lag, move-speed penalty (`CarrySpeedMultiplier`), turn-rate penalty
@@ -1789,16 +1825,28 @@ Formula-driven with authored override points (the user's explicit choice).
     it home — which is also why `TickDrawFov` must sit ABOVE `Update`'s early returns, the
     same placement rule as `SyncNockedArrow`. **WORLD camera only**: the viewmodel overlay
     keeps its own FOV so the bow itself never distorts (§10 ViewmodelCamera).
-    **FOV OWNERSHIP IS BY CONVENTION, NOT STRUCTURE — the one thing here to watch.**
-    `PlayerBow` and `PlayerMelee` each cache their own `baseFov` LAZILY, which is safe only
-    because `PlayerLoadout` guarantees exactly one is enabled and disables the bow in the
-    same call that enables melee (with `OnDisable` firing synchronously, so the bow restores
-    first). `PlayerBow.OnDisable` therefore restores the FOV IMMEDIATELY rather than easing:
-    a stranded zoom would be adopted as melee's "base" and every bash after that measured
-    from the wrong number. **A THIRD consumer** (a spyglass, a sprint kick, a cutscene) is
-    the point to extract a single FOV owner both request offsets from — same shape as
-    `ViewmodelCollision` being invoked from `ViewmodelSway` rather than running its own
-    `LateUpdate`. Don't add a third one without doing that first.
+    **FOV IS NOW OWNED BY `PlayerFov` — nothing else may write `Camera.fieldOfView`.**
+    This section used to carry a warning that bow and melee each cached their own `baseFov`
+    LAZILY, safe only because `PlayerLoadout` guarantees exactly one is enabled, and that a
+    THIRD consumer was the point to extract an owner. **The throw heave (§ PlayerCarry) was
+    that third consumer and it broke the convention rather than stretching it: CARRYING DOES
+    NOT DISABLE MELEE**, so both drive the FOV in the same frame.
+    The failure that forced it is worth keeping, because it is silent and permanent: a
+    lazily-captured base sampled while another effect is displacing the camera adopts the
+    OFFSET as "normal", after which every effect measures from the wrong number and the FOV
+    ratchets away run by run.
+    `PlayerFov` captures the base ONCE and EAGERLY (so it can never be sampled mid-effect),
+    takes **frame-stamped additive requests** (`AddOffset`, called every frame you want it),
+    and eases home when nothing asks — which retired both the lazy capture AND the manual
+    restore-on-disable in bow and melee. Offsets SUM, so no caller can silently stomp
+    another's. Same contract as `CameraKick.SetSustained`, deliberately.
+    **Resolve it through `PlayerFov.Ensure(this)`, never `GetComponentInParent`.** Awake
+    order between sibling components is undefined, so whichever consumer ran first would
+    cache a null — and **a missing FOV owner does not throw, the effect simply never
+    happens**. That was found by raising a throw's FOV setting from 6 to 100 with no visible
+    change whatsoever, because the component had never been added to the prefab and nothing
+    said so. `Ensure` creates it on the `FirstPersonController`'s GameObject, so there is no
+    prefab step to forget on this rig or the next one.
   - `PlayerBowAudio` follows the house continuous-vs-one-shot split (§ PhysicsDoorAudio):
     a LOOPING creak whose volume/pitch track live `Draw01` (so holding at full draw is
     audibly tense, not silent) + one-shots for nock/loose/let-down scaled by the draw
@@ -2973,6 +3021,19 @@ Cosmetic-first; combat is far off ("get the world together first").
   parameters**, and be suspicious of any "why is this flag on/off" symptom in a call
   that mixes them. The general rule: C#'s type checker is a weaker safety net inside
   Unity than outside it, because `UnityEngine.Object` opts into a lossy conversion.
+- **A DEFAULT WHOSE FAILURE IS INDISTINGUISHABLE FROM CORRECT WIRING IS THE MOST EXPENSIVE
+  KIND OF BUG IN THIS PROJECT.** Four instances inside one work stream, every one presenting
+  as "this setting does nothing" while everything visible looked right:
+  an **unassigned mixer group** (bypasses the mixer entirely — straight to the listener, not
+  to Master as the name suggests); **`playOnAwake` with a null clip** (a permanently "playing"
+  silent voice); a **newly added mixer `Send`** (defaults to −80 dB, i.e. connected and
+  delivering nothing); and a **missing `PlayerFov`** (a null check that skipped the effect
+  without a word, found by raising a value from 6 to 100 and seeing no change).
+  **The fix is never better documentation.** Three of the four WERE documented. What actually
+  worked: remove the manual step (`PlayerFov.Ensure` finds-or-creates), or make the failure
+  announce itself (`AudioBudgetDebug` flags `<unrouted>` sources; `ReverbDirector` warns once
+  naming the exact unexposed parameter). When adding a system that can be half-wired, budget
+  for one of those two rather than a line in a tooltip.
 - **Two unrelated fixes in one file still get two commits.** Stage one, commit,
   restore the other, commit again — the history is what makes a field lesson findable
   later, and a combined commit buries one of them.
