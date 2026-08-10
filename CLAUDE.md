@@ -644,6 +644,31 @@ textures too; we only want to band the *lighting*). Passes: ForwardLit, Outline
   NB ToonLit now reads vertex colour on every mesh in the project for this.
 - Known API gotchas: `TransformObjectToHClip` (NOT `TransformObjectToWorldHClip`).
 
+**A SHADER CAN BE COMPLETE FOR EVERYTHING THAT MAKES IT LOOK RIGHT AND STILL BE INVISIBLE
+TO A PIPELINE PASS.** ToonLit rendered, lit, banded, outlined, cast shadows and had a
+correct `DepthOnly` pass — and was **absent from `_CameraDepthTexture` entirely**, because
+it had no **`DepthNormals`** pass. URP does not always build the depth texture from
+`DepthOnly`: this project's `PC_Renderer` runs **SSAO with `Source = DepthNormals` and
+`AfterOpaque` off**, which makes the renderer run a **depth-normals prepass** and populate
+the depth texture from THAT, drawing only shaders carrying that pass. Missing it is not a
+half-measure; the shader contributes nothing.
+Nothing complains, because every property that makes a surface LOOK correct still works.
+What silently stops is everything DOWNSTREAM of scene depth — `ToonWater`'s foam and
+shallow/deep blend had nothing to read, and **SSAO was never applied to a single
+toon-shaded surface**, i.e. to almost the whole dungeon. `TextureEmission` and
+`InteriorMapped` already had the pass, which is exactly why the gap survived for so long in
+the one shader nearly everything uses.
+**THE TEST THAT FOUND IT IS THE REUSABLE PART:** two identical cubes with vertical sides
+intersecting the water, one ToonLit and one URP/Lit. Same geometry, same intersection, and
+only the URP/Lit one foamed — which disproved a confident and wrong explanation about
+surface slope. Holding the geometry constant and varying only the material is what turned
+"foam doesn't work" into a one-screenshot answer. §12's discriminating-test rule, applied
+to shaders.
+**So the checklist for any new custom shader on world geometry is now four items**, each of
+which fails silently and differently: instancing (§5), fog (below), `DepthOnly`, and
+`DepthNormals`. Add the last two even if nothing reads depth today — the cost is a few
+lines and the failure mode is a feature that quietly never worked.
+
 **FOG IS NOT AUTOMATIC — a shader that omits it is the one surface that never
 recedes.** Three parts, all required: `#pragma multi_compile_fog`,
 `ComputeFogFactor(positionCS.z)` in the vertex stage, `MixFog` on the FINAL colour.
@@ -667,6 +692,14 @@ or they don't look like they belong to the same world:
   and read as "no foam at all". `_DebugDepth` draws 1m contour RINGS rather than a
   saturating ramp, deliberately: the first debug view was a gradient whose legend
   could be (and was) read backwards, and rings can't be misinterpreted.
+  **IT CAN ONLY SEE WHAT IS IN THE DEPTH TEXTURE**, so "no foam anywhere" is more often a
+  problem with the OTHER shader than with this one — see the `DepthNormals` rule above,
+  which had ToonLit (and therefore every wall, floor and prop) missing from scene depth
+  while URP/Lit objects foamed normally. Reach for `_DebugDepth` first: if a surface shows
+  no depth banding at all, it is not in the texture and no water setting will help.
+  Foam is SHALLOW WATER, not proximity — the band's on-screen width is set by how gradually
+  the bottom rises to the surface, so a vertical wall on a flat floor gives a genuinely thin
+  band even when everything is working. Bevel the pit rim rather than chasing `_FoamDistance`.
 - **`Dungeon/GroundFog`** — ankle-height drifting mist, driven by an editor-authored
   `ParticleSystem` (see `GroundFog.cs` in §10). **BILLBOARDS, and the reason is
   structural, so don't "simplify" it back to planes:** floor-parallel planes read well
