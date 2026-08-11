@@ -90,6 +90,12 @@ namespace DungeonGen
                 foreach (var d in HDirs)
                 {
                     if (Open(c + d)) continue;
+                    // A crawlway grate replaces this whole face — the mouth PREFAB carries the
+                    // ring of collision around its 1.5m bore, because a quad is all-or-nothing
+                    // and the mesher has no way to punch a smaller hole. Gated inside the
+                    // generator on a mouth prefab actually existing, so a half-authored kit
+                    // leaves the wall solid rather than opening a 3m hole (§5).
+                    if (gen.IsCrawlwayMouthFace(c, d)) continue;
                     Vector3 fmin = FaceMin(c, d, c.y) - (Vector3)d * marginCells;
                     Vector3 span = new Vector3(Mathf.Abs(d.z), 0, Mathf.Abs(d.x)); // face runs perpendicular to d
                     AddQuad(sub,

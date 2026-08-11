@@ -58,23 +58,28 @@ namespace DungeonGen
         /// spots you could already see each other from.</summary>
         public float DetourRatio => Cells.Count > 0 ? WalkDistance / (float)Cells.Count : 0f;
 
-        /// <summary>
-        /// True where the bore changes direction, so Phase 2 can pick a corner piece instead of
-        /// a straight. Index is into <see cref="Cells"/>; the two ends are never corners because
-        /// their outward direction is the mouth's.
-        /// </summary>
-        public bool IsCorner(int i)
-        {
-            if (i <= 0 || i >= Cells.Count - 1) return false;
-            return (Cells[i] - Cells[i - 1]) != (Cells[i + 1] - Cells[i]);
-        }
-
-        /// <summary>Direction of travel INTO cell <paramref name="i"/>.</summary>
+        /// <summary>Direction of travel INTO cell <paramref name="i"/>. For the first cell that
+        /// is <see cref="DirA"/> — you enter through the grate, so the mouth's direction is a
+        /// real part of the run and not a special case.</summary>
         public Vector3Int DirInto(int i) => i == 0 ? DirA : Cells[i] - Cells[i - 1];
 
-        /// <summary>Direction of travel OUT OF cell <paramref name="i"/>.</summary>
+        /// <summary>Direction of travel OUT OF cell <paramref name="i"/>. For the last cell that
+        /// is <see cref="DirB"/>.</summary>
         public Vector3Int DirOutOf(int i) =>
             i == Cells.Count - 1 ? DirB : Cells[i + 1] - Cells[i];
+
+        /// <summary>
+        /// Does the bore turn within cell <paramref name="i"/>, so it wants a corner piece
+        /// rather than a straight?
+        ///
+        /// THE END CELLS COUNT. A first cell entered through a grate on one face and left
+        /// through another is geometrically a corner, whatever it is called — an earlier
+        /// version excluded the ends on the reasoning that "their outward direction is the
+        /// mouth's", which is true and irrelevant, and would have put a straight tube where
+        /// the tunnel visibly turns. Defined here rather than recomputed by the placer so
+        /// there is one answer (§10b's one-resolution rule).
+        /// </summary>
+        public bool IsCorner(int i) => DirInto(i) != DirOutOf(i);
 
         /// <summary>World-space centre of the bore, for gizmos and distance tests.</summary>
         public Vector3 CenterCell

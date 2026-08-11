@@ -191,9 +191,17 @@ the tube; optional cache at a dead end.
 
 1. **The 3m-face suppression (§5)** — the one that ships a hole in the world if the mouth
    prefab's ring is wrong. Highest risk in Phase 2.
-2. **Wall-face consumers.** Suppressing a face touches ~26 readers — the corner-post
-   classifier, `FramedOpening`, `WallFaceRegistry`, torch slots, `NearWallAsset`. §12's
-   category rule: budget for finding these one at a time.
+2. **Wall-face consumers.** Suppressing a face touches many readers — §12's category rule, so
+   budget for finding them one at a time. Two are already reasoned through:
+   - **`WallFaceRegistry` and everything downstream of it** (torch slots, `WallMounted` props,
+     capped feature walls) is handled for free, because the kit placer skips the face *before*
+     the emit — so a mouth face is never recorded and nothing can be dealt onto a wall with a
+     hole in it.
+   - **The corner-post classifier needs NO change**, and this is worth stating so nobody
+     "fixes" it: posts are decided from grid solidity, not from what the kit emitted, and a
+     mouth removes only the middle 1.5m of a 3m face. The wall corners genuinely still exist,
+     so posts there are correct. This is *unlike* an archway, which is why `FramedOpening`
+     exists for arches and is deliberately not extended here.
 3. **Crawlway density.** Pair-finding is stricter than alcove siting, so the likely failure
    is zero crawlways rather than too many. The rejection tally is what makes that debuggable.
 4. **Origin convention** on tube vs mouth (§3) — classic half-cell symptom.

@@ -277,6 +277,24 @@ namespace DungeonGen
         // the spacing rule and Phase 2's wall suppression care about them.
         readonly Dictionary<Vector3Int, CrawlwaySpec> crawlCells = new Dictionary<Vector3Int, CrawlwaySpec>();
         readonly HashSet<Vector3Int> crawlMouths = new HashSet<Vector3Int>();
+        // Open cell -> direction into the rock. One entry per mouth; crawlwayMinSpacing keeps
+        // two mouths off the same cell, so a cell never needs more than one.
+        readonly Dictionary<Vector3Int, Vector3Int> crawlMouthFaces = new Dictionary<Vector3Int, Vector3Int>();
+
+        /// <summary>
+        /// SET BY DungeonVisualizer FROM THE KIT, and false by default. Gates
+        /// <see cref="IsCrawlwayMouthFace"/>, which is what stops a half-authored kit putting a
+        /// literal hole in the world.
+        ///
+        /// Suppressing a mouth's wall removes the greybox's whole 3m x 3m quad, not a 1.5m one —
+        /// the mesher emits one quad per cell FACE and has no way to punch a smaller hole. The
+        /// replacement ring of collision lives on the mouth PREFAB, so with no prefab authored
+        /// there is nothing to replace it with and suppression must not happen. A property
+        /// rather than a parameter threaded through both callers deliberately: the mesher and
+        /// the kit placer MUST agree about where the wall is (§5), and two flags passed
+        /// separately is exactly how they would come to disagree.
+        /// </summary>
+        public bool CrawlwayGeometryAvailable { get; set; }
 
         /// <summary>The crawlway boring through this cell, or null. NOTE the cell's CellType is
         /// Empty either way — this is the only way to tell a bore from ordinary rock.</summary>
@@ -285,6 +303,19 @@ namespace DungeonGen
         public bool IsCrawlwayCell(Vector3Int c) => crawlCells.ContainsKey(c);
         /// <summary>True if this OPEN cell has a crawlway grate in one of its walls.</summary>
         public bool IsCrawlwayMouth(Vector3Int c) => crawlMouths.Contains(c);
+
+        /// <summary>
+        /// Does a crawlway grate replace the wall on this face? <paramref name="cell"/> is the
+        /// OPEN cell and <paramref name="d"/> points at its solid neighbour — the same
+        /// (cell, direction) framing WallFaceRegistry and the mesher's wall loop already use.
+        ///
+        /// Called by BOTH the mesher and the kit placer so collision and visuals cannot drift
+        /// about where a wall is, exactly as NeedsSlabBetween is. Always false until
+        /// <see cref="CrawlwayGeometryAvailable"/> is set.
+        /// </summary>
+        public bool IsCrawlwayMouthFace(Vector3Int cell, Vector3Int d) =>
+            CrawlwayGeometryAvailable &&
+            crawlMouthFaces.TryGetValue(cell, out var into) && into == d;
 
         readonly DungeonConfig cfg;
         readonly Random rng;
@@ -2377,6 +2408,7 @@ namespace DungeonGen
             Crawlways.Clear();
             crawlCells.Clear();
             crawlMouths.Clear();
+            crawlMouthFaces.Clear();
             walkCache = null;
             walkCacheFrom = new Vector3Int(int.MinValue, int.MinValue, int.MinValue);
             if (!cfg.placeCrawlways) return;
@@ -2619,6 +2651,8 @@ namespace DungeonGen
             foreach (var c in cells) crawlCells[c] = spec;
             crawlMouths.Add(a);
             crawlMouths.Add(bestFar);
+            crawlMouthFaces[a] = d;
+            crawlMouthFaces[bestFar] = -spec.DirB;
             return CrawlReject.None;
         }
 

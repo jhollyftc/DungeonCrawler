@@ -95,7 +95,7 @@ namespace DungeonGen
             // "DungeonBridges" arrives with pits.
             "DungeonAlcoveProps", "DungeonPrisonProps",
             "DungeonBridges", "DungeonPitRims", "DungeonLintels",
-            "DungeonKitSockets",
+            "DungeonKitSockets", "DungeonCrawlways",
         };
 
         void Awake()
@@ -215,6 +215,17 @@ namespace DungeonGen
             // Replace any previous geometry (any mode), torches, props, fog.
             ClearGenerated();
 
+            // MAY A CRAWLWAY MOUTH SUPPRESS ITS WALL? Only if something will replace it.
+            // Opening a mouth removes the greybox's whole 3m face (a quad is all-or-nothing),
+            // and the ring of collision around the 1.5m bore lives on the mouth PREFAB — so with
+            // no prefab, or in the pure-greybox debug mode where no kit piece is placed at all,
+            // suppressing would leave a literal hole in the world. Decided ONCE here, where both
+            // halves of the question are visible, and read by the mesher and the kit placer
+            // through the generator so they cannot disagree (§5).
+            gen.CrawlwayGeometryAvailable =
+                geometryMode != GeometryMode.GeneratedMesh &&
+                kit != null && kit.crawlwayMouthPrefabs != null && kit.crawlwayMouthPrefabs.Length > 0;
+
             InstancedDungeonRenderer sharedInstancer = null;
 
             // Per-face restrictions from RoomStyle.WallAsset flags. Filled by
@@ -237,6 +248,7 @@ namespace DungeonGen
                 DungeonKitPlacer.BuildBridges(gen, kit, cellSize, transform);
                 DungeonKitPlacer.BuildPitRims(gen, kit, cellSize, transform);
                 DungeonKitPlacer.BuildLintels(gen, kit, cellSize, transform, roomStyle);
+                DungeonKitPlacer.BuildCrawlways(gen, kit, cellSize, transform);
             }
             else if (geometryMode == GeometryMode.InstancedKit)
             {
@@ -312,6 +324,7 @@ namespace DungeonGen
                 DungeonKitPlacer.BuildBridges(gen, kit, cellSize, transform, ir);
                 DungeonKitPlacer.BuildPitRims(gen, kit, cellSize, transform, ir);
                 DungeonKitPlacer.BuildLintels(gen, kit, cellSize, transform, roomStyle, ir);
+                DungeonKitPlacer.BuildCrawlways(gen, kit, cellSize, transform, ir);
 
                 ir.Commit(); // idempotent — bakes kit + archway instances together
 

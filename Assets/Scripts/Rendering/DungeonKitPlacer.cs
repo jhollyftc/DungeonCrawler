@@ -72,6 +72,11 @@ namespace DungeonGen
         [Tooltip("Nudge for the lintel in its OWN frame: Z = further into the shaft / back into the wall, Y = up or down from the ceiling line, X = along the run. Rotated with the piece, so one value is correct on all four wall directions.")]
         public Vector3 lintelOffset;
 
+        [Tooltip("GRATE / MOUTH piece where a crawlway breaks out of a wall — the framed 1.5m opening plus the masonry filling the rest of that 3m face.\n\nTHIS PIECE CARRIES THE WALL'S COLLISION AND THE FEATURE DOES NOT WORK WITHOUT IT. The greybox emits ONE quad per cell face, so opening a crawlway suppresses a whole 3m x 3m collider, not a 1.5m one — without a ring of colliders here (four boxes around the bore is the simple shape) the player walks through the rock either side of the grate. Suppression is GATED on this slot being filled, so leaving it empty is safe: crawlways simply stay sealed behind solid wall.\n\nAuthor facing +Z, rotated to point INTO the open cell you see it from — the same convention as a wall — and floor-aligned, matching the tube. KIT-FRAME: globalVisualOffset IS applied, because this piece has to line up with the walls it interrupts. That differs from the TUBE pieces below, which are base-origin like ladders and bridges; the two halves of one feature genuinely follow different conventions, which is why they are filed in different sections here.")]
+        public GameObject[] crawlwayMouthPrefabs; // optional — skipped if empty, and suppression is skipped with it
+        [Tooltip("Nudge for the mouth in its OWN frame: Z = further into the room / back into the wall, Y = up, X = along the face. Rotated with the piece, so one value is correct on all four wall directions (the ladderOffset lesson).")]
+        public Vector3 crawlwayMouthOffset;
+
         [Header("BASE-ORIGIN pieces — globalVisualOffset does NOT apply")]
         [Tooltip("Wall-mounted ladder for drop-in elevated entrances (no room for a staircase). Author BASE-ORIGIN (globalVisualOffset is NOT applied), one cell (3m) tall — segments stack per story. Thin, back at the wall plane; give it a solid collider plus a trigger box with a LadderClimbZone covering the climbable front (extend the trigger ~0.5m above the opening so the player keeps climb control while cresting). Optional — skipped if empty (the entrance stays a one-way drop).")]
         public GameObject[] ladderPrefabs; // optional — skipped if empty
@@ -85,6 +90,13 @@ namespace DungeonGen
         public GameObject[] pitRimPrefabs; // optional — skipped if empty
         [Tooltip("Nudge for the rim piece in its OWN frame: Z = further over the hole / back onto the floor, Y = up, X = along the edge. Rotated like the piece, so one value is correct on all four edge directions (the ladderOffset lesson).")]
         public Vector3 pitRimOffset;
+
+        [Tooltip("STRAIGHT crawlway tube — a 1.5m x 1.5m bore, 3.0m LONG, one piece per grid cell. NOT a 1.5m cube: the cross-section is 1.5m but the piece spans a whole cell along its run.\n\nOne CLOSED tube asset, not separate floor/wall/ceiling pieces — a crawlway is not a room and the kit's 3m faces do not apply to it. Author it FLOOR-ALIGNED (the bore's floor at the piece's base, not centred: a centred bore puts the sill 0.75m up, past the controller's 0.5m step height with no mantle mechanic, and the player could not enter their own crawlway) with the run along +Z, and BASE-ORIGIN — globalVisualOffset does NOT apply, same as ladders and bridges.\n\nCOLLISION: give it BOX colliders — floor, ceiling and two sides. Nothing exists inside solid rock, so this piece is the only collision in the bore. Boxes rather than a MeshCollider on purpose: a hollow tube is non-convex, and a non-readable MeshCollider is silently dropped from the navmesh bake in a PLAYER BUILD only (the trap that once removed stairs from builds). Put the colliders on a layer INCLUDED IN FirstPersonController.ceilingMask, or the stand-up block never fires and the player stands up through the rock.")]
+        public GameObject[] crawlwayTubePrefabs; // optional — skipped if empty
+        [Tooltip("CORNER crawlway tube — the same 1.5m bore turning 90 degrees within one cell. Author with its two openings on the -Z and +X faces; the placer tries all four yaw steps to match a turn, and those four rotations cover every perpendicular pair, so ONE corner asset is all that is ever needed (a tube is symmetric end to end — there is no left-hand and right-hand version).\n\nSame conventions as the straight: floor-aligned, base-origin, box colliders. Empty = corners fall back to the straight piece, which will visibly not turn — author this before raising crawlwayMaxCells, since a turn is what makes the length read as tension rather than a corridor tax.")]
+        public GameObject[] crawlwayCornerPrefabs; // optional — falls back to the straight piece
+        [Tooltip("Nudge applied to a crawlway tube in its OWN frame: Z = along the run, X = across it, Y = up. Rotated with the piece, so one value is correct whichever way the bore runs.")]
+        public Vector3 crawlwayTubeOffset;
 
         [Header("Variation")]
         public bool randomizeFloorYaw = true;
@@ -534,6 +546,14 @@ namespace DungeonGen
                     // the set has no unlimited assets the kit's generic walls
                     // fill in. Hallways are single-story (Bottom); caps don't
                     // apply there.
+                    // A crawlway grate replaces the whole wall here. Must match DungeonMesher
+                    // exactly — both ask the generator, so visuals and collision cannot come to
+                    // disagree about where the wall is (the NeedsSlabBetween pattern). Skipping
+                    // BEFORE the emit also keeps this face out of the WallFaceRegistry, so no
+                    // torch, banner or capped feature wall is dealt onto a face that has a hole
+                    // in it.
+                    if (!Open(nb) && gen.IsCrawlwayMouthFace(c, d)) continue;
+
                     if (!Open(nb))
                     {
                         bool emitted = false;
@@ -1486,6 +1506,135 @@ namespace DungeonGen
                 Debug.Log($"[Dungeon] {count} ladder(s) placed.");
             return root;
         }
+
+        /// <summary>
+        /// Crawlway tubes and their wall grates.
+        ///
+        /// THE ONLY GEOMETRY A CRAWLWAY HAS. Its cells stay CellType.Empty, so the greybox
+        /// emits nothing inside the bore and the mesher, the kit placer and the automap all
+        /// read the rock as solid — these prefabs are the mesh AND the collision, the same
+        /// arrangement bridges and ladders use.
+        ///
+        /// TWO ORIGIN CONVENTIONS IN ONE FEATURE (§5). The TUBE sits on the grid like a prop:
+        /// base-origin, no globalVisualOffset. The MOUTH has to line up with the kit masonry it
+        /// interrupts, so it is kit-frame and the offset applies. Getting either backwards puts
+        /// that piece a half-cell out, which is the classic symptom.
+        /// </summary>
+        public static GameObject BuildCrawlways(DungeonGenerator gen, DungeonKit kit, float cellSize, Transform parent,
+                                                InstancedDungeonRenderer instancer = null)
+        {
+            var root = new GameObject("DungeonCrawlways");
+            root.transform.SetParent(parent, false);
+            if (gen.Crawlways.Count == 0) return root;
+
+            bool haveTube = kit.crawlwayTubePrefabs != null && kit.crawlwayTubePrefabs.Length > 0;
+            bool haveMouth = kit.crawlwayMouthPrefabs != null && kit.crawlwayMouthPrefabs.Length > 0;
+            if (!haveTube && !haveMouth) return root;
+
+            // A tube with no grate is a sealed tunnel nobody can reach, and a grate with no tube
+            // is a hole into rock. Both render, because a partially authored kit should show you
+            // what you HAVE rather than silently nothing (the fallback philosophy in §7) — but
+            // say so, since either alone looks like a bug rather than missing authoring.
+            if (haveTube != haveMouth)
+                Debug.LogWarning($"[Crawlways] Only half the kit is authored — " +
+                    $"{(haveTube ? "crawlwayTubePrefabs are set but crawlwayMouthPrefabs are EMPTY, so the bores have no way in (and the wall stays solid, since suppression is gated on the mouth slot)" : "crawlwayMouthPrefabs are set but crawlwayTubePrefabs are EMPTY, so the grates open onto nothing")}.");
+
+            int tubes = 0, mouths = 0;
+            foreach (var cw in gen.Crawlways)
+            {
+                if (haveTube)
+                {
+                    for (int i = 0; i < cw.Cells.Count; i++)
+                    {
+                        Vector3Int cell = cw.Cells[i];
+                        Vector3Int inDir = cw.DirInto(i), outDir = cw.DirOutOf(i);
+                        bool corner = cw.IsCorner(i);
+
+                        GameObject[] slot = corner && kit.crawlwayCornerPrefabs != null &&
+                                            kit.crawlwayCornerPrefabs.Length > 0
+                            ? kit.crawlwayCornerPrefabs
+                            : kit.crawlwayTubePrefabs;
+                        GameObject prefab = slot[Hash(cell, 149) % slot.Length];
+                        if (prefab == null) continue;
+
+                        // The tube is FLOOR-ALIGNED, so its origin is the cell's base corner
+                        // centre — not the cell centre. Base-origin: no globalVisualOffset.
+                        Quaternion rot = corner ? CornerYaw(inDir, outDir)
+                                                : Quaternion.LookRotation((Vector3)outDir);
+                        Vector3 pos = new Vector3(cell.x + 0.5f, cell.y, cell.z + 0.5f) * cellSize
+                                    + rot * kit.crawlwayTubeOffset + parent.position;
+
+                        PlaceOne(prefab, pos, rot, PropTier.StaticCollider);
+                        tubes++;
+                    }
+                }
+
+                if (haveMouth)
+                {
+                    mouths += PlaceMouth(cw.CellA, cw.DirA);
+                    // DirB runs from the last bore cell INTO CellB, so the face is on CellB's
+                    // -DirB side — the mouth is seen from CellB and faces back the other way.
+                    mouths += PlaceMouth(cw.CellB, -cw.DirB);
+                }
+            }
+
+            int PlaceMouth(Vector3Int openCell, Vector3Int intoRock)
+            {
+                GameObject prefab = kit.crawlwayMouthPrefabs[Hash(openCell, 151) % kit.crawlwayMouthPrefabs.Length];
+                if (prefab == null) return 0;
+
+                // On the wall face, at floor level, facing back into the open cell — the same
+                // convention every wall piece uses. KIT-FRAME, so globalVisualOffset applies.
+                Vector3 face = new Vector3(openCell.x + 0.5f + intoRock.x * 0.5f,
+                                           openCell.y,
+                                           openCell.z + 0.5f + intoRock.z * 0.5f) * cellSize;
+                Quaternion rot = Quaternion.LookRotation(-(Vector3)intoRock);
+                Vector3 pos = face + kit.globalVisualOffset + rot * kit.crawlwayMouthOffset + parent.position;
+
+                PlaceOne(prefab, pos, rot, PropTier.StaticCollider);
+                return 1;
+            }
+
+            void PlaceOne(GameObject prefab, Vector3 pos, Quaternion rot, PropTier tier)
+            {
+                if (instancer != null)
+                    PropInstancer.PlaceProps(instancer, prefab,
+                        new[] { new PropPlacement { position = pos, rotation = rot } },
+                        tier, cellSize, root.transform);
+                else
+                    Object.Instantiate(prefab, pos, rot * prefab.transform.rotation, root.transform);
+            }
+
+            if (tubes > 0 || mouths > 0)
+                Debug.Log($"[Dungeon] {gen.Crawlways.Count} crawlway(s): {tubes} tube piece(s), {mouths} mouth(s).");
+            return root;
+        }
+
+        /// <summary>
+        /// Yaw for a corner tube whose authored openings are on its -Z and +X faces.
+        ///
+        /// A corner's two openings face <c>-inDir</c> (back the way you came) and
+        /// <c>outDir</c>. There are exactly four perpendicular direction pairs and four yaw
+        /// steps, so one authored corner covers every turn — and because a tube is symmetric
+        /// end to end there is no left-hand/right-hand version to author. Found by TRYING the
+        /// four steps rather than deriving a formula: the set comparison is obviously correct,
+        /// where a closed form here is easy to get subtly wrong and hard to read.
+        /// </summary>
+        static Quaternion CornerYaw(Vector3Int inDir, Vector3Int outDir)
+        {
+            Vector3 openA = -(Vector3)inDir, openB = (Vector3)outDir;
+            for (int k = 0; k < 4; k++)
+            {
+                Quaternion q = Quaternion.Euler(0f, k * 90f, 0f);
+                Vector3 a = q * Vector3.back, b = q * Vector3.right;
+                bool match = (Approx(a, openA) && Approx(b, openB)) ||
+                             (Approx(a, openB) && Approx(b, openA));
+                if (match) return q;
+            }
+            return Quaternion.LookRotation(openB); // unreachable for perpendicular pairs
+        }
+
+        static bool Approx(Vector3 a, Vector3 b) => (a - b).sqrMagnitude < 0.01f;
 
         /// <summary>
         /// Bridge decks spanning room pits, at the room's floor level.
