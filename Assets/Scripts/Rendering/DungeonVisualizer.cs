@@ -66,6 +66,8 @@ namespace DungeonGen
         public Color pitColor = new Color(0.15f, 0.15f, 0.2f, 0.95f);
         [Tooltip("Bridge decks spanning a pit.")]
         public Color bridgeColor = new Color(0.8f, 0.6f, 0.25f, 0.95f);
+        [Tooltip("Crawlway bores. These cells are CellType.Empty — SOLID ROCK to every system in the project — so this gizmo is the ONLY way to see one until Phase 2 places its geometry. The label reports the walk it saves.")]
+        public Color crawlwayColor = new Color(0.35f, 0.95f, 0.8f, 0.95f);
         public Color boundsColor = new Color(1f, 1f, 1f, 0.25f);
         public Color delaunayColor = new Color(1f, 0.85f, 0.2f, 0.8f);
         public Color mstColor = new Color(0.3f, 0.95f, 0.95f, 1f);
@@ -194,7 +196,7 @@ namespace DungeonGen
             Debug.Log($"[Dungeon] seed {seed} depth {config.depth}: {gen.Rooms.Count}/{config.roomCount} rooms, " +
                       $"{edgeTotal - gen.FailedEdges}/{edgeTotal} edges carved, " +
                       $"{gen.Stairs.Count / 4} staircases, {gen.Prisons.Count} prison cells, " +
-                      $"{gen.Alcoves.Count} alcoves, {gen.Pits.Count} pits | " +
+                      $"{gen.Alcoves.Count} alcoves, {gen.Pits.Count} pits, {gen.Crawlways.Count} crawlways | " +
                       $"types: {string.Join(", ", typeSummary)}");
 
             if (buildMeshOnGenerate)
@@ -467,6 +469,43 @@ namespace DungeonGen
                     UnityEditor.Handles.color = alcoveColor;
                     UnityEditor.Handles.Label(to + Vector3.up * cellSize * 0.4f,
                                               $"{a.Kind} {a.Width}x{a.Depth}{(a.IsEnterable ? "" : " (shallow)")}");
+#endif
+                }
+            }
+
+            // Crawlways. A bore is CellType.Empty, i.e. indistinguishable from solid rock in
+            // every other view, so this is the only way to see one at all before its geometry
+            // exists. Cubes for the bored cells, a fatter marker at each mouth, and the DETOUR
+            // RATIO in the label — that number is the entire justification for the crawlway
+            // being there, so it belongs where you can read it while tuning.
+            if (gen.Crawlways != null && gen.Crawlways.Count > 0)
+            {
+                Gizmos.color = crawlwayColor;
+                foreach (var cw in gen.Crawlways)
+                {
+                    Vector3 Centre(Vector3Int c) =>
+                        transform.position + ((Vector3)c + Vector3.one * 0.5f) * cellSize;
+
+                    // The tube is floor-aligned, not centred (a centred bore's sill exceeds
+                    // maxStepHeight and the player could not climb in), so draw it low in the
+                    // cell where it actually sits rather than at the cell's middle.
+                    Vector3 Bore(Vector3Int c) => Centre(c) - Vector3.up * cellSize * 0.25f;
+
+                    Vector3 prev = Centre(cw.CellA);
+                    foreach (var c in cw.Cells)
+                    {
+                        Vector3 p = Bore(c);
+                        Gizmos.DrawLine(prev, p);
+                        Gizmos.DrawWireCube(p, Vector3.one * cellSize * 0.5f);
+                        prev = p;
+                    }
+                    Gizmos.DrawLine(prev, Centre(cw.CellB));
+                    Gizmos.DrawWireSphere(Centre(cw.CellA), cellSize * 0.22f);
+                    Gizmos.DrawWireSphere(Centre(cw.CellB), cellSize * 0.22f);
+#if UNITY_EDITOR
+                    UnityEditor.Handles.color = crawlwayColor;
+                    UnityEditor.Handles.Label(Centre(cw.CellA) + Vector3.up * cellSize * 0.4f,
+                        $"crawl {cw.Cells.Count} cells — saves a {cw.WalkDistance}-cell walk (x{cw.DetourRatio:0.#})");
 #endif
                 }
             }

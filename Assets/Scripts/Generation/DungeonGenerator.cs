@@ -98,6 +98,26 @@ namespace DungeonGen
         public int alcoveDoorClearance = 1;
         [Tooltip("Log the per-rule rejection tally every generate, so you can see WHICH rule is eating alcove sites while tuning. The tally is logged unconditionally when ZERO alcoves are carved (that's a fault worth reporting on its own); this adds it for the ordinary case where some succeeded but you want more.")]
         public bool debugAlcoves = false;
+
+        [Header("Crawlways")]
+        [Tooltip("Bore 1.5m crawl passages through solid rock between two places that are otherwise a long walk apart. The cells stay Empty — a crawlway is invisible to the grid and brings its own mesh and collider (see CrawlwaySpec). Frequency comes from the DepthProfile when one is assigned; the values below are the no-profile fallback.")]
+        public bool placeCrawlways = true;
+        [Tooltip("FALLBACK chance per VIABLE wall face when no DepthProfile is assigned. Viable = an open cell whose neighbour is solid rock, i.e. a face a bore could actually start from. Most rolls still fail — finding a legal FAR end is far stricter than carving an alcove — so this wants to be high.")]
+        [Range(0f, 1f)] public float crawlwayChance = 0.35f;
+        [Tooltip("FALLBACK maximum crawlways per run when no DepthProfile is assigned.")]
+        public int crawlwayMaxCount = 3;
+        [Tooltip("Longest bore, in cells (3m each). crouchSpeed is 1 m/s, so each cell is about three seconds in a tight tube with no combat option — 3 is a brisk squeeze, 5 is a genuine commitment. A turn buys more tension per second than length does.")]
+        public int crawlwayMaxCells = 4;
+        [Tooltip("A crawlway is only carved if the EXISTING walk between its two ends is at least this many times the bore length. THE RULE THAT MAKES A CRAWLWAY MEAN SOMETHING: without it a 4-cell bore happily connects two corridor cells twelve metres apart, which is a novelty rather than a shortcut. Same shape as minLoopDetourRatio, which scores loop edges by exactly this ratio.")]
+        public float crawlwayMinDetourRatio = 6f;
+        [Tooltip("No crawlway mouth within this many cells (XZ) of a staircase — the same guard prisons and alcoves use, since the sealed stair envelope is the most fragile geometry in the dungeon.")]
+        public int crawlwayStairClearance = 2;
+        [Tooltip("Minimum cells between one crawlway mouth and any other. Measured as a CHEBYSHEV box, so the excluded area grows as the square.")]
+        public int crawlwayMinSpacing = 3;
+        [Tooltip("A crawlway mouth must be this many cells from any room DOORWAY — a grate in a threshold fights the reserved-threshold rule and the corner-post classifier. Also a CHEBYSHEV box: at 2 it excludes 25 cells around EVERY door, which measurably ate 45% of all alcove sites. 1 is enough to keep a mouth out of a threshold and its immediate neighbours.")]
+        public int crawlwayDoorClearance = 1;
+        [Tooltip("Log the per-rule rejection tally every generate. Logged unconditionally when ZERO crawlways are bored; this adds it for the ordinary case where some succeeded but you want more. Expect 'no legal far end' to dominate — that is the pairing rule working, not a fault.")]
+        public bool debugCrawlways = false;
     }
 
     public class Room
@@ -216,6 +236,11 @@ namespace DungeonGen
         /// <summary>Holes cut in room floors. See PitSpec for why these keep their own registry
         /// instead of joining Room.Cells/Bounds.</summary>
         public List<PitSpec> Pits { get; } = new List<PitSpec>();
+        /// <summary>1.5m crawl passages bored through rock. Their cells stay CellType.Empty
+        /// (see CrawlwaySpec) — this list is the ONLY thing that knows they exist, which is why
+        /// they change nothing about how the dungeon generates or renders until Phase 2 places
+        /// their geometry.</summary>
+        public List<CrawlwaySpec> Crawlways { get; } = new List<CrawlwaySpec>();
 
         // Opening -> pit (the hole you fall through) and carved cell -> pit (the interior).
         readonly Dictionary<Vector3Int, PitSpec> pitOpenings = new Dictionary<Vector3Int, PitSpec>();
@@ -246,6 +271,20 @@ namespace DungeonGen
 
         /// <summary>The prison owning this cell, or null.</summary>
         public PrisonSpec PrisonAt(Vector3Int c) => prisonCells.TryGetValue(c, out var p) ? p : null;
+
+        // Bore cell -> crawlway, plus the MOUTH cells (the open cells at either end) kept
+        // separately: mouths are ordinary Room/Hallway cells that other systems own, and only
+        // the spacing rule and Phase 2's wall suppression care about them.
+        readonly Dictionary<Vector3Int, CrawlwaySpec> crawlCells = new Dictionary<Vector3Int, CrawlwaySpec>();
+        readonly HashSet<Vector3Int> crawlMouths = new HashSet<Vector3Int>();
+
+        /// <summary>The crawlway boring through this cell, or null. NOTE the cell's CellType is
+        /// Empty either way — this is the only way to tell a bore from ordinary rock.</summary>
+        public CrawlwaySpec CrawlwayAt(Vector3Int c) => crawlCells.TryGetValue(c, out var cw) ? cw : null;
+        /// <summary>True if a crawlway bores through this (solid-typed) cell.</summary>
+        public bool IsCrawlwayCell(Vector3Int c) => crawlCells.ContainsKey(c);
+        /// <summary>True if this OPEN cell has a crawlway grate in one of its walls.</summary>
+        public bool IsCrawlwayMouth(Vector3Int c) => crawlMouths.Contains(c);
 
         readonly DungeonConfig cfg;
         readonly Random rng;
@@ -282,6 +321,7 @@ namespace DungeonGen
             PlanInteriorColumns();
             WidenJunctions();
             PlaceAlcoves();
+            PlaceCrawlways();
         }
 
         // ---------------- Stage 4: hallway carving ----------------
@@ -2306,6 +2346,374 @@ namespace DungeonGen
             }
             Prisons.Add(spec);
             return true;
+        }
+
+        // ---------------- Crawlways ----------------
+
+        enum CrawlReject { None, DoorClearance, Spacing, StairClearance, NoFarEnd, NotAShortcut, Disconnected, Floorless }
+
+        static readonly Vector3Int[] VerticalDirs = { Vector3Int.up, Vector3Int.down };
+
+        // Single-entry memo for the open-network BFS, which is by far the costliest part of the
+        // crawlway stage and is asked the same question for all four faces of a cell.
+        Dictionary<Vector3Int, int> walkCache;
+        Vector3Int walkCacheFrom = new Vector3Int(int.MinValue, int.MinValue, int.MinValue);
+
+        /// <summary>
+        /// Bore 1.5m crawl passages between two places that are already connected but a long
+        /// walk apart. Runs LAST, so nothing downstream reads the rng stream and appending it
+        /// shifted no existing seed's rooms, prisons, satellites, columns or alcoves.
+        ///
+        /// THE ENDPOINTS ARE THE FEATURE; THE BORE BETWEEN THEM IS TRIVIAL. The tempting cheap
+        /// version — bore blind and stop wherever you break through — needs no search and
+        /// produces worthless crawlways, because a 4-cell tunnel surfacing in the same corridor
+        /// twelve metres away is a novelty rather than a shortcut, and you cannot tell a good
+        /// one from a bad one without knowing BOTH ends. So the far end is chosen deliberately
+        /// and scored, and the scoring is one BFS that answers the only two questions that
+        /// matter (see TryBoreCrawlway).
+        /// </summary>
+        void PlaceCrawlways()
+        {
+            Crawlways.Clear();
+            crawlCells.Clear();
+            crawlMouths.Clear();
+            walkCache = null;
+            walkCacheFrom = new Vector3Int(int.MinValue, int.MinValue, int.MinValue);
+            if (!cfg.placeCrawlways) return;
+
+            var profile = cfg.depthProfile;
+            float chance = profile != null ? profile.CrawlwayChanceAt(cfg.depth) : cfg.crawlwayChance;
+            int maxCount = profile != null ? profile.crawlwayMaxCount : cfg.crawlwayMaxCount;
+
+            // Say WHY nothing was bored rather than producing a silent zero. The commonest fault
+            // by far is a DepthProfile asset that predates these fields: the generator reads the
+            // profile (NOT the DungeonVisualizer fallbacks, which are ignored whenever a profile
+            // is assigned) and finds an unconfigured, all-zero budget. §9's ScriptableObject
+            // lesson — an asset does not reliably get a C# initializer added after it was made.
+            if (chance <= 0f || maxCount <= 0 || cfg.crawlwayMaxCells <= 0)
+            {
+                Debug.LogWarning(
+                    $"[Crawlways] placeCrawlways is ON but none can be bored at depth {cfg.depth}: " +
+                    $"chance={chance:0.###}, maxCount={maxCount}, maxCells={cfg.crawlwayMaxCells}. " +
+                    (profile != null
+                        ? $"A DepthProfile IS assigned ({profile.name}), so ITS crawlway fields are what count — the " +
+                          "crawlwayChance/crawlwayMaxCount on the DungeonVisualizer are FALLBACKS used only when no " +
+                          "profile is set. Check crawlwayBaseChance and crawlwayMaxCount on the profile asset; one " +
+                          "created before crawlways existed will have them at zero."
+                        : "No DepthProfile assigned, so the DungeonVisualizer's crawlway fields are in use — raise crawlwayChance/crawlwayMaxCount."));
+                return;
+            }
+
+            var doorCells = new HashSet<Vector3Int>();
+            foreach (var door in Doors) doorCells.Add(door.HallwayCell);
+
+            int attempts = 0, viableFaces = 0;
+            var rejects = new int[System.Enum.GetValues(typeof(CrawlReject)).Length];
+
+            for (int i = 0; i < Grid.Length; i++)
+            {
+                if (Crawlways.Count >= maxCount) break;
+
+                // A mouth must sit in a space you can WALK in and that other systems treat as
+                // ordinary. Stairs are excluded because the sealed 13-cell envelope makes them
+                // the most fragile geometry in the dungeon; prisons because their whole
+                // validation rests on having exactly one opening, and a grate would be a second
+                // (an escape tunnel out of a cell is a good idea and a deliberate v2 — it needs
+                // every prison consumer re-checked first, §12's category rule).
+                CellType t = Grid[i];
+                if (t != CellType.Room && t != CellType.Hallway) continue;
+
+                Vector3Int a = Grid.Position(i);
+                foreach (var d in HorizontalDirs)
+                {
+                    if (Crawlways.Count >= maxCount) break;
+
+                    // ONLY ROLL AGAINST A SOLID FACE, for the reason the alcove pass records at
+                    // length: rolling per compass direction counts doomed draws as rejections and
+                    // makes `chance` mean something different from what an author expects.
+                    Vector3Int first = a + d;
+                    if (!Grid.InBounds(first) || Grid[first] != CellType.Empty) continue;
+                    viableFaces++;
+
+                    if (rng.NextDouble() < chance)
+                    {
+                        attempts++;
+                        var why = TryBoreCrawlway(a, d, doorCells);
+                        if (why != CrawlReject.None) rejects[(int)why]++;
+                    }
+                }
+            }
+
+            // Always report on zero (a valid budget that bores nothing is its own fault, and is
+            // indistinguishable from an empty budget from outside); report the same tally on
+            // demand when some succeeded, which is the case you actually tune against.
+            if (attempts > 0 && (Crawlways.Count == 0 || cfg.debugCrawlways))
+                Debug.Log(
+                    $"[Crawlways] {Crawlways.Count} bored{(Crawlways.Count >= maxCount ? $" — HIT THE CAP (crawlwayMaxCount {maxCount})" : "")}. " +
+                    $"{viableFaces} solid wall face(s) available, {attempts} rolled at chance {chance:0.###}. Rejected by — " +
+                    $"too near a doorway (crawlwayDoorClearance {cfg.crawlwayDoorClearance}): {rejects[(int)CrawlReject.DoorClearance]}, " +
+                    $"too near another crawlway (crawlwayMinSpacing {cfg.crawlwayMinSpacing}): {rejects[(int)CrawlReject.Spacing]}, " +
+                    $"too near a stair (crawlwayStairClearance {cfg.crawlwayStairClearance}): {rejects[(int)CrawlReject.StairClearance]}, " +
+                    $"no legal far end within crawlwayMaxCells {cfg.crawlwayMaxCells}: {rejects[(int)CrawlReject.NoFarEnd]}, " +
+                    $"far end too close on foot (crawlwayMinDetourRatio {cfg.crawlwayMinDetourRatio:0.#}): {rejects[(int)CrawlReject.NotAShortcut]}, " +
+                    $"a mouth would open over a pit: {rejects[(int)CrawlReject.Floorless]}, " +
+                    $"ends not already connected: {rejects[(int)CrawlReject.Disconnected]}. " +
+                    $"NB 'no legal far end' and 'too close on foot' dominating is the PAIRING RULE WORKING, not a fault — " +
+                    $"most rock has nothing worth reaching on the other side. Raise crawlwayMaxCells to search further, " +
+                    $"or lower crawlwayMinDetourRatio to accept shorter-cut crawlways.");
+        }
+
+        /// <summary>
+        /// Try to bore from open cell <paramref name="a"/> in direction <paramref name="d"/>.
+        ///
+        /// Flood the ROCK outward from the first cell, up to crawlwayMaxCells. A cell may be
+        /// EXPANDED THROUGH only if it touches no open cell but <paramref name="a"/> — that is
+        /// the one-opening rule from RecessFits, and it generalises perfectly here: it stops a
+        /// bore grazing a room or running alongside a corridor with a single cell of rock
+        /// between. A cell that DOES touch open space is therefore TERMINAL: it can only ever be
+        /// the last cell, and its open neighbour is a candidate far end.
+        ///
+        /// Then one BFS over the open network from <paramref name="a"/> scores every candidate,
+        /// answering the only two questions that matter:
+        ///   - IS THERE ALREADY A PATH? If not, these are two disconnected regions and joining
+        ///     them would make the crawlway load-bearing for connectivity — papering over a
+        ///     generator bug rather than adding a shortcut. Reject.
+        ///   - IS THAT PATH LONG? A crawlway is worth boring only if the walk it replaces is
+        ///     crawlwayMinDetourRatio times its own length.
+        /// </summary>
+        CrawlReject TryBoreCrawlway(Vector3Int a, Vector3Int d, HashSet<Vector3Int> doorCells)
+        {
+            if (!MouthOk(a, doorCells, out var mouthWhy)) return mouthWhy;
+
+            Vector3Int up = Vector3Int.up;
+            int maxCells = cfg.crawlwayMaxCells;
+
+            // --- Flood the rock. `from` reconstructs each bore path; `openNeighbour` marks the
+            // terminal cells and remembers which open cell they broke into.
+            var from = new Dictionary<Vector3Int, Vector3Int>();
+            var dist = new Dictionary<Vector3Int, int>();
+            var candidates = new List<(Vector3Int bore, Vector3Int far)>();
+            var queue = new Queue<Vector3Int>();
+
+            bool BoreCellOk(Vector3Int c)
+            {
+                if (!Grid.InBounds(c) || Grid[c] != CellType.Empty) return false;
+                if (crawlCells.ContainsKey(c)) return false;   // two bores must not intersect
+
+                // SOLID BELOW IS REQUIRED, and for a concrete reason: the tube is FLOOR-ALIGNED
+                // (a bore centred in the cell would put its sill 0.75m up, past maxStepHeight
+                // 0.5 with no mantle mechanic — the player could not enter their own crawlway),
+                // so its floor sits exactly at the cell base. An open cell below would have the
+                // mesher emit that space's ceiling slab at the very same plane, and the two
+                // z-fight.
+                //
+                // SOLID ABOVE IS DELIBERATELY NOT REQUIRED. An open cell above has its floor at
+                // (y+1)*cellSize while the tube's ceiling is at y*cellSize + 1.5, so 1.5m of
+                // rock separates them and nothing coincides. Crawlways may therefore run UNDER
+                // rooms, which is one of the better things they can do.
+                Vector3Int below = c - up;
+                return !Grid.InBounds(below) || Grid[below] == CellType.Empty;
+            }
+
+            // How many open cells does `c` touch, other than `a`? Zero = safe to bore onward.
+            // Any more and `c` is terminal, and each such neighbour is a candidate far end.
+            void ClassifyAndEnqueue(Vector3Int c)
+            {
+                bool terminal = false;
+                foreach (var hd in HorizontalDirs)
+                {
+                    Vector3Int nb = c + hd;
+                    if (nb == a || !Grid.InBounds(nb) || Grid[nb] == CellType.Empty) continue;
+                    terminal = true;
+                    if (Grid[nb] == CellType.Room || Grid[nb] == CellType.Hallway)
+                        candidates.Add((c, nb));
+                }
+                // Only a cell surrounded by rock may be bored THROUGH. A terminal cell that
+                // yielded no legal far end (it broke into a stair or a prison) is a dead stop,
+                // not a route onward — expanding past it would put an interior bore cell against
+                // open space, which is exactly what the one-opening rule forbids.
+                if (!terminal && dist[c] < maxCells) queue.Enqueue(c);
+            }
+
+            Vector3Int firstCell = a + d;
+            if (!BoreCellOk(firstCell)) return CrawlReject.NoFarEnd;
+            dist[firstCell] = 1;
+            from[firstCell] = a;
+            ClassifyAndEnqueue(firstCell);
+
+            while (queue.Count > 0)
+            {
+                Vector3Int c = queue.Dequeue();
+                foreach (var hd in HorizontalDirs)
+                {
+                    Vector3Int nb = c + hd;
+                    if (dist.ContainsKey(nb) || !BoreCellOk(nb)) continue;
+                    dist[nb] = dist[c] + 1;
+                    from[nb] = c;
+                    ClassifyAndEnqueue(nb);
+                }
+            }
+
+            if (candidates.Count == 0) return CrawlReject.NoFarEnd;
+
+            // --- Score. One BFS over the OPEN network gives the existing walk to every
+            // candidate at once, so the cost is paid per attempt rather than per candidate —
+            // and it is cached for the four faces of the same cell, which is sound ONLY because
+            // this stage never mutates the grid (crawl cells stay Empty). If a future change
+            // makes a crawlway carve anything, this cache must go.
+            if (walkCacheFrom != a)
+            {
+                walkCache = OpenDistancesFrom(a);
+                walkCacheFrom = a;
+            }
+            var walk = walkCache;
+
+            Vector3Int bestBore = Vector3Int.zero, bestFar = Vector3Int.zero;
+            int bestWalk = 0, bestLen = 0;
+            float bestRatio = 0f;
+            var worst = CrawlReject.NoFarEnd;
+
+            for (int ci = 0; ci < candidates.Count; ci++)
+            {
+                Vector3Int bore = candidates[ci].bore, far = candidates[ci].far;
+
+                if (!MouthOk(far, doorCells, out var why)) { if (worst == CrawlReject.NoFarEnd) worst = why; continue; }
+                if (!walk.TryGetValue(far, out int w)) { worst = CrawlReject.Disconnected; continue; }
+
+                int len = dist[bore];
+                float ratio = w / (float)len;
+                if (ratio < cfg.crawlwayMinDetourRatio) { worst = CrawlReject.NotAShortcut; continue; }
+
+                // Highest ratio wins — the most walking saved per second spent crawling.
+                // Deterministic tie-breaks: shorter bore, then grid order, so the same seed
+                // always picks the same far end (golden rule 4).
+                if (ratio > bestRatio ||
+                    (ratio == bestRatio && (len < bestLen || (len == bestLen && Before(far, bestFar)))))
+                {
+                    bestBore = bore; bestFar = far; bestRatio = ratio; bestWalk = w; bestLen = len;
+                }
+            }
+
+            if (bestRatio <= 0f) return worst;
+
+            // --- Reconstruct the bore, A end first.
+            var cells = new List<Vector3Int>();
+            for (Vector3Int c = bestBore; c != a; c = from[c]) cells.Add(c);
+            cells.Reverse();
+
+            // Stair clearance over the WHOLE bore, not just its mouths — a tunnel passing
+            // through the rock a staircase relies on is the same hazard as a recess dug into it.
+            if (!StairClearOf(cells, cfg.crawlwayStairClearance)) return CrawlReject.StairClearance;
+
+            var spec = new CrawlwaySpec
+            {
+                Cells = cells,
+                CellA = a,
+                CellB = bestFar,
+                DirA = d,
+                DirB = bestFar - bestBore,
+                WalkDistance = bestWalk,
+            };
+
+            Crawlways.Add(spec);
+            foreach (var c in cells) crawlCells[c] = spec;
+            crawlMouths.Add(a);
+            crawlMouths.Add(bestFar);
+            return CrawlReject.None;
+        }
+
+        /// <summary>Deterministic ordering for tie-breaks. Vector3Int has no IComparable.</summary>
+        static bool Before(Vector3Int p, Vector3Int q) =>
+            p.y != q.y ? p.y < q.y : p.z != q.z ? p.z < q.z : p.x < q.x;
+
+        /// <summary>Is this open cell a legal place to hang a grate?</summary>
+        bool MouthOk(Vector3Int c, HashSet<Vector3Int> doorCells, out CrawlReject why)
+        {
+            why = CrawlReject.None;
+
+            // A pit opening is a room cell in every structural respect and simply has no floor
+            // (§12's category rule) — crawling out of a grate into thin air is exactly the
+            // failure that rule exists to catch. Its own reject reason, not folded into
+            // NoFarEnd: a tally that reports the wrong rule is worse than one that just counts.
+            if (IsPitOpening(c)) { why = CrawlReject.Floorless; return false; }
+
+            int dc = cfg.crawlwayDoorClearance;
+            foreach (var door in doorCells)
+                if (Chebyshev(door, c) <= dc) { why = CrawlReject.DoorClearance; return false; }
+
+            int sp = cfg.crawlwayMinSpacing;
+            foreach (var m in crawlMouths)
+                if (Chebyshev(m, c) < sp) { why = CrawlReject.Spacing; return false; }
+
+            return true;
+        }
+
+        /// <summary>XZ Chebyshev distance, with a large penalty per storey so cells on different
+        /// floors never conflict — a grate directly above another is not a clustering problem,
+        /// there is a whole floor slab between them.</summary>
+        static int Chebyshev(Vector3Int p, Vector3Int q) =>
+            Mathf.Max(Mathf.Abs(p.x - q.x), Mathf.Abs(p.z - q.z)) + Mathf.Abs(p.y - q.y) * 100;
+
+        /// <summary>No stair cell within `c` cells (XZ, ±1 level) of any of these cells.</summary>
+        bool StairClearOf(List<Vector3Int> cells, int c)
+        {
+            foreach (var cell in cells)
+                for (int y = -1; y <= 1; y++)
+                    for (int x = -c; x <= c; x++)
+                        for (int z = -c; z <= c; z++)
+                        {
+                            Vector3Int p = cell + new Vector3Int(x, y, z);
+                            if (!Grid.InBounds(p)) continue;
+                            CellType t = Grid[p];
+                            if (t == CellType.StairLower || t == CellType.StairUpper) return false;
+                        }
+            return true;
+        }
+
+        /// <summary>
+        /// Walking distance in cells from `start` to every reachable open cell. Stairs count as
+        /// open, so a route up a staircase is a route — which matters, because the vertical
+        /// Start/Exit rule (§4) makes stair-heavy paths the long ones a crawlway most wants to
+        /// short-circuit.
+        /// </summary>
+        Dictionary<Vector3Int, int> OpenDistancesFrom(Vector3Int start)
+        {
+            var dist = new Dictionary<Vector3Int, int> { [start] = 0 };
+            var q = new Queue<Vector3Int>();
+            q.Enqueue(start);
+            while (q.Count > 0)
+            {
+                Vector3Int c = q.Dequeue();
+                int nd = dist[c] + 1;
+                foreach (var hd in HorizontalDirs)
+                {
+                    Vector3Int nb = c + hd;
+                    if (dist.ContainsKey(nb) || !Grid.InBounds(nb) || Grid[nb] == CellType.Empty) continue;
+                    dist[nb] = nd;
+                    q.Enqueue(nb);
+                }
+                // Stairs link levels. A stair pair is written directly atop its lower cell, so
+                // the vertical neighbours are what carry a route between floors.
+                CellType t = Grid[c];
+                Room roomHere = t == CellType.Room ? RoomAt(c) : null;
+                foreach (var vd in VerticalDirs)
+                {
+                    Vector3Int nb = c + vd;
+                    if (dist.ContainsKey(nb) || !Grid.InBounds(nb) || Grid[nb] == CellType.Empty) continue;
+                    CellType tn = Grid[nb];
+                    bool stairLink = t == CellType.StairLower || t == CellType.StairUpper ||
+                                     tn == CellType.StairLower || tn == CellType.StairUpper;
+                    // A tall room is ONE open volume (BuildFootprint writes a room's cells at
+                    // every Y in its bounds), so its stacked cells connect too — the same
+                    // discriminator NeedsSlabBetween uses to tell a multi-storey room from two
+                    // unrelated spaces that merely happen to be stacked.
+                    bool sameRoom = roomHere != null && tn == CellType.Room && roomHere == RoomAt(nb);
+                    if (!stairLink && !sameRoom) continue;
+                    dist[nb] = nd;
+                    q.Enqueue(nb);
+                }
+            }
+            return dist;
         }
 
         /// <summary>
