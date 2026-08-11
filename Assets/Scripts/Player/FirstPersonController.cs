@@ -44,6 +44,8 @@ namespace DungeonGen
         [Header("Developer UI")]
         [Tooltip("Draws the control list in the top-right corner. Dev aid — turn it off for a real build.")]
         public bool showControls = true;
+        [Tooltip("Font size for the dev overlay. The list has grown well past what 18 could fit; the box sizes itself to the text, so this is the only dial.")]
+        [Range(8, 24)] public int overlayFontSize = 12;
         [Tooltip("Highest depth PgUp will climb to. A cap because grid size scales with depth — very high depths generate huge, slow dungeons.")]
         public int maxDebugDepth = 20;
 
@@ -130,7 +132,7 @@ namespace DungeonGen
             Cursor.visible = false;
 
             style = new GUIStyle();
-            style.fontSize = 18;
+            style.fontSize = overlayFontSize;
             style.normal.textColor = Color.white;
             style.alignment = TextAnchor.UpperRight;
 
@@ -366,17 +368,38 @@ namespace DungeonGen
                 "Shift - Sprint\n" +
                 "Ctrl / Mouse4 - Crouch\n" +
                 "E - Interact / Pick up / Drop\n" +
-                "LMB (hold) - Light Attack / Throw\n" +
+                "1 / 2 - Sword+Shield / Bow\n" +
+                "LMB (hold) - Light Attack / Draw Bow\n" +
+                "LMB (carrying) - Throw (winds up)\n" +
                 "RMB (hold) - Shield Block / tap to Parry\n" +
                 "MMB (hold, release) - Heavy Attack\n" +
                 "Q (hold, release) - Shield Bash\n" +
+                "\n" +
+                "Debug\n" +
+                "---------\n" +
                 "F1 - New Dungeon (same depth)\n" +
                 "PgUp/PgDn - Depth +/- (same seed)\n" +
                 "Home/End - Warp Target Room +/-\n" +
                 "F2 - Warp to Target Room\n" +
+                "M - Map\n" +
+                "P - Path to Exit\n" +
+                "F3 - NPC Awareness  F4/F5 - Sight/Hearing off\n" +
+                "F6 - Melee Reticle  F7 - Audio Voices\n" +
+                "K / L - Damage Nearest NPC / Self\n" +
                 "Esc - Quit";
 
-            GUI.Label(new Rect(Screen.width - 260f, 10f, 250f, 330f), text, style);
+            // SIZED FROM THE TEXT, not from authored numbers. A hardcoded Rect is a second
+            // thing to keep in sync with the list, and it fails in the same silent way: add
+            // a key, and the last line simply vanishes off the bottom. CalcSize honours the
+            // font size too, so the size dial needs no matching box change.
+            //
+            // THE LIST ITSELF IS STILL AUTHORED TEXT with no link to the input code, so
+            // nothing catches it drifting - it had already fallen behind the melee rebind
+            // once, and by the next check was missing the weapon swap (a real gameplay
+            // binding) plus seven debug keys that existed and were undiscoverable. Add the
+            // line when you add the key.
+            Vector2 size = style.CalcSize(new GUIContent(text));
+            GUI.Label(new Rect(Screen.width - size.x - 10f, 10f, size.x, size.y), text, style);
         }
 
         /// <summary>
