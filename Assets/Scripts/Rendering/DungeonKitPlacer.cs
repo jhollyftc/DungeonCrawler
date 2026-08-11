@@ -59,6 +59,13 @@ namespace DungeonGen
         [Tooltip("Nudge for a column segment. KIT-FRAME (globalVisualOffset applies) and WORLD-SPACE — a column is placed axis-aligned at a lattice point, so there is no piece frame to be relative to.")]
         public Vector3 interiorColumnOffset;
 
+        [Tooltip("BANDED column segments — a base / shaft / capital set, tagged with the storeys each piece may occupy. Same Bottom/Middle/Top vocabulary as banded WALLS, and a single-storey space counts as Bottom.\n\nLeave EMPTY to keep the old behaviour: Interior Column Prefabs picked once and repeated all the way up. When this has entries it takes over, and a band with nothing eligible falls back to the unbanded list rather than borrowing another band's pieces — the strict-band rule that stops a capital appearing at floor level.")]
+        public RoomStyle.BandedAsset[] interiorColumnBands;
+
+        [Tooltip("BANDED corner posts, same idea as the column bands above: a piece that only reads well at ground level can be marked Bottom-only, and a decorative capital Top-only. Empty = the unbanded lists above are used at every storey, which is the old behaviour.\n\nNB a per-room-type pillar override (RoomStyle OpeningSet) still wins whole and is unbanded — banding applies to the KIT's generic posts.")]
+        public RoomStyle.BandedAsset[] outerCornerPillarBands;
+        public RoomStyle.BandedAsset[] innerCornerPillarBands;
+
         [Header("Trim — edges between two emitted surfaces")]
         [Tooltip("GENERIC lintel / cornice for the top edge of a wall inside a STAIR SHAFT, where it meets the ceiling. RoomStyle's per-type lintelPrefabs override this; this is the fallback so a partially authored style still renders. A stairwell exposes a whole storey of wall in one view, which makes that seam the most visible wall/ceiling junction in the dungeon — everywhere else the eye is much further from it.\n\nAuthor facing +Z (rotated to point INTO the shaft, same convention as a wall facing the space it is viewed from) and with the SAME ORIGIN CONVENTION AS YOUR WALLS AND CEILINGS — globalVisualOffset IS applied to this, because it is a kit piece that has to line up with them. That differs from ladders and bridges, which are authored BASE-ORIGIN and get no offset. Getting this backwards puts the piece a half-cell out, which is the classic symptom (golden rule 2).")]
         public GameObject[] lintelPrefabs; // optional — skipped if empty
@@ -711,8 +718,13 @@ namespace DungeonGen
             //   2 solid diagonal   -> two back-to-back outer corners
             //   4 open + two perpendicular doorway-frame faces -> outer corner
             //   2 solid adjacent   -> flat wall seam, no post
-            bool anyOuter = kit.outerCornerPillarPrefabs != null && kit.outerCornerPillarPrefabs.Length > 0;
-            bool anyInner = kit.innerCornerPillarPrefabs != null && kit.innerCornerPillarPrefabs.Length > 0;
+            // BANDED LISTS COUNT AS "HAVING POSTS". Gating on the unbanded arrays alone would
+            // mean that authoring bands and clearing the old list - the natural way to move
+            // over - silently disabled corner posts entirely.
+            bool anyOuter = (kit.outerCornerPillarPrefabs != null && kit.outerCornerPillarPrefabs.Length > 0)
+                         || (kit.outerCornerPillarBands != null && kit.outerCornerPillarBands.Length > 0);
+            bool anyInner = (kit.innerCornerPillarPrefabs != null && kit.innerCornerPillarPrefabs.Length > 0)
+                         || (kit.innerCornerPillarBands != null && kit.innerCornerPillarBands.Length > 0);
             if (anyOuter || anyInner || style != null)
             {
                 bool OpenCell(Vector3Int p) => grid.InBounds(p) && grid[p] != CellType.Empty;
@@ -890,6 +902,7 @@ namespace DungeonGen
                             // kit's generic posts.
                             GameObject[] outerSlot = kit.outerCornerPillarPrefabs;
                             GameObject[] innerSlot = kit.innerCornerPillarPrefabs;
+                            Room bestRoom = null;   // hoisted: also used for the band below
                             if (style != null)
                             {
                                 Room best = null; int bestScore = -1;
@@ -903,12 +916,40 @@ namespace DungeonGen
                                 }
                                 Consider(q0, o0); Consider(q1, o1);
                                 Consider(q2, o2); Consider(q3, o3);
+                                bestRoom = best;
                                 if (best != null)
                                 {
                                     outerSlot = style.OuterPillarsFor(best.Type) ?? outerSlot;
                                     innerSlot = style.InnerPillarsFor(best.Type) ?? innerSlot;
                                 }
                             }
+
+                            // BAND THIS POST BY ITS STOREY. A piece that only reads well at
+                            // ground level is Bottom-only; a capital is Top-only.
+                            //
+                            // The run comes from the owning ROOM's bounds rather than by
+                            // walking the grid vertically: it is already resolved above, it is
+                            // exactly the vertical extent the player perceives as "this room",
+                            // and a corridor corner has no room and correctly falls to a
+                            // single-storey Bottom.
+                            //
+                            // Deliberately does NOT override a per-room-type pillar: a style
+                            // that names its own posts has made a whole-slot decision, and
+                            // silently swapping one storey of it for a kit piece would be the
+                            // sort of half-applied styling that is very hard to see.
+                            if (kit.outerCornerPillarBands != null && kit.outerCornerPillarBands.Length > 0
+                                && outerSlot == kit.outerCornerPillarPrefabs)
+                            {
+                                var picked = PickBandedPost(kit.outerCornerPillarBands, bestRoom, edge);
+                                if (picked != null) { bandScratch[0] = picked; outerSlot = bandScratch; }
+                            }
+                            if (kit.innerCornerPillarBands != null && kit.innerCornerPillarBands.Length > 0
+                                && innerSlot == kit.innerCornerPillarPrefabs)
+                            {
+                                var picked = PickBandedPost(kit.innerCornerPillarBands, bestRoom, edge);
+                                if (picked != null) { bandScratch2[0] = picked; innerSlot = bandScratch2; }
+                            }
+
                             bool edgeOuter = outerSlot != null && outerSlot.Length > 0;
                             bool edgeInner = innerSlot != null && innerSlot.Length > 0;
 
@@ -1039,6 +1080,31 @@ namespace DungeonGen
                 Debug.LogWarning($"[DungeonKit] Missing prefab slot(s): {string.Join(", ", missing)} — those pieces were skipped.");
 
             return root;
+        }
+
+        // Reused single-element slots for a banded post pick. The corner classifier runs over
+        // every edge of every cell of every storey, so allocating a one-element array per
+        // placement would be a lot of garbage for nothing; EmitCollider reads the array
+        // immediately and never retains it, so reuse is safe.
+        static readonly GameObject[] bandScratch = new GameObject[1];
+        static readonly GameObject[] bandScratch2 = new GameObject[1];
+
+        /// <summary>
+        /// Banded pick for a corner post, using the owning room's vertical extent as the run.
+        /// A corridor corner has no room and is a single storey, i.e. Bottom.
+        /// </summary>
+        static GameObject PickBandedPost(RoomStyle.BandedAsset[] bands, Room room, Vector3 edge)
+        {
+            // `edge` is a CELL-space corner coordinate held as a Vector3 (edges sit between
+            // cells), built from integer x/y/z — so y is the storey directly.
+            int y = Mathf.RoundToInt(edge.y);
+            int count = room != null ? Mathf.Max(1, room.Bounds.size.y) : 1;
+            int index = room != null ? y - room.Bounds.yMin : 0;
+
+            // Hash key follows the convention the other pillar picks use: cell coords scaled
+            // by 4 and rounded, so a half-cell edge still lands on a distinct integer key.
+            return RoomStyle.PickBanded(bands, RoomStyle.BandOf(index, count),
+                                        Vector3Int.RoundToInt(edge * 4f), 71);
         }
 
         public static int Hash(Vector3Int c, int salt)
@@ -1297,14 +1363,26 @@ namespace DungeonGen
         {
             var root = new GameObject("DungeonColumns");
             root.transform.SetParent(parent, false);
-            if (kit.interiorColumnPrefabs == null || kit.interiorColumnPrefabs.Length == 0) return root;
+            // Either list is enough - see the pillar gate above for why this must not check the
+            // unbanded array alone.
+            bool haveUnbandedCols = kit.interiorColumnPrefabs != null && kit.interiorColumnPrefabs.Length > 0;
+            bool haveBandedCols = kit.interiorColumnBands != null && kit.interiorColumnBands.Length > 0;
+            if (!haveUnbandedCols && !haveBandedCols) return root;
             if (gen.ColumnPoints.Count == 0) return root;
 
             int segments = 0;
             foreach (var (lattice, yFloor, heightCells) in gen.ColumnPoints)
             {
-                GameObject prefab = kit.interiorColumnPrefabs[Hash(lattice, 53) % kit.interiorColumnPrefabs.Length];
-                if (prefab == null) continue;
+                // The UNBANDED pick, resolved once per column so an unbanded set still repeats
+                // one piece all the way up exactly as before. Banded sets re-pick per segment
+                // below; this stays the per-band fallback.
+                // Guarded: indexing an empty unbanded list would throw once bands are the only
+                // source, which is the intended end state.
+                GameObject fallbackPrefab = haveUnbandedCols
+                    ? kit.interiorColumnPrefabs[Hash(lattice, 53) % kit.interiorColumnPrefabs.Length]
+                    : null;
+                bool banded = haveBandedCols;
+                if (fallbackPrefab == null && !banded) continue;
 
                 // Lattice points are cell-CORNER coordinates, so the world
                 // position is lattice * cellSize directly (no half-cell shift).
@@ -1317,6 +1395,18 @@ namespace DungeonGen
 
                 for (int seg = 0; seg < heightCells; seg++)
                 {
+                    // Which course this segment is. A 1-tall column is all Bottom; a 2-tall one
+                    // is Bottom then Top with no Middle, which is what makes a base/capital
+                    // pair work without authoring a special two-storey case.
+                    RoomStyle.WallBand band = RoomStyle.BandOf(seg, heightCells);
+                    GameObject prefab = banded
+                        // Salt includes the segment so a 3-storey column can draw a DIFFERENT
+                        // middle piece per course rather than the same one twice.
+                        ? RoomStyle.PickBanded(kit.interiorColumnBands, band, lattice, 53 + seg * 7)
+                        : null;
+                    if (prefab == null) prefab = fallbackPrefab;   // strict bands: fall back, never borrow
+                    if (prefab == null) continue;
+
                     Vector3 pos = basePos + Vector3.up * (seg * cellSize);
                     if (instancer != null)
                     {

@@ -121,6 +121,66 @@ namespace DungeonGen
         /// hallways count as Bottom.</summary>
         public enum WallBand { Bottom, Middle, Top }
 
+        /// <summary>
+        /// A prefab restricted to certain vertical bands — the WallAsset banding vocabulary
+        /// applied to STACKED kit pieces (interior columns, corner pillars), which are placed
+        /// one segment per storey and until now repeated a single prefab all the way up.
+        ///
+        /// The bands mean exactly what they mean for walls, deliberately: Bottom is the course
+        /// touching the floor, Top the one meeting the ceiling, Middle everything between, and
+        /// a SINGLE-STOREY space is Bottom. That is what lets a base / shaft / capital set be
+        /// authored the same way a skirting / wall / cornice set already is.
+        /// </summary>
+        [System.Serializable]
+        public class BandedAsset
+        {
+            public GameObject prefab;
+            [Tooltip("May appear in the course touching the FLOOR. A single-storey space is Bottom, so a piece that is Bottom-only is the 'ground floor pillar'.")]
+            public bool bottom = true;
+            [Tooltip("May appear in courses between floor and ceiling. Only exists in rooms 3+ cells tall.")]
+            public bool middle = true;
+            [Tooltip("May appear in the course meeting the CEILING — the capital.")]
+            public bool top = true;
+
+            public bool Allows(WallBand b) => b == WallBand.Bottom ? bottom : b == WallBand.Middle ? middle : top;
+        }
+
+        /// <summary>Which band segment `index` of a `count`-tall stack belongs to.</summary>
+        public static WallBand BandOf(int index, int count)
+        {
+            if (count <= 1) return WallBand.Bottom;          // single storey is Bottom, as for walls
+            if (index <= 0) return WallBand.Bottom;
+            return index >= count - 1 ? WallBand.Top : WallBand.Middle;
+        }
+
+        /// <summary>
+        /// Deterministic pick from a banded list, or null if nothing is eligible for `band`.
+        ///
+        /// STRICT BANDS, the same rule walls follow: an empty band falls back to the caller's
+        /// UNBANDED list rather than borrowing another band's pieces. Borrowing is what put
+        /// floating drains halfway up a wall, and here it would put a capital at floor level.
+        /// </summary>
+        public static GameObject PickBanded(BandedAsset[] list, WallBand band, Vector3Int hashKey, int salt)
+        {
+            if (list == null || list.Length == 0) return null;
+
+            int eligible = 0;
+            for (int i = 0; i < list.Length; i++)
+                if (list[i] != null && list[i].prefab != null && list[i].Allows(band)) eligible++;
+            if (eligible == 0) return null;
+
+            // Hash returns a non-negative int (see its other call sites), so a plain modulo is
+            // correct and avoids the signed/unsigned mix.
+            int pick = DungeonKitPlacer.Hash(hashKey, salt) % eligible;
+            for (int i = 0; i < list.Length; i++)
+            {
+                var a = list[i];
+                if (a == null || a.prefab == null || !a.Allows(band)) continue;
+                if (pick-- == 0) return a.prefab;
+            }
+            return null;
+        }
+
         [System.Serializable]
         public class WallAsset
         {
