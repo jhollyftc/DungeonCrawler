@@ -150,6 +150,8 @@ Order matters; several stages depend on earlier ones. Current order:
     **Prison** (would give a validated one-opening cell a second opening).
 12. **PlaceAlcoves** — small validated recesses off corridors with an authored KIND
     (statue nook / shrine niche / collapsed dig / storage recess). See §4.
+13. **PlaceCrawlways** — 1.5m crawl passages bored through solid rock between two places
+    that are already connected but a long walk apart. See §4 and `CRAWLWAY_PLAN.md`.
 
 > The stage-number comments in code (`Stage 5`, `Stage 6`…) are historical and
 > out of order after several insertions. Trust the `Generate()` call order, not
@@ -253,6 +255,61 @@ combined with wide prison cells and junction plazas, "no longer just straight ha
   host, Prison is not a legal alcove neighbour, so alcoves would silently eat prison sites
   if reordered) and **last** among rng-drawing stages (so appending shifted no existing
   seed's rooms, prisons, satellites or columns).
+
+**Crawlways (`PlaceCrawlways`, `Crawlway.cs`, `CRAWLWAY_PLAN.md`)** — a grate in a wall opens
+onto a 1.5m tunnel bored through rock. The player crouches through (`crouchHeight` 1.1 already
+handles it, so no new movement mode); at 1.5m nothing bakes walkable, so **NPCs are excluded by
+GEOMETRY rather than by a rule anyone maintains** — an escape route they cannot follow, for free.
+- **CELLS STAY `CellType.Empty`, and that is the whole design — the exact OPPOSITE of alcoves.**
+  An alcove is typed `Hallway` precisely so it inherits walls, floors and ceilings free from the
+  kit; a crawlway must not, because every kit piece is authored to a 3m face and an open CellType
+  would emit full-size masonry into a hole meant to be a 1.5m bore. So to the mesher, the kit
+  placer, `NeedsSlabBetween`, the automap and every `!= CellType.Empty` test, a crawlway DOES NOT
+  EXIST and the rock is solid. Identity lives in `Crawlways` + `CrawlwayAt`/`IsCrawlwayCell`.
+  Two dividends: the stage is provably INERT (it mutates nothing, so a fixed seed generates an
+  identical dungeon with it on or off — that is the regression test), and unlike alcoves and
+  plazas it is immune to §12's self-hosting trap, because solid rock is not a legal host.
+  The price is that it brings its own mesh and collider, as bridges and ladders do.
+- **THE ENDPOINTS ARE THE FEATURE; THE BORE BETWEEN THEM IS TRIVIAL.** The cheap version — bore
+  blind and stop wherever you break through — needs no search and produces worthless crawlways,
+  because a 4-cell tunnel surfacing in the same corridor twelve metres away is a novelty rather
+  than a shortcut, and **you cannot tell a good one from a bad one without knowing BOTH ends**.
+  So the far end is chosen: flood the rock for candidates, then ONE BFS over the open network
+  answers the only two questions that matter. **Is there already a path** — if not these are two
+  disconnected regions and joining them would make the crawlway load-bearing for connectivity,
+  papering over a generator bug; reject. **Is that path long** — `crawlwayMinDetourRatio` is what
+  makes a crawlway MEAN something. Measured, that second rule rejects ~70% of attempts, which is
+  the design working and the tally says so in as many words.
+- **`RecessFits` is NOT reusable** (it builds a rectangular slab for a recess that becomes open)
+  **but its `CellOk` generalises**: a bore cell touching open space is TERMINAL, so it can only
+  be the last cell and interior cells can never graze a corridor or run beside one with a single
+  cell of rock between.
+- **Solid BELOW is required; solid ABOVE deliberately is not.** The tube is FLOOR-ALIGNED — a
+  bore centred in the cell puts its sill 0.75m up, past `maxStepHeight` 0.5 with no mantle
+  mechanic, so the player could not enter their own crawlway — which means its floor sits at the
+  cell base, where an open cell below has the mesher emit that space's ceiling slab at the very
+  same plane and the two z-fight. Nothing coincides above (1.5m of rock between the tube's
+  ceiling and the floor of whatever is up there), so **crawlways may run UNDER rooms**.
+- **SUPPRESSING A MOUTH REMOVES THE WHOLE 3m FACE, NOT A 1.5m ONE** — the trap the feature turns
+  on. A quad is all-or-nothing, so the replacement ring of collision lives on the mouth PREFAB,
+  putting a crawl mouth on §5's list of pieces whose real shape the greybox cannot provide.
+  Suppression is therefore GATED on `CrawlwayGeometryAvailable`, set once in the visualizer from
+  the mouth slot: **with nothing authored, crawlways stay sealed behind solid wall rather than
+  opening a hole you fall through**. A generator PROPERTY, not a flag threaded through both
+  callers — the mesher and the kit placer must agree about where a wall is, and two flags passed
+  separately is exactly how they would come to disagree.
+- Skipping the face BEFORE the kit's emit handles `WallFaceRegistry` and everything downstream
+  for free (no torch or banner dealt onto a holed wall). **The corner-post classifier needs NO
+  change** — posts come from grid solidity and a mouth removes only the middle of the face, so
+  the wall corners genuinely still exist. That is the difference from an archway, and why
+  `FramedOpening` is deliberately not extended here.
+- Stairs and prisons are excluded as mouths (sealed envelope; the one-opening rule a prison's
+  validation rests on). Pit openings too — §12's category rule, and it gets its OWN reject reason
+  rather than being folded into another, since a tally that reports the wrong rule is worse than
+  one that just counts. **Alcoves ARE eligible deliberately** (a grate at the back of a collapsed
+  dig is the best entrance the feature can have), which carries a known clash: `RecessPropPlacer`
+  puts the hero prop on that same back wall. The fix is the existing one — claim the mouth face
+  in `WallFaceRegistry` before it runs.
 
 **Pits (`PlacePits`, `Pit.cs`)** — chasms cut across a room's floor, with the space beneath
 carved out, a bridge across and a ladder out. **Rooms only, structurally:**
@@ -365,10 +422,14 @@ prior art — it likewise handles a face between two open cells):
 `globalVisualOffset` to every piece routed through it (walls, floors, ceilings, arches,
 stairs, and **lintels**, which must line up with the walls and ceilings they blend). Pieces
 placed directly at nominal grid coordinates get **no** offset and are authored BASE-ORIGIN:
-ladders, bridges, pit rims, and all props (golden rule 2). Four pieces now follow one
-convention and one follows the other, so the safe question for anything new is "does this
-have to align with kit masonry, or does it sit on the grid like a prop?" Getting it backwards
-puts the piece a half-cell out, which is the classic symptom.
+ladders, bridges, pit rims, and all props (golden rule 2). The safe question for anything new
+is "does this have to align with kit masonry, or does it sit on the grid like a prop?"
+Getting it backwards puts the piece a half-cell out, which is the classic symptom.
+**A CRAWLWAY IS THE CASE WHERE ONE FEATURE SPANS BOTH CONVENTIONS** — the TUBE is base-origin
+(it sits in rock and touches no masonry), the MOUTH is kit-frame (it replaces a wall face and
+must line up with the walls either side). That is why the two slots are filed in different
+sections of `DungeonKit`, which is grouped by origin convention precisely so this is visible
+rather than something you discover from a half-cell offset.
 
 **Directional kit offsets must be applied in the PIECE'S OWN frame** (real bug):
 `ladderOffset` was added in world space while the ladder is rotated by
@@ -697,9 +758,15 @@ or they don't look like they belong to the same world:
   which had ToonLit (and therefore every wall, floor and prop) missing from scene depth
   while URP/Lit objects foamed normally. Reach for `_DebugDepth` first: if a surface shows
   no depth banding at all, it is not in the texture and no water setting will help.
-  Foam is SHALLOW WATER, not proximity — the band's on-screen width is set by how gradually
-  the bottom rises to the surface, so a vertical wall on a flat floor gives a genuinely thin
-  band even when everything is working. Bevel the pit rim rather than chasing `_FoamDistance`.
+  Foam is SHALLOW WATER, not proximity — the band's width is set by how much water sits
+  between the surface and whatever is behind it.
+  **CORRECTION WORTH KEEPING:** while the depth texture was broken, "vertical walls give no
+  foam, bevel the pit rim" was offered as the explanation and written down as fact. It was
+  wrong — an explanation invented for a symptom whose real cause was the missing pass. Once
+  walls actually write depth, a water plane intersecting a vertical wall foams perfectly
+  well along the waterline and no bevel is needed. **A plausible mechanism that explains the
+  symptom is not evidence**, and it is worth noticing when one is being reached for in place
+  of a test (§12).
 - **`Dungeon/GroundFog`** — ankle-height drifting mist, driven by an editor-authored
   `ParticleSystem` (see `GroundFog.cs` in §10). **BILLBOARDS, and the reason is
   structural, so don't "simplify" it back to planes:** floor-parallel planes read well
@@ -777,6 +844,21 @@ One RoomStyle asset defines a room type's whole look. What it holds:
   (a blue-lit shrine burns blue). Light and flame can't drift; a missing/mis-named
   property warns once and the flame keeps its authored color.
   (`TorchSettings.tintFlameToLight` / `flameColorProperty`.)
+- **BANDING IS NOT WALLS-ONLY — `RoomStyle.BandedAsset` applies the same Bottom/Middle/Top
+  vocabulary to any STACKED kit piece**, which currently means interior columns and corner
+  posts (`kit.interiorColumnBands` / `outerCornerPillarBands` / `innerCornerPillarBands`).
+  Both are already placed one segment per storey, so a base / shaft / capital set is just
+  banding applied to the segment index. **Strict bands as for walls** — a band with nothing
+  eligible falls back to the UNBANDED list rather than borrowing another band's pieces;
+  borrowing is what put capitals at floor level. Additive: the existing unbanded arrays are
+  untouched and empty band lists reproduce the old behaviour exactly.
+  **TWO GATES HAD TO CHANGE OR THE FEATURE WOULD HAVE LOOKED BROKEN** — both the corner-post
+  and interior-column paths tested only the UNBANDED array for emptiness, so moving your
+  pieces into the band lists and clearing the old one disabled posts and columns entirely.
+  §12's category rule in miniature: giving a subset of a category a new property means
+  auditing everyone who reads that category, including the "is this authored at all" checks.
+  Columns re-pick per segment with the segment folded into the salt, so a 3-storey column is
+  three different pieces rather than one repeated.
 - **Banded walls** (`WallSet` per type; `WallAsset` with Bottom/Middle/Top band
   checkboxes + `maxPerRoom` cap). Bands are semantic (Bottom = floor course,
   Top = ceiling course, Middle = between; single-story & hallways = Bottom), NOT
@@ -973,6 +1055,16 @@ scatter just places nothing.
   guaranteed/scatter): its 1-2 valid cells must be claimed before flexible
   props take them, and it depends only on the kit-placed wall, not on other
   props. (NearPropAsset stays rank 4 — it depends on host props.)
+- **`minRoomHeightCells` / `avoidEntranceCell`** — two requirements that apply to EVERY anchor,
+  so they are registered ABOVE the switch in `PropSetEntryDrawer` (a new anchor cannot forget
+  them) and checked in the room, hallway and recess placers alike. Written for hanging props:
+  a chandelier authored to drop convincingly needs headroom, and `minRoomHeightCells` excludes
+  corridors and recesses for free, which is usually what you want. `avoidEntranceCell` keeps a
+  ceiling prop out of the one tile you must walk through — a caged skeleton swinging in a prison
+  doorway is the case it exists for. **Authorable rather than automatic on purpose**: a banner
+  or sign hung OVER an entrance is a legitimate thing to want. In rooms `minRoomHeightCells`
+  overlaps `preferredZones` (a ceiling cell inherits its floor column's zone) but the recesses
+  have no zones at all, which is why it is its own field rather than a zone flag.
 - `label` is a prop's KIND: `minSpacing` (cells) keeps same-Label floor props
   apart (two "Statue" entries won't clump — checked in scatter + feature
   picks), and NearPropAsset targets a Label. Floor plane only.
@@ -1321,9 +1413,13 @@ Formula-driven with authored override points (the user's explicit choice).
   room count + grid size); runtime-only, serialized inspector values untouched.
   NB: `OnGUI` must be a CLASS method — nested inside `Update()` as a local
   function it compiles clean and silently never runs (real bug). **Keep the
-  overlay's printed control list in sync with actual bindings** — it drifted
-  behind real melee input (LMB/RMB/Q) for a while before being refreshed; it's
-  authored text, not derived from the input code, so nothing catches it going stale.
+  overlay's printed control list in sync with actual bindings** — it's authored text,
+  not derived from the input code, so nothing catches it going stale, and it has now
+  drifted TWICE: first behind melee input (LMB/RMB/Q), then behind the 1/2 weapon swap
+  and most of the F-keys. Now split into Controls and Debug sections (the F-keys were
+  mixed in with movement), with `overlayFontSize` (12, was a hardcoded 18) and the box
+  sized from `style.CalcSize` rather than a fixed rect, so adding a line can no longer
+  push the list outside its own background.
 - **FlyCamera**, **PlayerInteractor** (SphereCast, E key, `IInteractable`; stands
   down while PlayerCarry holds something so E is unambiguous).
 - **HingedDoor** — the ORIGINAL scripted door (E to open, world-up swing axis;
@@ -2930,6 +3026,18 @@ Cosmetic-first; combat is far off ("get the world together first").
     ✅ **WALL VARIANT VARIETY** — per-asset `weight` (frequency) plus `ValueNoise` +
     `noiseRange` (clustering), which are different questions and needed different answers
     (§7). Damaged SECTIONS rather than an even sprinkle.
+    ✅ **CRAWLWAYS** — 1.5m passages bored through rock between two places already connected but
+    a long walk apart, with the far end CHOSEN by detour ratio rather than stumbled into (§4,
+    `CRAWLWAY_PLAN.md`). Phase 1 sites them (cells stay `Empty`, so the stage is provably inert);
+    phase 2 places the tube and the grate and suppresses the wall behind it, gated so an
+    unauthored kit leaves them sealed rather than holed.
+    ⏳ open: **phase 3** — the grate as an interactable (NOT a `PhysicsDoor`: a hinged door
+    swinging into a 1.5m bore fills it, and the standoff jam is worse where there is no room to
+    step back — swing it outward or lift it away, `HingedDoor` is the precedent); an `AudioSpace`
+    resolution for a bore (the one space with no room to measure, so tight and dry);
+    `FootstepSurface` for the tube; dead-end crawlways holding a cache, which turns the
+    rejection path into content; claiming the mouth face before `RecessPropPlacer` so an alcove
+    grate and its hero prop stop competing for the same wall.
     ⏳ open: the same clustering applied to FLOORS and ceilings — `ValueNoise` is already
     generic and the floor pick is the same uniform `Hash % length`; per-kind kit walls and
     floors for alcoves; an arch on the alcove mouth (pay the `BuildArchways` + `FrameFace`
