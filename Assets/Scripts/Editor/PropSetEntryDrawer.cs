@@ -29,6 +29,11 @@ namespace DungeonGen
             yield return "prefabs";
             yield return "anchor";
             yield return "tier";
+            // Above the switch because it applies to EVERY anchor — it is a property of the
+            // room rather than of how the prop is placed in it. Registered here rather than
+            // per-case for the same reason, so a new anchor cannot forget it.
+            yield return "minRoomHeightCells";
+            yield return "avoidEntranceCell";
 
             var anchor = (PropAnchor)prop.FindPropertyRelative("anchor").enumValueIndex;
             bool guaranteed = prop.FindPropertyRelative("guaranteed").boolValue;

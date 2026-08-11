@@ -209,6 +209,10 @@ namespace DungeonGen
                 {
                     if (e.prefabs == null || e.prefabs.Length == 0) continue;
 
+                    // Recesses (prisons and alcoves) come out of RecessFits, which carves
+                    // 1-tall pockets - same reasoning as the corridor check.
+                    if (e.minRoomHeightCells > 1) continue;
+
                     // BLOCKING TIERS ARE ALLOWED AT ANY DEPTH, including a 1x1 recess. There was
                     // a guard here refusing them in shallow alcoves on the grounds that "there is
                     // nowhere to stand" — wrong, and it contradicted the no-flood-fill note
@@ -227,10 +231,27 @@ namespace DungeonGen
                     bool CanBlock(Vector3Int c) =>
                         recess.NoBlocking == null || !recess.NoBlocking.Contains(c);
 
+                    // KEEP THE DOORWAY CLEAR, when the entry asks for it. The exemptions below
+                    // reason that the ceiling and wall planes cannot block a doorway, which
+                    // holds for a banner and fails for anything that HANGS DOWN — a caged
+                    // skeleton swinging in the one tile you must walk through reads as a
+                    // generation fault rather than as decor.
+                    //
+                    // Filtered out of the cell list rather than expressed as a CanBlock
+                    // predicate, because this is not about colliders: the point is that the
+                    // prop must not BE there at all, whatever tier it is.
+                    List<Vector3Int> entryCells = cells;
+                    if (e.avoidEntranceCell)
+                    {
+                        entryCells = new List<Vector3Int>(cells.Count);
+                        foreach (var c in cells)
+                            if (c != recess.MouthCell) entryCells.Add(c);
+                    }
+
                     switch (e.anchor)
                     {
                         case PropAnchor.Feature:
-                            total += PlaceFeature(e, recess, cells, cellSize, CellCentre, Pick, Place,
+                            total += PlaceFeature(e, recess, entryCells, cellSize, CellCentre, Pick, Place,
                                                   featureStream, usedFloor, grid, wallFaces, CanBlock);
                             break;
 
@@ -243,13 +264,13 @@ namespace DungeonGen
 
                         case PropAnchor.CeilingHung:
                             // Ceiling plane: also exempt, for the same reason.
-                            total += PlaceScatterLike(e, recess, cells, cellSize, CellCentre, Pick, Place,
+                            total += PlaceScatterLike(e, recess, entryCells, cellSize, CellCentre, Pick, Place,
                                                       ceilingStream, usedCeiling, grid, wallFaces, Open,
                                                       ceiling: true, CanBlock: null);
                             break;
 
                         default: // FloorScatter, and anything room-only degrades to scatter
-                            total += PlaceScatterLike(e, recess, cells, cellSize, CellCentre, Pick, Place,
+                            total += PlaceScatterLike(e, recess, entryCells, cellSize, CellCentre, Pick, Place,
                                                       scatterStream, usedFloor, grid, wallFaces, Open,
                                                       ceiling: false, CanBlock: CanBlock);
                             break;

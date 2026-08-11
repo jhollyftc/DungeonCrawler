@@ -556,6 +556,11 @@ namespace DungeonGen
                         if (!Placeable(c) || reserved.Contains(c)) continue;
                         if (!e.sharesTile && used.Contains(c)) continue; // sharesTile ignores prop occupancy
                         if (zoneFilter && (e.preferredZones & (RoomZoneMask)(1 << (int)zones[c])) == 0) continue;
+                        // Explicit entrance refusal, independent of the zone mask. Mostly
+                        // redundant in rooms — clearing Entrance from preferredZones does the
+                        // same — but it is applied here so the field means ONE thing across
+                        // rooms and recesses, and recesses have no zones to clear.
+                        if (e.avoidEntranceCell && zones[c] == RoomZone.Entrance) continue;
                         list.Add(c);
                     }
                     // Guaranteed entries must land somewhere — an empty zone
@@ -722,9 +727,19 @@ namespace DungeonGen
                     }
                 }
 
+                // The room's vertical extent in CELLS. BuildFootprint writes a room's cells at
+                // every Y within its bounds, so a two-storey hall really is 2 here.
+                int roomHeightCells = Mathf.Max(1, room.Bounds.size.y);
+
                 foreach (var e in ordered)
                 {
                     if (e.prefabs == null || e.prefabs.Length == 0) continue;
+
+                    // Height requirement, checked ONCE per entry rather than per cell: it is a
+                    // property of the ROOM, so a per-cell test would ask the same question
+                    // dozens of times and give the same answer. A chandelier that needs two
+                    // storeys simply does not apply to this room.
+                    if (e.minRoomHeightCells > roomHeightCells) continue;
 
                     if (e.anchor == PropAnchor.Feature)
                     {

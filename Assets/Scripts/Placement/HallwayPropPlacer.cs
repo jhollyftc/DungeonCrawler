@@ -180,6 +180,13 @@ namespace DungeonGen
             {
                 if (e.prefabs == null || e.prefabs.Length == 0) continue;
 
+                // A CORRIDOR IS ALWAYS EXACTLY ONE CELL TALL - HallwayPathfinder.SurroundingsOk
+                // demands solid rock above AND below every corridor cell, so there is no such
+                // thing as a two-storey hallway. Anything asking for more height cannot apply
+                // here, which is what keeps a chandelier authored for a great hall out of a
+                // corridor set without needing a second field to say so.
+                if (e.minRoomHeightCells > 1) continue;
+
                 if (e.anchor == PropAnchor.CeilingHung)
                 {
                     bool insideCorner = e.snapToInsideCorner;

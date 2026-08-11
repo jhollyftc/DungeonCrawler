@@ -229,6 +229,12 @@ namespace DungeonGen
             [Tooltip("CeilingHung + Scatter: snap flush to the nearest wall at the ceiling plane (the ceiling equivalent of Snap To Wall — one wall, not a corner). Uses Wall Gap and tangent-only jitter. Ignored in Grid layout. For true two-wall corners use Snap To Inside Corner.")]
             public bool snapToCeilingWall = false;
 
+            [Tooltip("Never place this entry on the ENTRANCE cell — a prison's or alcove's doorway tile, or a room's Entrance zone.\n\nWritten for things that HANG DOWN. The recess passes already exempt the ceiling plane from the doorway reservation, on the reasoning that a banner over a doorway blocks nothing — true for a banner, false for a hanging cage, which swings into the one tile you have to walk through and reads as a generation fault.\n\nIn ROOMS this overlaps preferredZones (a ceiling cell inherits its floor column's zone, so clearing Entrance does the same job); it exists because RECESSES have no zones at all, and it keeps one field meaning the same thing in both.\n\nNB on a 1x1 alcove the only cell IS the doorway, so this correctly places nothing there.")]
+            public bool avoidEntranceCell = false;
+
+            [Tooltip("Minimum room height, IN CELLS (1 cell = 3m), for this entry to be used at all. 0 or 1 = no requirement.\n\nWritten for hanging props: a chandelier authored to drop convincingly needs the room to be at least two storeys, and in a single-storey room it hangs in your face or clips the floor. Applies to ANY anchor, since the same problem hits a tall statue or a full-height banner.\n\nCORRIDORS, ALCOVES AND PRISONS ARE ALWAYS 1 CELL TALL — solid rock above and below every corridor cell is a hard generator rule — so anything above 1 here also excludes an entry from every hallway and recess set, which is usually exactly what you want for a chandelier.")]
+            public int minRoomHeightCells = 0;
+
             // ---- Legacy: Anywhere toggle ----
             [Tooltip("Legacy 'anywhere' toggle: skip the zone filter entirely — scatter may use ANY free cell.")]
             public bool allowCenter = false;
