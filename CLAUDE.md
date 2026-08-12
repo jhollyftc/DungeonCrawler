@@ -668,6 +668,22 @@ textures too; we only want to band the *lighting*). Passes: ForwardLit, Outline
   instanced batch.
 - **Inverted-hull outline** — black shell, front-faces culled. Per-object, rides
   instancing. Not screen-space.
+  **`_OutlineWidth = 0` IS THE WORST CASE, NOT THE OFF SWITCH** — the trap that made
+  `[ToggleUI] _OutlineEnabled` necessary. A zero-width hull is a shell exactly COINCIDENT
+  with the mesh, and with `Cull Front` + `ZWrite On` the two surfaces z-fight, so the
+  outline colour wins a speckle of fragments across the whole surface. The symptom is "the
+  mesh changed colour", not "the outline is still there", and it is worst on thin
+  doubly-curved geometry — chain links, wire, foliage — where nearly every fragment sits
+  near the silhouette. Off (and width 0) now collapses all three hull vertices onto one
+  clip-space point, a zero-area triangle that rasterizes nothing.
+  **A UNIFORM BRANCH, deliberately not a `shader_feature`**: the condition is constant
+  across a draw so it costs nothing, while a keyword would add a variant — and this project
+  preloads its variant collections by GUID and has already lost sessions to variants
+  arriving late (§5). Same constraint the emission feature was built under.
+  **The width is in WORLD METRES and scales with nothing** — not distance, not object size.
+  So the 0.015 default is a 1.5cm shell, which is proportionate on a wall and completely
+  swallows a 2cm-thick chain link. On small or thin props the outline usually wants turning
+  off rather than turning down.
 - **Banded specular glint** — toon highlight, gated by the light's banded
   diffuse.
 - **Packed PBR mask** (`_MaskMap`: G=roughness, B=metallic) modulates the glint

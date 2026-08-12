@@ -31,6 +31,7 @@ Shader "Dungeon/ToonLit"
         _SpecSoftness ("Specular Edge Softness", Range(0.005, 0.3)) = 0.25
 
         [Header(Outline)]
+        [ToggleUI] _OutlineEnabled ("Outline", Float) = 1
         _OutlineColor ("Outline Color", Color) = (0.02, 0.02, 0.03, 1)
         _OutlineWidth ("Outline Width (meters)", Range(0, 0.06)) = 0.015
 
@@ -82,6 +83,7 @@ Shader "Dungeon/ToonLit"
             half   _SpecSoftness;
             half4  _OutlineColor;
             half   _OutlineWidth;
+            half   _OutlineEnabled;
             half4  _RimColor;
             half   _RimAmount;
             half   _RimThreshold;
@@ -356,6 +358,34 @@ Shader "Dungeon/ToonLit"
             {
                 Varyings o;
                 UNITY_SETUP_INSTANCE_ID(input);
+
+                // OFF COLLAPSES THE HULL TO A POINT — it does NOT draw it at width zero, and the
+                // difference is the whole reason this toggle exists. A zero-width hull is not
+                // "no outline": it is a shell exactly COINCIDENT with the mesh, and with
+                // Cull Front + ZWrite On the two surfaces z-fight, so the outline colour wins a
+                // speckle of fragments across the entire surface. That reads as the mesh
+                // changing colour rather than as an outline, and it is worst on thin,
+                // doubly-curved geometry — chain links, wire, foliage — where nearly every
+                // fragment is close to the silhouette. Setting the width to 0 was therefore the
+                // WORST case, not the off switch it looks like, which is why it gets folded in
+                // here as well.
+                //
+                // Collapsing all three vertices onto one clip-space point makes a zero-area
+                // triangle, which rasterizes nothing at all.
+                //
+                // A UNIFORM BRANCH, DELIBERATELY NOT A shader_feature. The condition is constant
+                // across every fragment of a draw, so it costs essentially nothing — while a
+                // keyword would add a variant, and this project preloads its variant collections
+                // by GUID and has already lost multiple sessions to variants arriving late (§5's
+                // invisible NPCs). The emission feature was added under the same constraint and
+                // for the same reason.
+                if (_OutlineEnabled < 0.5h || _OutlineWidth <= 0)
+                {
+                    o.positionCS = float4(0, 0, 0, 1);
+                    o.fogFactor = 0;
+                    return o;
+                }
+
                 float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
                 float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
                 positionWS += normalWS * _OutlineWidth;
