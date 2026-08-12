@@ -44,6 +44,9 @@ namespace DungeonGen
         [Tooltip("Far clip for the overlay pass. The viewmodel is inches away, so this can be small.")]
         public float farClip = 20f;
 
+        [Tooltip("Include the viewmodel in the scene's post-processing — bloom, tonemapping, colour grading, vignette. OFF means the weapon is drawn AFTER the post-processed world and keeps raw, ungraded colours, which reads as a sticker pasted on the screen: it doesn't dim in a dark corridor and its emissives never bloom.\n\nURP applies a stack's post-processing ONCE, at the end. The overlay camera is the last camera in this stack, so enabling it here is what pulls the whole composited image — world plus weapon — through that single pass.\n\nTURN THIS OFF IF YOU USE DEPTH OF FIELD. The overlay CLEARS DEPTH and then writes the weapon's own depth at ~0.5m, so a DoF effect focused across the room will blur the weapon heavily. That is a real conflict with the depth-clear trick, not a bug to fix.")]
+        public bool postProcessViewmodel = true;
+
         [Tooltip("Log the wiring (layer, renderers moved, camera stack) at Awake. Turn on when the viewmodel doesn't appear.")]
         public bool debugSetup = true;
 
@@ -127,6 +130,27 @@ namespace DungeonGen
             overlayData.renderType = CameraRenderType.Overlay;
 
             UniversalAdditionalCameraData baseData = baseCamera.GetUniversalAdditionalCameraData();
+
+            // POST-PROCESSING. `renderPostProcessing` defaults to FALSE on a camera built in
+            // code, which is why the global Volume graded the whole world and stopped dead at
+            // the weapon — the viewmodel was drawn after the post-processed image and kept its
+            // raw colours. URP runs a stack's post-processing ONCE at the end, and this overlay
+            // is the last camera in the stack, so the flag here is what brings the composited
+            // result through that pass.
+            overlayData.renderPostProcessing = postProcessViewmodel;
+
+            // COPIED FROM THE BASE CAMERA, NOT DEFAULTED. A Volume only affects a camera whose
+            // volumeLayerMask includes the Volume's layer, and a code-built camera gets the
+            // bare default — so a project whose global Volume sits on anything but Default
+            // would have the overlay silently ignore it while the base camera obeyed it, with
+            // both cameras looking correctly configured. Deriving from the base is what makes
+            // "the weapon is graded like the world" true by construction rather than by two
+            // settings happening to match.
+            overlayData.volumeLayerMask = baseData.volumeLayerMask;
+            overlayData.volumeTrigger = baseData.volumeTrigger;
+            overlayData.antialiasing = baseData.antialiasing;
+            overlayData.antialiasingQuality = baseData.antialiasingQuality;
+
             baseData.renderType = CameraRenderType.Base;
             if (!baseData.cameraStack.Contains(overlayCamera))
                 baseData.cameraStack.Add(overlayCamera);
@@ -202,6 +226,18 @@ namespace DungeonGen
                               $"cullingMask={overlayCamera.cullingMask} fov={overlayCamera.fieldOfView} " +
                               $"clip=[{overlayCamera.nearClipPlane}..{overlayCamera.farClipPlane}] " +
                               $"inStack={baseData.cameraStack.Contains(overlayCamera)}");
+                sb.AppendLine($"  post-processing: overlay={overlayData.renderPostProcessing} base={baseData.renderPostProcessing} " +
+                              $"volumeMask=0x{overlayData.volumeLayerMask.value:X} (base 0x{baseData.volumeLayerMask.value:X})");
+
+                // Both halves of "why is the weapon ungraded?" stated outright, because neither
+                // is visible from the inspector: a code-built camera has no serialized row to
+                // look at, and a Volume on a layer outside the mask fails identically to no
+                // Volume at all.
+                if (!overlayData.renderPostProcessing && postProcessViewmodel)
+                    sb.AppendLine("  !! postProcessViewmodel is ON but the overlay has post-processing OFF.");
+                if (postProcessViewmodel && !baseData.renderPostProcessing)
+                    sb.AppendLine("  NB the BASE camera has post-processing off — the world itself is ungraded, " +
+                                  "so grading the weapon alone will make it stand out MORE, not less.");
             }
 
             Debug.Log(sb.ToString(), this);

@@ -1494,6 +1494,23 @@ Formula-driven with authored override points (the user's explicit choice).
   ViewmodelCollision still runs but its job CHANGES to a pure FEEL mechanic
   (weapon pulls back when you press into a wall), no longer a correctness
   guarantee. `SetViewmodelVisible(false)` stows both while carrying (§ carry).
+  **A CAMERA BUILT IN CODE GETS DEFAULTS, AND `renderPostProcessing` DEFAULTS TO FALSE** —
+  so the global Volume graded the entire world and stopped dead at the weapon, which kept
+  raw ungraded colours and read as a sticker pasted on the screen (no dimming in a dark
+  corridor, no bloom on its emissives). URP runs a stack's post-processing ONCE at the end
+  and this overlay is the last camera in the stack, so that one flag is what pulls the
+  composited image through the pass. Nothing in the inspector shows it, because a code-built
+  camera has no serialized row to look at — §12's "default whose failure is
+  indistinguishable from correct wiring", now with a fifth instance.
+  `volumeLayerMask`, `volumeTrigger` and the antialiasing pair are **copied from the base
+  camera rather than left at their defaults**: a Volume only affects a camera whose mask
+  includes its layer, so a project whose global Volume sits on any non-Default layer would
+  have the overlay silently ignore it while the base obeyed, with both cameras looking
+  correctly configured. Deriving from the base makes agreement structural instead of a
+  coincidence of two settings.
+  **DEPTH OF FIELD FIGHTS THE DEPTH CLEAR** and always will: the overlay clears depth then
+  writes the weapon's own at ~0.5m, so a DoF focused across the room blurs the weapon hard.
+  That is inherent to the technique — `postProcessViewmodel` off is the answer, not a fix.
   **Exclude the Viewmodel layer from world queries** (ViewmodelCollision's mask
   etc.) or the weapon casts against itself. GOTCHA that cost us: the overlay fails
   SILENTLY if disabled — URP still lists it in the stack while the weapon is just
