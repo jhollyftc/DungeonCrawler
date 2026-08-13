@@ -151,7 +151,7 @@ namespace DungeonGen
                 Vector3Int fc = room.InteriorFloorCell;
                 Vector3 target = vis.transform.position + new Vector3(fc.x + 0.5f, fc.y, fc.z + 0.5f) * vis.cellSize;
 
-                if (!NavMesh.SamplePosition(target, out NavMeshHit hit, vis.cellSize, NavMesh.AllAreas))
+                if (!NavMesh.SamplePosition(target, out NavMeshHit hit, vis.cellSize, body.NavFilter))
                 {
                     if (debugBrain) Debug.LogWarning($"[NPC] {name}: no navmesh under {room.Type} at {fc}.", this);
                     continue;
@@ -225,7 +225,7 @@ namespace DungeonGen
         void GoToInvestigatePoint()
         {
             investigatePoint = senses.LastKnownPosition;
-            if (NavMesh.SamplePosition(investigatePoint, out NavMeshHit hit, vis != null ? vis.cellSize : 3f, NavMesh.AllAreas))
+            if (NavMesh.SamplePosition(investigatePoint, out NavMeshHit hit, vis != null ? vis.cellSize : 3f, body.NavFilter))
                 body.SetDestination(hit.position);
         }
 
@@ -329,7 +329,7 @@ namespace DungeonGen
             if (away.sqrMagnitude < 0.0001f) away = -transform.forward; // degenerate: stacked exactly on the target
 
             Vector3 desired = transform.position + away.normalized * retreatStepDistance;
-            if (NavMesh.SamplePosition(desired, out NavMeshHit hit, retreatStepDistance + 0.5f, NavMesh.AllAreas))
+            if (NavMesh.SamplePosition(desired, out NavMeshHit hit, retreatStepDistance + 0.5f, body.NavFilter))
                 body.SetDestination(hit.position);
         }
 

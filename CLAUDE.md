@@ -266,10 +266,13 @@ GEOMETRY rather than by a rule anyone maintains** — an escape route they canno
   would emit full-size masonry into a hole meant to be a 1.5m bore. So to the mesher, the kit
   placer, `NeedsSlabBetween`, the automap and every `!= CellType.Empty` test, a crawlway DOES NOT
   EXIST and the rock is solid. Identity lives in `Crawlways` + `CrawlwayAt`/`IsCrawlwayCell`.
-  Two dividends: the stage is provably INERT (it mutates nothing, so a fixed seed generates an
-  identical dungeon with it on or off — that is the regression test), and unlike alcoves and
-  plazas it is immune to §12's self-hosting trap, because solid rock is not a legal host.
   The price is that it brings its own mesh and collider, as bridges and ladders do.
+  **THE BORE IS INERT; THE CHAMBER IS NOT, and the distinction matters twice.** With chambers
+  off, the stage mutates nothing and a fixed seed generates an identical dungeon with crawlways
+  on or off — still the regression test for the bore. A chamber DOES carve cells, which
+  reintroduces §12's **self-hosting trap** the bore was immune to: a chamber is typed Hallway
+  during the same grid scan, so later flat indices would bore a crawlway out of a sewer chamber
+  unless `IsChamberCell` guards the host. Third instance of that shape after alcoves and plazas.
 - **THE ENDPOINTS ARE THE FEATURE; THE BORE BETWEEN THEM IS TRIVIAL.** The cheap version — bore
   blind and stop wherever you break through — needs no search and produces worthless crawlways,
   because a 4-cell tunnel surfacing in the same corridor twelve metres away is a novelty rather
@@ -280,6 +283,30 @@ GEOMETRY rather than by a rule anyone maintains** — an escape route they canno
   papering over a generator bug; reject. **Is that path long** — `crawlwayMinDetourRatio` is what
   makes a crawlway MEAN something. Measured, that second rule rejects ~70% of attempts, which is
   the design working and the tally says so in as many words.
+- **THE DETOUR RATIO IS A GATE, NOT A SCORE — scoring by it was a real shipped bug.** Ranking
+  candidates by `walk / boreLength` means the SHORTEST bore always wins: a 1-cell breach through
+  a single wall scored x78 while the genuinely interesting 7-cell tunnel scored x11 and lost.
+  The rule rewarded holes and penalised passages, which is the exact opposite of its intent, and
+  it shipped looking like a tuning problem. Candidates are now ranked by **TURNS first, then
+  length** — a turn is what breaks the sightline through a crawlway and what makes the space
+  read as a tunnel rather than a pipe — with `crawlwayMinCells` flooring the length beneath both.
+- **`crawlwayMinCells` IS A BALANCE FIX AS MUCH AS AN AESTHETIC ONE.** A 1-cell crawlway is not
+  a passage, it is a WINDOW: you stand inside the wall with a clear line of fire at something
+  that cannot reach you. Length plus a turn removes the sightline, so the exploit closes as a
+  side effect. Worth remembering when tuning it back down.
+- **ONE CRAWLWAY PER PAIR OF SPACES** (`crawlPairs`), plus `crawlwayMaxPerSpace`. `crawlwayMinSpacing`
+  was the only constraint at first and it is the wrong SHAPE — it measures mouth-to-mouth, so
+  three mouths spaced along a single wall all passed it and produced three identical holes into
+  the same corridor. **The whole hallway network counts as ONE space** in `SpaceKeyOf`:
+  per-corridor-run identity would let a room bore into "the hallway" three times at three points,
+  which is the same symptom, and from the player's side those are all "the corridor outside".
+  **BUT THE HALLWAY NETWORK IS EXEMPT FROM THE PER-SPACE MOUTH CAP** (`SpaceIsFull`), and getting
+  that wrong for one round is the lesson. `crawlwayMaxPerSpace` means "a ROOM should not sprout
+  three grates"; applied to space -1, which is not a place but the whole corridor network, it
+  capped the entire RUN at one hallway-touching crawlway — and nearly every crawlway has a
+  corridor at one end. §12's portability rule again: the value was fine, the DENOMINATOR was a
+  different kind of thing. The network needs no cap because `crawlPairs` already stops any one
+  room drilling into it twice, which was the actual complaint.
 - **`RecessFits` is NOT reusable** (it builds a rectangular slab for a recess that becomes open)
   **but its `CellOk` generalises**: a bore cell touching open space is TERMINAL, so it can only
   be the last cell and interior cells can never graze a corridor or run beside one with a single
@@ -298,11 +325,47 @@ GEOMETRY rather than by a rule anyone maintains** — an escape route they canno
   opening a hole you fall through**. A generator PROPERTY, not a flag threaded through both
   callers — the mesher and the kit placer must agree about where a wall is, and two flags passed
   separately is exactly how they would come to disagree.
-- Skipping the face BEFORE the kit's emit handles `WallFaceRegistry` and everything downstream
-  for free (no torch or banner dealt onto a holed wall). **The corner-post classifier needs NO
-  change** — posts come from grid solidity and a mouth removes only the middle of the face, so
-  the wall corners genuinely still exist. That is the difference from an archway, and why
-  `FramedOpening` is deliberately not extended here.
+- **A MOUTH FACE MUST BE RECORDED AS DENIED, NOT MERELY LEFT UNEMITTED** (real bug, and it was
+  documented here as "handled for free" while shipping backwards). `WallFaceRegistry` is a
+  DENY-LIST: `PropsAllowed`/`TorchAllowed` return TRUE for a key nobody added, because a kit
+  generic wall carries no metadata and allows everything (§7). So skipping the emit made the
+  grate the most PERMISSIVE face in the dungeon rather than the most restricted, and a sconce
+  or banner would mount straight over the opening. **Absence means "no restrictions", never
+  "nothing here"** — worth checking against any other registry that answers a question by
+  omission. Now `Record(allowProps:false, allowTorch:false)` plus a `Claim`.
+- **AND THE FLAG IS NOT ENOUGH ON ITS OWN — THE CELL MUST BE RESERVED TOO.** `allowPropsInFront`
+  only stops props SNAPPED to that wall; an unsnapped floor-scatter prop lands wherever its
+  cell put it and never consults a wall face at all. A grate is a doorway you enter on your
+  knees, so a crate in front of it does not clutter the entrance, it seals it. Mouth cells are
+  therefore reserved in all three prop passes — `RoomPropPlacer` (with the door thresholds and
+  bridge landings), `HallwayPropPlacer`, and `RecessPropPlacer` via the same `NoBlocking`
+  mechanism a prison uses for its doorway tile. **The chamber's entry tile is not optional**:
+  chamber cells are typed Hallway, so the corridor pass scatters debris in them like anywhere
+  else, and that tile is both the tightest cell in the chamber and the only way out.
+- **The corner-post classifier needs NO change** — posts come from grid solidity and a mouth
+  removes only the middle of the face, so the wall corners genuinely still exist. That is the
+  difference from an archway, and why `FramedOpening` is deliberately not extended here.
+- **SEWER CHAMBERS, AND WHY THEY ARE NEVER DEAD ENDS.** A crawlway may open into a full-height
+  room carved in the rock, sealed except for that one grate — loot, or a mob that literally
+  cannot follow you out. The bore still runs THROUGH to its far mouth, and that is the load-
+  bearing rule: **an out-and-back through a slow crouch tunnel is worse than no tunnel**, because
+  it teaches the player that a grate costs thirty seconds for a coin-flip, and after one of those
+  they stop entering grates. The feature would get judged once and then skipped forever. Design
+  decisions about a slow traversal are really decisions about whether players will ever use it
+  twice.
+- **The chamber hangs DIRECTLY off a bore cell with no spur tunnel**, which is what keeps
+  `Cells` a LIST rather than a tree — branching costs an index and a direction instead of a
+  restructure, the tee is a straight tube with a hole in one side rather than a 3-way junction,
+  and the only backtracking in the design is one step. **It reuses `RecessFits` WHOLESALE**: the
+  host cell is the BORE cell, i.e. solid rock, so the one-opening rule ("touch no open cell but
+  h") yields a fully sealed pocket for free. A prison, an alcove and a sewer chamber are the same
+  primitive with different hosts.
+- **A chamber is a DISCONNECTED NAVMESH ISLAND, by construction** — 1.5m of tube bakes nothing
+  walkable, so a mob inside can never leave. Free mob-pen behaviour, but NPC spawning (roadmap
+  26) must know, or it will place roamers somewhere they can only stand still. The same
+  sealed-island property is why the open-network BFS cache stays valid across a carve, and why a
+  later bore must be explicitly refused a chamber cell as a far end rather than left to the
+  BFS rejecting it by accident.
 - Stairs and prisons are excluded as mouths (sealed envelope; the one-opening rule a prison's
   validation rests on). Pit openings too — §12's category rule, and it gets its OWN reject reason
   rather than being folded into another, since a tally that reports the wrong rule is worse than
@@ -982,6 +1045,24 @@ One RoomStyle asset defines a room type's whole look. What it holds:
   categories 1 > Generic 0). Highest-scoring adjacent room's pillar wins; hallway
   contributes nothing.
 - **Props** (`PropSetEntry` per type — shareable PropSet assets). See §8.
+- **Sewer chambers and crawlways are two more SPACES** (§7's grouping), not new `RoomType`s —
+  that enum is what the typing pass, the MST, satellites and the specialness ladder all reason
+  about, so adding to it means auditing every one of them for no gain. **Identity for styling
+  has never come from `CellType` in this project**: alcoves are typed Hallway, pits resolve
+  through `PitAt`, and these resolve through `ChamberAt`/`IsCrawlwayCell`. That is what lets a
+  1.5m bore have its own fog while its cell stays solid rock to the mesher.
+  - **Chambers** get walls/floors/ceilings/props/audio and a full palette. Every consumer must
+    check them BEFORE its hallway fallback (kit walls, kit floors, fog, `AudioSpace`,
+    `TorchPlacer`) — chamber cells are typed Hallway, so otherwise the hallway branch always
+    wins and the slot can never fire. Exactly the rule pit styling already carries against the
+    room branch.
+  - **Crawlway bores are FOG-ONLY, permanently.** A bore's cell is solid, so it has no wall
+    faces and no torch slot can ever exist in one — `TorchPlacer` needs no crawlway branch and
+    never will. The palette exists to colour the haze and anything emissive authored onto the
+    pipe itself.
+  - Chamber contents make `RecessPropPlacer` a THIRD caller, which is the thing that confirms
+    the earlier generalisation: a chamber arrives already shaped as a `RecessTarget` and needed
+    no new machinery. Salt block 12500.
 - **Alcove styles** (`alcoveStyles`: one PropSet per `AlcoveKind`). Alcove cells are typed
   Hallway, so they inherit hallway WALLS/floors/ceilings — only the contents are per-kind.
   A kind with no entry generates as an empty recess, degrading gracefully like every other
@@ -2285,6 +2366,46 @@ Formula-driven with authored override points (the user's explicit choice).
   import setting even in-editor. It also overrides **voxel size** (~0.07): the default
   (agentRadius/3) is too coarse for stepped mesh colliders, baking stairs as narrow
   ragged strips with a lip where the stair prefab overlaps the greybox landing.
+- **CRAWLWAYS ARE PASSABLE BY GIVING SMALL CREATURES THEIR OWN AGENT TYPE — no AI code at
+  all.** The tube's box colliders were always being baked (`DungeonCrawlways` is deliberately
+  NOT in `excludeRoots`); they simply produced no walkable spans, because the voxelizer needs
+  Agent Height of clearance and Unity's Humanoid is 2.0m against a 1.5m bore. So a second
+  `NavMeshSurface` with a short agent type makes the bores appear in ITS surface and nowhere
+  else. **Corners come free**, which is the whole reason this beats the ladder approach: an
+  off-mesh link is a straight A→B traversal and cannot follow a bore that turns, so
+  `NavMeshLink`s would have needed a chain per cell plus scripted traversal. Same philosophy as
+  bridges — behaviour falling out of geometry rather than out of AI. `DungeonNavBaker` bakes
+  every `NavMeshSurface` on its GameObject, so adding an agent type is adding a component.
+  **DO NOT instead lower the Humanoid height to 1.5**: that makes every low gap in the dungeon
+  walkable. The design payoff is that crawlways become SIZE-GATED — kobolds follow you in,
+  goblins cannot — which keeps the escape-route property against the things it matters for.
+- **A NEW AGENT TYPE'S STEP HEIGHT AND MAX SLOPE FRAGMENT ITS NAVMESH, AND NOTHING POINTS AT
+  THEM** (cost a real debugging round). Height and radius are what you think about when adding
+  a small agent, and they are not what breaks: authoring a small creature with a small STEP
+  HEIGHT loses every staircase — already the most fragile navmesh here, which is why the baker
+  overrides voxel size — and small lips where kit meets greybox. **The symptom is
+  `PathPartial` to somewhere completely ordinary**, i.e. an NPC that walks partway and stops,
+  looking exactly like a routing decision or a stuck body. A small creature wants a GENEROUS
+  step height; it is a pathing allowance, not an animation claim. Both `DungeonNavBaker` and
+  `NpcLocomotion.debugNav` now print step and slope beside height and radius for this reason.
+- **`NavMesh.SamplePosition(..., NavMesh.AllAreas)` TAKES AN AREA MASK AND SILENTLY USES THE
+  DEFAULT AGENT TYPE.** Indistinguishable from correct while the project had one agent type;
+  the moment a second exists, every such call asks "is there HUMANOID navmesh here?" on behalf
+  of a crawler. Inside a crawlway the answer is no, so the destination sample fails, the brain
+  never issues a path, and the NPC stands at the grate looking like it chose not to follow.
+  Four call sites had it (`NpcBrain` ×3, `NpcLocomotion.WarpToNavMesh`) plus the baker's spawn
+  snap. Fixed via `NpcLocomotion.NavFilter`, one property built from the agent's own
+  `agentTypeID`, so they cannot drift. §12's perspective rule — a shared system gains a second
+  kind of user and its defaults are quietly wrong for them.
+- **`NpcLocomotion.debugNav` EXISTS BECAUSE "THE NPC JUST STANDS THERE" HAS SIX CAUSES THAT
+  LOOK IDENTICAL** — wrong agent type, off its navmesh, no destination issued, a Partial path,
+  a body that cannot fit where the agent planned, or a physical block. The split that makes it
+  slippery is structural: **the agent PLANS and the CharacterController MOVES**
+  (`updatePosition = false`), so `want` can read a healthy 2.5 m/s while the body goes nowhere,
+  or the body can be free while `want` is zero. Printing both together separates them in one
+  line, and printing **where a partial path GIVES UP** turns the diagnosis into flying to a
+  world position and looking at it: a staircase means step height, a crawlway mouth means the
+  tube is an island, a doorway means a prop narrowed it.
 - **LADDERS ARE INVISIBLE TO THE NAVMESH — a live gameplay limitation, not a quirk.**
   Climbing is scripted (`LadderClimbZone` + the controller's overlap poll), so no
   `NavMeshAgent` has any route across a ladder. On a seed whose only way up is a

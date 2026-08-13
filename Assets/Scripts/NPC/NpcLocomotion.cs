@@ -72,6 +72,12 @@ namespace DungeonGen
         [Tooltip("Log per-frame INTENDED vs ACTUAL horizontal displacement, broken down by want/impulse/separation — diagnostic for 'the player can push/jitter me' investigations. Turn on, stand pressed against this NPC, and read the console: if actual >> intended while want/impulse/sep all read ~0, that confirms CharacterController's own overlap resolution is the source, independent of anything this script asked for.")]
         public bool debugPush = false;
 
+        [Tooltip("Log this NPC's NAVIGATION state on an interval: agent type, whether it is on its own navmesh, path status, and what it currently wants to do.\n\nBuilt because 'the NPC just stands there' has many causes that all look identical from outside — wrong agent type, off the navmesh, no destination issued, a path that is only Partial, or a body that cannot fit where the agent happily planned. The agent PLANS and the CharacterController MOVES, so those two can disagree and nothing says so.")]
+        public bool debugNav = false;
+        [Tooltip("Seconds between debugNav lines.")]
+        public float debugNavInterval = 1f;
+        float debugNavTimer;
+
         public NavMeshAgent Agent { get; private set; }
         public CharacterController Controller { get; private set; }
 
@@ -266,6 +272,8 @@ namespace DungeonGen
             // zero while a path is still being computed — don't mistake that for
             // "blocked" or the NPC stutters at the start of every walk.
             Vector3 want = Agent.pathPending ? Vector3.zero : Agent.desiredVelocity * SpeedMultiplier;
+
+            if (debugNav) TickNavDebug(want);
 
             // A plowed NPC's OWN steering stands down for the duration. NpcBrain keeps
             // pathing toward the player while alerted, so without this the carry and the
@@ -599,11 +607,86 @@ namespace DungeonGen
         /// <summary>Being carried by an external drive right now — see SetPlowVelocity.</summary>
         public bool IsPlowed => plowTimer > 0f;
 
+        /// <summary>
+        /// One line answering "why is this NPC not moving", because every cause looks the same
+        /// from outside — an NPC standing still.
+        ///
+        /// THE SPLIT THAT MATTERS: the agent PLANS and the CharacterController MOVES
+        /// (`updatePosition = false`), so `want` can be a healthy 2 m/s while the body goes
+        /// nowhere because it is wedged, or the body can be free while `want` is zero because
+        /// no destination was ever issued. Printing both together is what separates them, and
+        /// nothing else in the project reports it.
+        /// </summary>
+        void TickNavDebug(Vector3 want)
+        {
+            debugNavTimer -= Time.unscaledDeltaTime;
+            if (debugNavTimer > 0f) return;
+            debugNavTimer = Mathf.Max(0.1f, debugNavInterval);
+
+            string agentType = NavMesh.GetSettingsNameFromID(Agent.agentTypeID);
+            string dest = Agent.hasPath || Agent.pathPending
+                ? Agent.destination.ToString("0.0") : "<none issued>";
+
+            // The one thing the agent cannot tell you: does the BODY fit where the plan goes?
+            // A 1.5m bore takes a capsule under ~1.4m, and the failure is silent — the agent
+            // steers into the opening forever while the collider refuses to enter.
+            string capsule = $"cc h={Controller.height:0.00} r={Controller.radius:0.00}";
+
+            // WHERE A PARTIAL PATH GIVES UP is the whole diagnosis, and the agent will not tell
+            // you unless asked. PathPartial means the destination is unreachable on THIS agent's
+            // navmesh, so it walks to the nearest point it can reach and stops — which from
+            // outside is indistinguishable from being stuck, except that `want` stays healthy.
+            // The last corner is a world position you can fly to in the scene view and simply
+            // LOOK at: a staircase there means the agent's Step Height or Max Slope is wrong for
+            // this agent type (stairs are the most fragile navmesh in the project); a crawlway
+            // mouth means the tube is an island; a doorway means a prop or door narrowed it.
+            string endsAt = "";
+            if (Agent.hasPath && Agent.pathStatus != NavMeshPathStatus.PathComplete)
+            {
+                var corners = Agent.path.corners;
+                if (corners.Length > 0)
+                    endsAt = $" GIVES UP AT {corners[corners.Length - 1].ToString("0.0")}" +
+                             $" ({corners.Length} corner(s))";
+            }
+
+            var settings = NavMesh.GetSettingsByID(Agent.agentTypeID);
+
+            Debug.Log(
+                $"[NavDbg] {name}: agent='{agentType}' (h={settings.agentHeight:0.##} r={settings.agentRadius:0.##} " +
+                $"step={settings.agentClimb:0.##} slope={settings.agentSlope:0.#}) " +
+                $"onNavMesh={Agent.isOnNavMesh} pathPending={Agent.pathPending} status={Agent.pathStatus} " +
+                $"dest={dest} remaining={Agent.remainingDistance:0.00} " +
+                $"want={want.magnitude:0.00} actual={CurrentSpeed:0.00} blocked={IsBlocked} " +
+                $"{capsule} pos={transform.position.ToString("0.0")}{endsAt}", this);
+        }
+
+        /// <summary>
+        /// Query filter for THIS NPC's own agent type. Every navmesh query about this NPC must
+        /// go through it.
+        ///
+        /// `NavMesh.SamplePosition(..., NavMesh.AllAreas)` takes an AREA MASK, not an agent, and
+        /// silently uses the DEFAULT agent type — which was indistinguishable from correct while
+        /// the project had exactly one. The moment a second, shorter agent exists (a crawler that
+        /// fits a 1.5m bore), every such call asks "is there humanoid navmesh here?" on behalf of
+        /// a kobold. Inside a crawlway the answer is no, so the destination sample fails, the
+        /// brain never issues a path, and the NPC stands at the grate looking like it decided
+        /// not to follow. §12's perspective rule: a shared system gained a second kind of user
+        /// and its defaults were quietly wrong for them.
+        ///
+        /// Exposed here rather than rebuilt per call site so the four of them cannot drift, the
+        /// same reason AudioSpace owns the one space resolution.
+        /// </summary>
+        public NavMeshQueryFilter NavFilter => new NavMeshQueryFilter
+        {
+            agentTypeID = Agent != null ? Agent.agentTypeID : 0,
+            areaMask = NavMesh.AllAreas,
+        };
+
         /// <summary>Teleport onto the nearest navmesh point. The CharacterController must be disabled across the move or it fights the warp.</summary>
         public bool WarpToNavMesh(Vector3 world, float maxDistance)
         {
             if (Agent == null) return false;
-            if (!NavMesh.SamplePosition(world, out NavMeshHit hit, maxDistance, NavMesh.AllAreas)) return false;
+            if (!NavMesh.SamplePosition(world, out NavMeshHit hit, maxDistance, NavFilter)) return false;
 
             Controller.enabled = false;
             transform.position = hit.position;
