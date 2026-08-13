@@ -107,7 +107,11 @@ namespace DungeonGen
         [Tooltip("FALLBACK maximum crawlways per run when no DepthProfile is assigned.")]
         public int crawlwayMaxCount = 3;
         [Tooltip("Longest bore, in cells (3m each). crouchSpeed is 1 m/s, so each cell is about three seconds in a tight tube with no combat option — 3 is a brisk squeeze, 5 is a genuine commitment. A turn buys more tension per second than length does.")]
-        public int crawlwayMaxCells = 4;
+        public int crawlwayMaxCells = 6;
+        [Tooltip("SHORTEST bore, in cells. A 1-cell crawlway is not a passage, it is a hole in a wall — and worse, it is a WINDOW: you stand in the wall with a clear sightline and shoot things that cannot reach you. Anything from 3 up puts you inside a tunnel with no line of sight out, which fixes that exploit as a side effect of fixing the aesthetics.")]
+        public int crawlwayMinCells = 3;
+        [Tooltip("How many crawlway mouths one SPACE may have — a room, or the whole hallway network counted as one. 1 is strongly recommended: crawlways are landmarks, and a room sprouting three of them reads as swiss cheese rather than a secret.")]
+        public int crawlwayMaxPerSpace = 1;
         [Tooltip("A crawlway is only carved if the EXISTING walk between its two ends is at least this many times the bore length. THE RULE THAT MAKES A CRAWLWAY MEAN SOMETHING: without it a 4-cell bore happily connects two corridor cells twelve metres apart, which is a novelty rather than a shortcut. Same shape as minLoopDetourRatio, which scores loop edges by exactly this ratio.")]
         public float crawlwayMinDetourRatio = 6f;
         [Tooltip("No crawlway mouth within this many cells (XZ) of a staircase — the same guard prisons and alcoves use, since the sealed stair envelope is the most fragile geometry in the dungeon.")]
@@ -116,7 +120,13 @@ namespace DungeonGen
         public int crawlwayMinSpacing = 3;
         [Tooltip("A crawlway mouth must be this many cells from any room DOORWAY — a grate in a threshold fights the reserved-threshold rule and the corner-post classifier. Also a CHEBYSHEV box: at 2 it excludes 25 cells around EVERY door, which measurably ate 45% of all alcove sites. 1 is enough to keep a mouth out of a threshold and its immediate neighbours.")]
         public int crawlwayDoorClearance = 1;
-        [Tooltip("Log the per-rule rejection tally every generate. Logged unconditionally when ZERO crawlways are bored; this adds it for the ordinary case where some succeeded but you want more. Expect 'no legal far end' to dominate — that is the pairing rule working, not a fault.")]
+        [Tooltip("Chance a crawlway also opens into a SEWER CHAMBER partway along — a full-height room carved in the rock, sealed except for that one grate, holding loot or a mob. The crawlway still runs through to its far mouth, so the chamber is never a dead end: an out-and-back through a slow crouch tunnel teaches the player that a grate is a coin-flip costing thirty seconds, and after one of those they stop entering grates at all.")]
+        [Range(0f, 1f)] public float crawlwayChamberChance = 0.65f;
+        [Tooltip("Sewer chamber width, in cells, across the tube. Rolled once and SHRINKS to fit, like prisons and alcoves, so thin rock gives a smaller chamber rather than none — but only down to the MINIMUM here, which is the single biggest control on how often chambers appear.\n\nKEEP THE MINIMUM AT 1. Any width above 1 also gets a 1x1 vestibule tile, so a minimum of 2 means the smallest chamber I will ever build is a 5-cell pocket that must be entirely surrounded by rock with solid floor and ceiling — beside a tunnel already threading thin rock, that frequently does not exist, and the symptom is long crawlways with no chambers at all.")]
+        public Vector2Int crawlwayChamberWidthRange = new Vector2Int(1, 3);
+        [Tooltip("Sewer chamber depth, in cells, away from the tube. A WIDE chamber gets a 1x1 entry tile off the tube and widens behind it (the vestibule rule every recess uses), so total depth is this + 1.")]
+        public Vector2Int crawlwayChamberDepthRange = new Vector2Int(2, 3);
+        [Tooltip("Log the per-rule rejection tally every generate. Logged unconditionally when ZERO crawlways are bored; this adds it for the ordinary case where some succeeded but you want more. Expect 'no legal far end' and 'far end too close on foot' to dominate — that is the pairing rule working, not a fault.")]
         public bool debugCrawlways = false;
     }
 
@@ -280,6 +290,9 @@ namespace DungeonGen
         // Open cell -> direction into the rock. One entry per mouth; crawlwayMinSpacing keeps
         // two mouths off the same cell, so a cell never needs more than one.
         readonly Dictionary<Vector3Int, Vector3Int> crawlMouthFaces = new Dictionary<Vector3Int, Vector3Int>();
+        // Sewer chamber cells. These ARE typed Hallway in the grid (unlike the bore), so as with
+        // alcoves this registry is the only thing that knows they are not ordinary corridor.
+        readonly Dictionary<Vector3Int, CrawlwaySpec> crawlChamberCells = new Dictionary<Vector3Int, CrawlwaySpec>();
 
         /// <summary>
         /// SET BY DungeonVisualizer FROM THE KIT, and false by default. Gates
@@ -303,6 +316,13 @@ namespace DungeonGen
         public bool IsCrawlwayCell(Vector3Int c) => crawlCells.ContainsKey(c);
         /// <summary>True if this OPEN cell has a crawlway grate in one of its walls.</summary>
         public bool IsCrawlwayMouth(Vector3Int c) => crawlMouths.Contains(c);
+
+        /// <summary>The crawlway whose sewer chamber this cell belongs to, or null. The cell's
+        /// CellType is Hallway either way — this is the only way to tell a chamber from ordinary
+        /// corridor, exactly as with alcoves.</summary>
+        public CrawlwaySpec ChamberAt(Vector3Int c) => crawlChamberCells.TryGetValue(c, out var cw) ? cw : null;
+        /// <summary>True if this cell is part of a crawlway's sewer chamber.</summary>
+        public bool IsChamberCell(Vector3Int c) => crawlChamberCells.ContainsKey(c);
 
         /// <summary>
         /// Does a crawlway grate replace the wall on this face? <paramref name="cell"/> is the
@@ -2381,7 +2401,19 @@ namespace DungeonGen
 
         // ---------------- Crawlways ----------------
 
-        enum CrawlReject { None, DoorClearance, Spacing, StairClearance, NoFarEnd, NotAShortcut, Disconnected, Floorless }
+        enum CrawlReject { None, DoorClearance, Spacing, StairClearance, NoFarEnd, NotAShortcut, Disconnected, Floorless, TooShort, PairSpent, SpaceFull }
+
+        // Which pairs of spaces already have a crawlway between them, and how many mouths each
+        // space carries. A "space" is a room, or the WHOLE hallway network counted as one — see
+        // SpaceKeyOf. crawlwayMinSpacing was the only constraint before and it is the wrong
+        // shape: it measures mouth-to-mouth, so three mouths spaced along a single wall all pass
+        // it while producing three identical holes into the same corridor.
+        readonly HashSet<(int, int)> crawlPairs = new HashSet<(int, int)>();
+        readonly Dictionary<int, int> crawlSpaceMouths = new Dictionary<int, int>();
+        // Per-reason tally for chambers, same discipline as the bore's. Added after being asked
+        // "why are there no chambers?" and having to GUESS — §12's instrument-before-hypothesising
+        // rule, which the alcove work proved right three times and which I skipped here.
+        readonly int[] chamberRejects = new int[4];
 
         static readonly Vector3Int[] VerticalDirs = { Vector3Int.up, Vector3Int.down };
 
@@ -2409,6 +2441,10 @@ namespace DungeonGen
             crawlCells.Clear();
             crawlMouths.Clear();
             crawlMouthFaces.Clear();
+            crawlChamberCells.Clear();
+            crawlPairs.Clear();
+            crawlSpaceMouths.Clear();
+            System.Array.Clear(chamberRejects, 0, chamberRejects.Length);
             walkCache = null;
             walkCacheFrom = new Vector3Int(int.MinValue, int.MinValue, int.MinValue);
             if (!cfg.placeCrawlways) return;
@@ -2456,6 +2492,16 @@ namespace DungeonGen
                 if (t != CellType.Room && t != CellType.Hallway) continue;
 
                 Vector3Int a = Grid.Position(i);
+
+                // §12's SELF-HOSTING TRAP, and this pass is exposed to it the moment chambers
+                // exist. A chamber is carved as Hallway DURING this same grid scan, so later flat
+                // indices see fresh cells and would happily bore a crawlway out of a sewer
+                // chamber — chaining rooms off rooms through the rock. The bore itself is immune
+                // (it stays Empty, and solid rock is not a legal host); only the chamber
+                // reintroduces the hazard, which is exactly how alcoves and junction plazas were
+                // caught. Do not rely on the walk-BFS rejecting these as Disconnected: that
+                // happens to work today and is an accident of the chamber being a sealed island.
+                if (IsChamberCell(a)) continue;
                 foreach (var d in HorizontalDirs)
                 {
                     if (Crawlways.Count >= maxCount) break;
@@ -2487,12 +2533,23 @@ namespace DungeonGen
                     $"too near another crawlway (crawlwayMinSpacing {cfg.crawlwayMinSpacing}): {rejects[(int)CrawlReject.Spacing]}, " +
                     $"too near a stair (crawlwayStairClearance {cfg.crawlwayStairClearance}): {rejects[(int)CrawlReject.StairClearance]}, " +
                     $"no legal far end within crawlwayMaxCells {cfg.crawlwayMaxCells}: {rejects[(int)CrawlReject.NoFarEnd]}, " +
+                    $"bore shorter than crawlwayMinCells {cfg.crawlwayMinCells}: {rejects[(int)CrawlReject.TooShort]}, " +
                     $"far end too close on foot (crawlwayMinDetourRatio {cfg.crawlwayMinDetourRatio:0.#}): {rejects[(int)CrawlReject.NotAShortcut]}, " +
+                    $"those two spaces already share a crawlway: {rejects[(int)CrawlReject.PairSpent]}, " +
+                    $"a space is at crawlwayMaxPerSpace {cfg.crawlwayMaxPerSpace}: {rejects[(int)CrawlReject.SpaceFull]}, " +
                     $"a mouth would open over a pit: {rejects[(int)CrawlReject.Floorless]}, " +
                     $"ends not already connected: {rejects[(int)CrawlReject.Disconnected]}. " +
-                    $"NB 'no legal far end' and 'too close on foot' dominating is the PAIRING RULE WORKING, not a fault — " +
-                    $"most rock has nothing worth reaching on the other side. Raise crawlwayMaxCells to search further, " +
-                    $"or lower crawlwayMinDetourRatio to accept shorter-cut crawlways.");
+                    $"NB the big numbers here are the CONSTRAINTS WORKING, not a fault — most rock has nothing worth " +
+                    $"reaching on the other side, and one crawlway per pair of spaces is what stops a room sprouting " +
+                    $"three identical holes into the same corridor. Raise crawlwayMaxCells to search further, or lower " +
+                    $"crawlwayMinDetourRatio to accept shorter-cut crawlways. " +
+                    $"CHAMBERS: {chamberRejects[(int)ChamberReject.None]} carved; " +
+                    $"lost the chance roll (crawlwayChamberChance {cfg.crawlwayChamberChance:0.##}): {chamberRejects[(int)ChamberReject.ChanceRoll]}, " +
+                    $"bore was all corners: {chamberRejects[(int)ChamberReject.AllCorners]}, " +
+                    $"no clean pocket of rock beside any straight cell: {chamberRejects[(int)ChamberReject.NoRock]}. " +
+                    $"'No clean pocket' is usually SIZE — the smallest chamber is crawlwayChamberWidthRange.min wide, " +
+                    $"and anything above 1 also gets a 1x1 vestibule, so a min of 2 needs a 5-cell pocket entirely " +
+                    $"surrounded by rock. Drop the width minimum to 1 before touching anything else.");
         }
 
         /// <summary>
@@ -2515,7 +2572,20 @@ namespace DungeonGen
         /// </summary>
         CrawlReject TryBoreCrawlway(Vector3Int a, Vector3Int d, HashSet<Vector3Int> doorCells)
         {
+            // ---- Draws happen FIRST and UNCONDITIONALLY ----
+            // Four every attempt, whatever the geometry turns out to be. Making the count depend
+            // on which rejections fired would tie the RNG stream to layout and break
+            // (seed, depth) reproducibility — the discipline TryPlaceAlcove documents at length.
+            double chamberRoll = rng.NextDouble();
+            double chamberWhereRoll = rng.NextDouble();
+            double chamberWidthRoll = rng.NextDouble();
+            double chamberDepthRoll = rng.NextDouble();
+            double chamberOffsetRoll = rng.NextDouble();
+
             if (!MouthOk(a, doorCells, out var mouthWhy)) return mouthWhy;
+
+            int keyA = SpaceKeyOf(a);
+            if (SpaceIsFull(keyA)) return CrawlReject.SpaceFull;
 
             Vector3Int up = Vector3Int.up;
             int maxCells = cfg.crawlwayMaxCells;
@@ -2557,7 +2627,13 @@ namespace DungeonGen
                     Vector3Int nb = c + hd;
                     if (nb == a || !Grid.InBounds(nb) || Grid[nb] == CellType.Empty) continue;
                     terminal = true;
-                    if (Grid[nb] == CellType.Room || Grid[nb] == CellType.Hallway)
+                    // A sewer chamber is typed Hallway, so it reads as a perfectly good far end
+                    // and is not one: it is a sealed island reachable only through ITS OWN
+                    // crawlway, so "connecting" to it would give a second tunnel into a room the
+                    // player can still only enter by crawling. The walk-BFS would reject it as
+                    // Disconnected anyway — but that is an accident of the chamber being sealed,
+                    // and stating the rule beats relying on the accident.
+                    if ((Grid[nb] == CellType.Room || Grid[nb] == CellType.Hallway) && !IsChamberCell(nb))
                         candidates.Add((c, nb));
                 }
                 // Only a cell surrounded by rock may be bored THROUGH. A terminal cell that
@@ -2589,10 +2665,15 @@ namespace DungeonGen
             if (candidates.Count == 0) return CrawlReject.NoFarEnd;
 
             // --- Score. One BFS over the OPEN network gives the existing walk to every
-            // candidate at once, so the cost is paid per attempt rather than per candidate —
-            // and it is cached for the four faces of the same cell, which is sound ONLY because
-            // this stage never mutates the grid (crawl cells stay Empty). If a future change
-            // makes a crawlway carve anything, this cache must go.
+            // candidate at once, so the cost is paid per attempt rather than per candidate — and
+            // it is cached across the four faces of the same cell.
+            //
+            // THE CACHE IS STILL SOUND NOW THAT CHAMBERS CARVE CELLS, but the reason changed and
+            // is worth stating: a chamber is SEALED (its only opening is onto a solid-typed bore
+            // cell), so it is a disconnected island in the open-cell network and this BFS can
+            // never reach it. Carving one therefore changes no distance between any two cells
+            // that already existed. If a chamber ever gains a second, ordinary opening, this
+            // cache must go.
             if (walkCacheFrom != a)
             {
                 walkCache = OpenDistancesFrom(a);
@@ -2600,38 +2681,62 @@ namespace DungeonGen
             }
             var walk = walkCache;
 
-            Vector3Int bestBore = Vector3Int.zero, bestFar = Vector3Int.zero;
-            int bestWalk = 0, bestLen = 0;
-            float bestRatio = 0f;
+            // Reconstruct a candidate's bore, A end first.
+            List<Vector3Int> Reconstruct(Vector3Int bore)
+            {
+                var list = new List<Vector3Int>();
+                for (Vector3Int c = bore; c != a; c = from[c]) list.Add(c);
+                list.Reverse();
+                return list;
+            }
+
+            Vector3Int bestFar = Vector3Int.zero;
+            List<Vector3Int> bestCells = null;
+            int bestWalk = 0, bestTurns = -1, bestLen = 0;
             var worst = CrawlReject.NoFarEnd;
 
             for (int ci = 0; ci < candidates.Count; ci++)
             {
                 Vector3Int bore = candidates[ci].bore, far = candidates[ci].far;
+                int len = dist[bore];
 
+                if (len < cfg.crawlwayMinCells) { worst = CrawlReject.TooShort; continue; }
                 if (!MouthOk(far, doorCells, out var why)) { if (worst == CrawlReject.NoFarEnd) worst = why; continue; }
                 if (!walk.TryGetValue(far, out int w)) { worst = CrawlReject.Disconnected; continue; }
+                if (w / (float)len < cfg.crawlwayMinDetourRatio) { worst = CrawlReject.NotAShortcut; continue; }
 
-                int len = dist[bore];
-                float ratio = w / (float)len;
-                if (ratio < cfg.crawlwayMinDetourRatio) { worst = CrawlReject.NotAShortcut; continue; }
+                // ONE CRAWLWAY PER PAIR OF SPACES. Without this a room and the corridor beside
+                // it collect a crawlway per wall face that happens to score well — measured as
+                // three identical 1-cell holes in a row into the same hallway, which reads as
+                // damage rather than design.
+                int keyFar = SpaceKeyOf(far);
+                if (crawlPairs.Contains(PairKey(keyA, keyFar))) { worst = CrawlReject.PairSpent; continue; }
+                if (SpaceIsFull(keyFar)) { worst = CrawlReject.SpaceFull; continue; }
 
-                // Highest ratio wins — the most walking saved per second spent crawling.
-                // Deterministic tie-breaks: shorter bore, then grid order, so the same seed
-                // always picks the same far end (golden rule 4).
-                if (ratio > bestRatio ||
-                    (ratio == bestRatio && (len < bestLen || (len == bestLen && Before(far, bestFar)))))
+                var cand = Reconstruct(bore);
+                int turns = CountTurns(cand, d, far - bore);
+
+                // TURNS FIRST, then length — and NOT the detour ratio, which is now only a gate.
+                //
+                // Scoring BY the ratio was a real design bug: dividing walk saved by bore length
+                // means the SHORTEST bore always wins, so a 1-cell breach through a single wall
+                // scored x78 and beat the genuinely interesting 7-cell tunnel at x11. The rule
+                // rewarded holes and penalised passages, which is the opposite of the intent.
+                //
+                // Turns lead because a turn is what breaks the sightline THROUGH a crawlway —
+                // the same property that stops it being a sniper's window — and what makes the
+                // space read as a tunnel rather than a pipe. crawlwayMinCells already floors the
+                // length, so length is the right tie-break rather than the headline.
+                if (turns > bestTurns || (turns == bestTurns &&
+                    (len > bestLen || (len == bestLen && Before(far, bestFar)))))
                 {
-                    bestBore = bore; bestFar = far; bestRatio = ratio; bestWalk = w; bestLen = len;
+                    bestFar = far; bestCells = cand; bestWalk = w; bestTurns = turns; bestLen = len;
                 }
             }
 
-            if (bestRatio <= 0f) return worst;
-
-            // --- Reconstruct the bore, A end first.
-            var cells = new List<Vector3Int>();
-            for (Vector3Int c = bestBore; c != a; c = from[c]) cells.Add(c);
-            cells.Reverse();
+            if (bestCells == null) return worst;
+            var cells = bestCells;
+            Vector3Int bestBore = cells[cells.Count - 1];
 
             // Stair clearance over the WHOLE bore, not just its mouths — a tunnel passing
             // through the rock a staircase relies on is the same hazard as a recess dug into it.
@@ -2647,13 +2752,167 @@ namespace DungeonGen
                 WalkDistance = bestWalk,
             };
 
+            chamberRejects[(int)TryCarveChamber(spec, chamberRoll, chamberWhereRoll,
+                                                chamberWidthRoll, chamberDepthRoll,
+                                                chamberOffsetRoll)]++;
+
             Crawlways.Add(spec);
             foreach (var c in cells) crawlCells[c] = spec;
             crawlMouths.Add(a);
             crawlMouths.Add(bestFar);
             crawlMouthFaces[a] = d;
             crawlMouthFaces[bestFar] = -spec.DirB;
+
+            int keyB = SpaceKeyOf(bestFar);
+            crawlPairs.Add(PairKey(keyA, keyB));
+            crawlSpaceMouths[keyA] = MouthsIn(keyA) + 1;
+            crawlSpaceMouths[keyB] = MouthsIn(keyB) + 1;
             return CrawlReject.None;
+        }
+
+        /// <summary>
+        /// Which SPACE is this open cell part of, for the one-crawlway-per-pair rule? A room
+        /// index, or -1 for the hallway network.
+        ///
+        /// THE WHOLE CORRIDOR NETWORK COUNTS AS ONE SPACE, deliberately. Treating each corridor
+        /// cell (or each connected run) as its own space would let a room bore into "the hallway"
+        /// three times over at three different points, which is the exact symptom this rule
+        /// exists to stop — from the player's side those are all "the corridor outside", not
+        /// three destinations.
+        /// </summary>
+        int SpaceKeyOf(Vector3Int c)
+        {
+            var r = RoomAt(c);
+            return r != null ? Rooms.IndexOf(r) : -1;
+        }
+
+        static (int, int) PairKey(int x, int y) => x <= y ? (x, y) : (y, x);
+
+        int MouthsIn(int spaceKey) => crawlSpaceMouths.TryGetValue(spaceKey, out int n) ? n : 0;
+
+        /// <summary>
+        /// Has this space used up its crawlway mouths? **THE HALLWAY NETWORK IS EXEMPT**, and
+        /// that exemption is the whole point of having this be a separate method.
+        ///
+        /// `crawlwayMaxPerSpace` means "a ROOM should not sprout three grates". Applying the same
+        /// number to space -1 — which is not a place but the entire corridor network of the
+        /// dungeon — capped the whole RUN at one hallway-touching crawlway, since very nearly
+        /// every crawlway has a corridor at one end. §12's portability lesson: a constant that is
+        /// correct for one system is meaningless in another whose denominator differs, and the
+        /// symptom is a budget that looks generous and yields almost nothing.
+        ///
+        /// The corridor network needs no cap of its own because `crawlPairs` already stops any
+        /// single room drilling into it more than once, which was the actual complaint.
+        /// </summary>
+        bool SpaceIsFull(int spaceKey) =>
+            spaceKey >= 0 && MouthsIn(spaceKey) >= cfg.crawlwayMaxPerSpace;
+
+        /// <summary>How many times the bore changes direction, counting the mouths at both ends —
+        /// entering through a grate on one face and leaving through another IS a turn.</summary>
+        static int CountTurns(List<Vector3Int> cells, Vector3Int dirA, Vector3Int dirB)
+        {
+            int turns = 0;
+            for (int i = 0; i < cells.Count; i++)
+            {
+                Vector3Int inD = i == 0 ? dirA : cells[i] - cells[i - 1];
+                Vector3Int outD = i == cells.Count - 1 ? dirB : cells[i + 1] - cells[i];
+                if (inD != outD) turns++;
+            }
+            return turns;
+        }
+
+        /// <summary>
+        /// Try to open a SEWER CHAMBER off one bore cell — a full-height room sealed in the rock,
+        /// reachable only through the tube.
+        ///
+        /// NEVER A DEAD END FOR THE CRAWLWAY ITSELF: the bore still runs through to its far
+        /// mouth, so the player enters, finds the room, and leaves somewhere new. An out-and-back
+        /// through a slow crouch tunnel is worse than no tunnel, because it teaches the player
+        /// that a grate costs thirty seconds for a coin-flip, and after one of those they stop
+        /// entering grates — the feature gets judged once and then skipped forever.
+        ///
+        /// REUSES RecessFits WHOLESALE, which is the nice part. Its host cell `h` is the BORE
+        /// cell — solid rock — so the one-opening rule ("touch no open cell but h") yields a
+        /// fully SEALED pocket for free, which is exactly a sewer chamber. A prison, an alcove
+        /// and a sewer chamber turn out to be the same primitive with different hosts.
+        /// </summary>
+        enum ChamberReject { None, ChanceRoll, AllCorners, NoRock }
+
+        ChamberReject TryCarveChamber(CrawlwaySpec spec, double roll, double whereRoll,
+                                      double widthRoll, double depthRoll, double offsetRoll)
+        {
+            if (roll >= cfg.crawlwayChamberChance) return ChamberReject.ChanceRoll;
+
+            int wMin = Mathf.Max(1, Mathf.Min(cfg.crawlwayChamberWidthRange.x, cfg.crawlwayChamberWidthRange.y));
+            int wMax = Mathf.Max(wMin, Mathf.Max(cfg.crawlwayChamberWidthRange.x, cfg.crawlwayChamberWidthRange.y));
+            int dMin = Mathf.Max(1, Mathf.Min(cfg.crawlwayChamberDepthRange.x, cfg.crawlwayChamberDepthRange.y));
+            int dMax = Mathf.Max(dMin, Mathf.Max(cfg.crawlwayChamberDepthRange.x, cfg.crawlwayChamberDepthRange.y));
+
+            int w = Mathf.Clamp(wMin + (int)(widthRoll * (wMax - wMin + 1)), wMin, wMax);
+            int depth = Mathf.Clamp(dMin + (int)(depthRoll * (dMax - dMin + 1)), dMin, dMax);
+
+            // Start from a rolled bore cell and walk the ring, so the chamber isn't always at the
+            // same place along every tunnel. STRAIGHT cells only — a side opening cut into a
+            // corner piece needs its own asset and reads as a mess where three tubes meet.
+            int n = spec.Cells.Count;
+            int start = Mathf.Clamp((int)(whereRoll * n), 0, n - 1);
+            Vector3Int up = Vector3Int.up;
+            bool anyStraight = false;
+
+            for (int k = 0; k < n; k++)
+            {
+                int i = (start + k) % n;
+                if (spec.IsCorner(i)) continue;
+                anyStraight = true;
+
+                Vector3Int bore = spec.Cells[i];
+                Vector3Int run = spec.DirOutOf(i);
+
+                // The two sides of a straight tube. Ordered, not rolled, because the draw budget
+                // is already fixed above — trying both costs nothing and doubles the hit rate.
+                var sides = new[] { new Vector3Int(run.z, 0, -run.x), new Vector3Int(-run.z, 0, run.x) };
+                foreach (var side in sides)
+                {
+                    Vector3Int perp = new Vector3Int(Mathf.Abs(side.z), 0, Mathf.Abs(side.x));
+                    Vector3Int dAbs = new Vector3Int(Mathf.Abs(side.x), 0, Mathf.Abs(side.z));
+
+                    // Shrink to fit, depth preserved longest — depth is what makes a chamber a
+                    // room you walk into rather than a bay. Same order alcoves use.
+                    for (int tryDepth = depth; tryDepth >= dMin; tryDepth--)
+                        for (int tryW = w; tryW >= wMin; tryW--)
+                        {
+                            int offset = Mathf.Clamp((int)(offsetRoll * tryW), 0, tryW - 1);
+                            if (!RecessFits(bore, side, perp, dAbs, up, tryW, tryDepth, offset,
+                                            cfg.crawlwayStairClearance,
+                                            out BoundsInt bbox, out List<Vector3Int> cells))
+                                continue;
+
+                            spec.ChamberBoreIndex = i;
+                            spec.ChamberDir = side;
+                            spec.ChamberMouthCell = bore + side;
+                            spec.ChamberBounds = bbox;
+                            spec.ChamberCells = new HashSet<Vector3Int>(cells);
+
+                            // Typed Hallway, NOT left Empty like the bore: a chamber is a 3m
+                            // space you stand and fight in, so it wants the kit's walls, floor
+                            // and ceiling — the same trick that makes alcoves free. Only the
+                            // 1.5m tube has to stay solid-typed.
+                            foreach (var c in cells)
+                            {
+                                Grid[c] = CellType.Hallway;
+                                crawlChamberCells[c] = spec;
+                            }
+
+                            // The grate between tube and chamber. Recorded on the CHAMBER side
+                            // facing back into the bore, because the bore cell is solid-typed and
+                            // it is the chamber's wall quad that would otherwise seal it.
+                            crawlMouthFaces[spec.ChamberMouthCell] = -side;
+                            crawlMouths.Add(spec.ChamberMouthCell);
+                            return ChamberReject.None;
+                        }
+                }
+            }
+            return anyStraight ? ChamberReject.NoRock : ChamberReject.AllCorners;
         }
 
         /// <summary>Deterministic ordering for tie-breaks. Vector3Int has no IComparable.</summary>

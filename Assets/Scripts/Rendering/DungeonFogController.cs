@@ -128,7 +128,35 @@ namespace DungeonGen
                 tracker.Refresh();
                 inside = tracker.CurrentRoom;
             }
-            if (inside != null)
+            // A CRAWL BORE HAS ITS OWN HAZE, and it needs no CellType to get one. The cell stays
+            // Empty — solid rock to the mesher and the kit — but identity in this project has
+            // never come from CellType: alcoves are typed Hallway and get their contents from a
+            // registry, pits resolve through PitAt. Fog is the same shape, so a bore resolves
+            // through IsCrawlwayCell and nothing about the grid has to change.
+            //
+            // Asked BEFORE the room test because a bore is never in a room and the corridor
+            // default would otherwise claim it — a green sewer pipe glowing with corridor amber
+            // is the whole thing this prevents. Worth knowing: this is the ONLY use a crawlway
+            // has for a torch palette, since a bore's cell is solid and can hold no torch.
+            // FEET, not the camera — the same rule the room test below already follows, and it
+            // matters more here: a bore is one cell wide, so crouching at its mouth puts your
+            // eyes and your knees in different spaces almost every time.
+            Vector3Int feetCell = tracker != null && tracker.HasPlayer
+                ? tracker.CurrentCell
+                : Vector3Int.FloorToInt((pos - origin) / cellSize);
+
+            if (gen != null && gen.IsCrawlwayCell(feetCell))
+            {
+                target = FogColor(style.CrawlwayHue(), style.CrawlwayFogIntensity());
+            }
+            // A chamber is typed Hallway, so RoomAt returns null for it and the corridor default
+            // would claim it — the same trap alcoves hit in AudioSpace. Asked here, before the
+            // room test, for the same reason the bore is.
+            else if (gen != null && gen.IsChamberCell(feetCell))
+            {
+                target = FogColor(style.ChamberHue(), style.ChamberFogIntensity());
+            }
+            else if (inside != null)
             {
                 target = FogColorFor(style, inside.Type);
             }

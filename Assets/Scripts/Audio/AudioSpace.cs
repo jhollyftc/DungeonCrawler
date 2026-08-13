@@ -3,7 +3,7 @@ using UnityEngine;
 namespace DungeonGen
 {
     /// <summary>What KIND of space the player is standing in. Reverb and ambience both key off this.</summary>
-    public enum SpaceKind { None, Pit, Room, Prison, Alcove, Hallway }
+    public enum SpaceKind { None, Pit, Room, Prison, Alcove, Hallway, Chamber, Crawlway }
 
     /// <summary>
     /// Which audio space the player is in — the ONE resolution shared by AmbientDirector and
@@ -122,6 +122,29 @@ namespace DungeonGen
             {
                 result.Kind = SpaceKind.Alcove;
                 result.Profile = style.AlcoveAudio(alcove.Kind);
+                return result;
+            }
+
+            // Sewer chambers are typed Hallway too, for the same reason alcoves are — so the
+            // same rule applies: ask before the corridor fallback, or a sealed brick box sounds
+            // like open corridor.
+            if (gen.IsChamberCell(cell))
+            {
+                result.Kind = SpaceKind.Chamber;
+                result.Profile = style.ChamberAudio();
+                return result;
+            }
+
+            // THE ONLY SPACE REACHED ON A SOLID-TYPED CELL. A crawl bore stays CellType.Empty,
+            // so every test above it fails and the corridor fallback would have claimed it —
+            // meaning a 1.5m pipe reverberated like an open hallway. It is asked last only
+            // because nothing else can possibly match a solid cell; the order carries no other
+            // meaning here.
+            if (gen.IsCrawlwayCell(cell))
+            {
+                result.Kind = SpaceKind.Crawlway;
+                result.Profile = style.CrawlwayAudio();
+                result.SizeCells = 1;   // the tightest space in the dungeon, by construction
                 return result;
             }
 

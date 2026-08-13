@@ -68,6 +68,20 @@ namespace DungeonGen
             // where you'd stand to look into a niche hides the niche.
             foreach (var a in gen.Alcoves) reserved.Add(a.HallCell);
 
+            // Every crawlway MOUTH, for the same reason and a stronger one — a grate is a
+            // doorway you enter on your knees, so a crate in front of it doesn't clutter the
+            // entrance, it seals it. All three kinds are covered: both ends of the bore, and the
+            // sewer chamber's own entry tile. THE CHAMBER ONE IS NOT OPTIONAL — chamber cells
+            // are typed Hallway (that is what earns them free walls and floors), so this pass
+            // scatters corridor debris inside them like anywhere else, and its entry tile is
+            // both the tightest cell in the chamber and the only way out.
+            foreach (var cw in gen.Crawlways)
+            {
+                reserved.Add(cw.CellA);
+                reserved.Add(cw.CellB);
+                if (cw.HasChamber) reserved.Add(cw.ChamberMouthCell);
+            }
+
             var usedFloor = new HashSet<Vector3Int>();
             var usedCeiling = new HashSet<Vector3Int>();
             var blocked = new HashSet<Vector3Int>();

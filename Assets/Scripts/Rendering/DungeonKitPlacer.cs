@@ -95,6 +95,8 @@ namespace DungeonGen
         public GameObject[] crawlwayTubePrefabs; // optional — skipped if empty
         [Tooltip("CORNER crawlway tube — the same 1.5m bore turning 90 degrees within one cell. Author with its two openings on the -Z and +X faces; the placer tries all four yaw steps to match a turn, and those four rotations cover every perpendicular pair, so ONE corner asset is all that is ever needed (a tube is symmetric end to end — there is no left-hand and right-hand version).\n\nSame conventions as the straight: floor-aligned, base-origin, box colliders. Empty = corners fall back to the straight piece, which will visibly not turn — author this before raising crawlwayMaxCells, since a turn is what makes the length read as tension rather than a corridor tax.")]
         public GameObject[] crawlwayCornerPrefabs; // optional — falls back to the straight piece
+        [Tooltip("TEE crawlway tube — a straight run with a 1.5m opening in ONE SIDE, where the bore passes a sewer chamber. Author with the run along +Z and the side opening on +X; the placer flips the run end-for-end when the chamber is on the other side, which is invisible because a straight tube is symmetric, so ONE tee asset covers both hands.\n\nSame conventions as the straight: floor-aligned, base-origin, box colliders — and leave the side opening genuinely open, since the chamber's own grate piece frames it. Empty = the tee cell falls back to a closed straight tube, which seals the chamber off entirely (it stays carved but unreachable), so author this alongside the chamber.")]
+        public GameObject[] crawlwayTeePrefabs; // optional — falls back to the closed straight piece
         [Tooltip("Nudge applied to a crawlway tube in its OWN frame: Z = along the run, X = across it, Y = up. Rotated with the piece, so one value is correct whichever way the bore runs.")]
         public Vector3 crawlwayTubeOffset;
 
@@ -519,6 +521,16 @@ namespace DungeonGen
                         floorSlot = style.PrisonFloors() ?? floorSlot;
                         ceilingSlot = style.PrisonCeilings() ?? ceilingSlot;
                     }
+                    // SEWER CHAMBER BEFORE THE HALLWAY FALLBACK, for the same reason pits go
+                    // before the room branch: a chamber's cells are TYPED Hallway (that is what
+                    // earns them free walls, floors and ceilings), so the hallway branch would
+                    // always win and the slot could never fire. Unauthored falls through to
+                    // exactly that hallway styling, so this changes nothing until it is filled.
+                    else if (gen.IsChamberCell(c))
+                    {
+                        floorSlot = style.ChamberFloors() ?? style.HallwayFloors() ?? floorSlot;
+                        ceilingSlot = style.ChamberCeilings() ?? style.HallwayCeilings() ?? ceilingSlot;
+                    }
                     else
                     {
                         floorSlot = style.HallwayFloors() ?? floorSlot;
@@ -548,11 +560,27 @@ namespace DungeonGen
                     // apply there.
                     // A crawlway grate replaces the whole wall here. Must match DungeonMesher
                     // exactly — both ask the generator, so visuals and collision cannot come to
-                    // disagree about where the wall is (the NeedsSlabBetween pattern). Skipping
-                    // BEFORE the emit also keeps this face out of the WallFaceRegistry, so no
-                    // torch, banner or capped feature wall is dealt onto a face that has a hole
-                    // in it.
-                    if (!Open(nb) && gen.IsCrawlwayMouthFace(c, d)) continue;
+                    // disagree about where the wall is (the NeedsSlabBetween pattern).
+                    //
+                    // THE FACE MUST BE RECORDED AS DENIED, NOT MERELY LEFT UNEMITTED. The
+                    // registry is a DENY-LIST — `PropsAllowed`/`TorchAllowed` return TRUE for a
+                    // key that was never added, because a kit generic wall carries no metadata
+                    // and allows everything (§7). So skipping the emit made the grate the most
+                    // permissive face in the dungeon rather than the most restricted, and a
+                    // sconce or banner would be mounted straight over the opening. Absence means
+                    // "no restrictions", never "nothing here".
+                    //
+                    // Claimed as well as denied, so the one-occupant-per-face rule covers it too
+                    // and TorchPlacer's IsClaimed guard refuses it independently of the flags.
+                    if (!Open(nb) && gen.IsCrawlwayMouthFace(c, d))
+                    {
+                        if (wallFaces != null)
+                        {
+                            wallFaces.Record(i, d, allowProps: false, allowTorch: false);
+                            wallFaces.Claim(i, d);
+                        }
+                        continue;
+                    }
 
                     if (!Open(nb))
                     {
@@ -586,10 +614,25 @@ namespace DungeonGen
                             // pit has no bands (it is one course of rough wall) and a fireplace
                             // down a chasm is not a thing worth supporting.
                             var pitWalls = gen.PitAt(c) != null && style != null ? style.PitWalls() : null;
+
+                            // SEWER CHAMBER, same shape and for the same reason: its cells are
+                            // typed Hallway, so without checking first the hallway branch always
+                            // wins and the slot can never fire. Bands and feature reservations
+                            // skipped like the pit's — a chamber is one course of rough wall,
+                            // and a fireplace behind a grate is not a thing worth supporting.
+                            var chamberWalls = pitWalls == null && gen.IsChamberCell(c) && style != null
+                                ? style.ChamberWalls() : null;
+
                             if (pitWalls != null)
                             {
                                 placedWall = EmitPrefab(PickWall(pitWalls, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
                                 wallCtx = RoomStyle.WallContext.Pit;
+                                emitted = true;
+                            }
+                            else if (chamberWalls != null)
+                            {
+                                placedWall = EmitPrefab(PickWall(chamberWalls, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                wallCtx = RoomStyle.WallContext.Chamber;
                                 emitted = true;
                             }
                             else if (room != null)
@@ -1549,18 +1592,22 @@ namespace DungeonGen
                         Vector3Int cell = cw.Cells[i];
                         Vector3Int inDir = cw.DirInto(i), outDir = cw.DirOutOf(i);
                         bool corner = cw.IsCorner(i);
+                        bool tee = i == cw.ChamberBoreIndex &&
+                                   kit.crawlwayTeePrefabs != null && kit.crawlwayTeePrefabs.Length > 0;
 
-                        GameObject[] slot = corner && kit.crawlwayCornerPrefabs != null &&
-                                            kit.crawlwayCornerPrefabs.Length > 0
-                            ? kit.crawlwayCornerPrefabs
-                            : kit.crawlwayTubePrefabs;
+                        GameObject[] slot =
+                            tee ? kit.crawlwayTeePrefabs
+                          : corner && kit.crawlwayCornerPrefabs != null && kit.crawlwayCornerPrefabs.Length > 0
+                                ? kit.crawlwayCornerPrefabs
+                                : kit.crawlwayTubePrefabs;
                         GameObject prefab = slot[Hash(cell, 149) % slot.Length];
                         if (prefab == null) continue;
 
                         // The tube is FLOOR-ALIGNED, so its origin is the cell's base corner
                         // centre — not the cell centre. Base-origin: no globalVisualOffset.
-                        Quaternion rot = corner ? CornerYaw(inDir, outDir)
-                                                : Quaternion.LookRotation((Vector3)outDir);
+                        Quaternion rot = tee ? TeeYaw(outDir, cw.ChamberDir)
+                                      : corner ? CornerYaw(inDir, outDir)
+                                               : Quaternion.LookRotation((Vector3)outDir);
                         Vector3 pos = new Vector3(cell.x + 0.5f, cell.y, cell.z + 0.5f) * cellSize
                                     + rot * kit.crawlwayTubeOffset + parent.position;
 
@@ -1575,6 +1622,8 @@ namespace DungeonGen
                     // DirB runs from the last bore cell INTO CellB, so the face is on CellB's
                     // -DirB side — the mouth is seen from CellB and faces back the other way.
                     mouths += PlaceMouth(cw.CellB, -cw.DirB);
+                    // The chamber's grate, seen from inside the chamber looking back at the tube.
+                    if (cw.HasChamber) mouths += PlaceMouth(cw.ChamberMouthCell, -cw.ChamberDir);
                 }
             }
 
@@ -1632,6 +1681,21 @@ namespace DungeonGen
                 if (match) return q;
             }
             return Quaternion.LookRotation(openB); // unreachable for perpendicular pairs
+        }
+
+        /// <summary>
+        /// Yaw for a tee tube authored with its run along +Z and its side opening on +X.
+        ///
+        /// Only two orientations are candidates, not four: the run must lie along the bore's
+        /// axis, and a STRAIGHT tube is symmetric end to end, so flipping the run 180 degrees is
+        /// visually identical while moving the side opening to the other hand. That symmetry is
+        /// what makes one authored tee cover both, the same argument as the corner's four steps.
+        /// </summary>
+        static Quaternion TeeYaw(Vector3Int run, Vector3Int side)
+        {
+            Quaternion q = Quaternion.LookRotation((Vector3)run);
+            if (Approx(q * Vector3.right, (Vector3)side)) return q;
+            return Quaternion.LookRotation(-(Vector3)run);
         }
 
         static bool Approx(Vector3 a, Vector3 b) => (a - b).sqrMagnitude < 0.01f;

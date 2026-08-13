@@ -355,6 +355,20 @@ namespace DungeonGen
                         col = e.torchColor;
                         intensityScale = e.intensityScale;
                     }
+                    // SEWER CHAMBER BEFORE THE CORRIDOR FALLBACK. A chamber's cells are typed
+                    // Hallway, so RoomAt returns null and the corridor branch below would claim
+                    // it — leaving the one space in the dungeon you reach on your knees lit
+                    // exactly like the corridor you left. Exactly the drift the corridor fix
+                    // beneath this was written for, one space further along: the chamber's fog,
+                    // walls and props would all say "sewer" while its fire said "hallway".
+                    //
+                    // A crawl BORE needs no branch here and never will — its cell is solid, so
+                    // it has no wall faces and no torch slot can exist in one.
+                    else if (gen.IsChamberCell(c))
+                    {
+                        col = style.ChamberPalette();
+                        intensityScale = style.ChamberIntensityScale();
+                    }
                     else
                     {
                         // CORRIDORS TAKE THE STYLE'S DEFAULT, not TorchSettings.color. Every

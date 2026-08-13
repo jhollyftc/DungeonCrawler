@@ -95,7 +95,7 @@ namespace DungeonGen
             // "DungeonBridges" arrives with pits.
             "DungeonAlcoveProps", "DungeonPrisonProps",
             "DungeonBridges", "DungeonPitRims", "DungeonLintels",
-            "DungeonKitSockets", "DungeonCrawlways",
+            "DungeonKitSockets", "DungeonCrawlways", "DungeonChamberProps",
         };
 
         void Awake()
@@ -352,6 +352,7 @@ namespace DungeonGen
             {
                 RecessPropPlacer.BuildAlcoves(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
                 RecessPropPlacer.BuildPrisons(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
+                RecessPropPlacer.BuildChambers(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
             }
 
             if (torches != null && torches.placeTorches)
@@ -515,10 +516,24 @@ namespace DungeonGen
                     Gizmos.DrawLine(prev, Centre(cw.CellB));
                     Gizmos.DrawWireSphere(Centre(cw.CellA), cellSize * 0.22f);
                     Gizmos.DrawWireSphere(Centre(cw.CellB), cellSize * 0.22f);
+
+                    // The sewer chamber. Its cells ARE typed Hallway, so without this they read
+                    // as ordinary corridor in the gizmo view — the same reason alcoves need
+                    // their own colour.
+                    if (cw.HasChamber)
+                    {
+                        Gizmos.DrawLine(Bore(cw.Cells[cw.ChamberBoreIndex]), Centre(cw.ChamberMouthCell));
+                        foreach (var c in cw.ChamberCells)
+                            Gizmos.DrawWireCube(Centre(c), Vector3.one * cellSize * 0.8f);
+                    }
 #if UNITY_EDITOR
                     UnityEditor.Handles.color = crawlwayColor;
+                    int turns = 0;
+                    for (int i = 0; i < cw.Cells.Count; i++) if (cw.IsCorner(i)) turns++;
                     UnityEditor.Handles.Label(Centre(cw.CellA) + Vector3.up * cellSize * 0.4f,
-                        $"crawl {cw.Cells.Count} cells — saves a {cw.WalkDistance}-cell walk (x{cw.DetourRatio:0.#})");
+                        $"crawl {cw.Cells.Count} cells, {turns} turn{(turns == 1 ? "" : "s")} — " +
+                        $"saves a {cw.WalkDistance}-cell walk (x{cw.DetourRatio:0.#})" +
+                        $"{(cw.HasChamber ? $" + {cw.ChamberCells.Count}-cell sewer chamber" : "")}");
 #endif
                 }
             }

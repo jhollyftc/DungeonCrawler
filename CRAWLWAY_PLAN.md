@@ -63,8 +63,36 @@ ratio — worth reading before tuning.
 - **B (arrival)** — weighted toward places otherwise expensive to reach. The stage runs last,
   so room types are already assigned and this costs nothing to consult.
 
-**Dead ends are a kind, not a failure.** A bore that finds no legal B gets capped and holds a
-cache. That reuses every piece and turns the rejection path into content.
+**Dead ends are EXCLUDED, not deferred.** The cost of an out-and-back isn't the walk back, it's
+the learned reluctance: one dead-end at depth 3 teaches the player that a grate is a coin-flip
+costing thirty seconds of crouch-walking, and from then on they decline every grate they see.
+The feature gets judged once and then skipped. A slow traversal that might not go anywhere is a
+negative-expected-value gamble, and players stop taking those fast. So a crawlway always has two
+mouths, and the secret hangs off the side of the run instead of terminating it.
+
+## 2b. Sewer chambers
+
+A full-height room carved in the rock, sealed except for one grate onto the tube — loot, or a
+mob that cannot follow you out. It **hangs directly off a bore cell with no spur tunnel**, which
+is what keeps `Cells` a list rather than a tree: branching costs an index and a direction, the
+tee is a straight tube with a hole in one side rather than a 3-way junction, and the only
+backtracking in the whole design is one step back into the tube.
+
+**Reuses `RecessFits` wholesale.** Its host cell is the *bore* cell — solid rock — so the
+one-opening rule ("touch no open cell but `h`") yields a fully sealed pocket for free. A prison,
+an alcove and a sewer chamber turn out to be the same primitive with different hosts.
+
+**Open: make the chamber a DROP.** Its floor a storey below the tube, so entering is a commitment
+and the mouth gives no firing position down into the room — you're looking at a floor you have to
+drop to. Suits "sewer", reuses the pit machinery for the climb-out, and it is the real fix for
+the bow exploit rather than the partial one that `crawlwayMinCells` gives.
+
+**Open, and worth not losing — the ONE-WAY VALVE (user's idea).** Only the grate leading *to* the
+top of the chamber opens from the outside; the far grate is locked from the crawlway side. So the
+route is forced: in through one mouth, drop into the chamber, out through the other, unlocking it
+from inside as you go. That solves the backtracking and the firing-position exploit in a single
+move, and it makes the crawlway a small self-contained puzzle rather than a corridor. It also
+gives the lock-and-key work (roadmap 30) a natural first customer.
 
 ## 3. Geometry — one cell, one tube
 

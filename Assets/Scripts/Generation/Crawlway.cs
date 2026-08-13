@@ -81,6 +81,44 @@ namespace DungeonGen
         /// </summary>
         public bool IsCorner(int i) => DirInto(i) != DirOutOf(i);
 
+        // ---- Sewer chamber (optional) ----
+
+        /// <summary>
+        /// A full-height room carved in the rock, opening straight off one bore cell — sealed
+        /// from the rest of the dungeon except for that one grate. Empty when this crawlway has
+        /// no chamber.
+        ///
+        /// Typed <see cref="CellType.Hallway"/>, unlike the bore: a chamber IS a 3m space you
+        /// stand and fight in, so it wants the kit's walls, floors and ceilings, which is exactly
+        /// what alcoves get that trick for. The bore stays Empty because a 1.5m tube must not.
+        ///
+        /// IT HANGS DIRECTLY OFF A BORE CELL WITH NO SPUR TUNNEL, and that is what keeps
+        /// <see cref="Cells"/> a LIST rather than a tree — the whole branching feature costs an
+        /// index and a direction instead of a restructure. It also makes the only backtracking
+        /// in the design a single step back into the tube.
+        /// </summary>
+        /// A HashSet, matching AlcoveSpec.Cells and PrisonSpec.Cells — the three are the same
+        /// primitive and feed the same RecessPropPlacer, which takes a set. RecessFits hands back
+        /// a List, so the caller converts, exactly as the other two do.
+        public HashSet<Vector3Int> ChamberCells = new HashSet<Vector3Int>();
+
+        /// <summary>Bounding box of the chamber, mirroring PrisonSpec/AlcoveSpec semantics.</summary>
+        public BoundsInt ChamberBounds;
+
+        /// <summary>Index into <see cref="Cells"/> of the bore cell the chamber opens off, or -1.
+        /// Always a STRAIGHT cell — a tee in a corner piece would need its own asset and reads
+        /// badly.</summary>
+        public int ChamberBoreIndex = -1;
+
+        /// <summary>Bore cell → chamber. The tube's side opening faces this way.</summary>
+        public Vector3Int ChamberDir;
+
+        /// <summary>The chamber's entry tile, <c>Cells[ChamberBoreIndex] + ChamberDir</c>. On a
+        /// wide chamber this is the 1x1 vestibule and the room widens behind it.</summary>
+        public Vector3Int ChamberMouthCell;
+
+        public bool HasChamber => ChamberBoreIndex >= 0 && ChamberCells.Count > 0;
+
         /// <summary>World-space centre of the bore, for gizmos and distance tests.</summary>
         public Vector3 CenterCell
         {

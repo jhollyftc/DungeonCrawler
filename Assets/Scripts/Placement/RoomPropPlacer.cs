@@ -121,6 +121,18 @@ namespace DungeonGen
                     }
                 }
 
+            // A CRAWLWAY MOUTH IS A DOORWAY, and a small one you enter on your knees — so a
+            // blocking prop in front of it is worse than in a real doorway, not better. The
+            // WallFaceRegistry's allowPropsInFront flag stops props SNAPPED to that wall, but
+            // an unsnapped scatter prop lands wherever its cell put it and never consults a
+            // wall face at all. Reserving the cell is the mechanism that actually holds,
+            // exactly as it does for door thresholds and bridge landings above.
+            foreach (var cw in gen.Crawlways)
+            {
+                if (room.Contains(cw.CellA)) doorRoomCells.Add(cw.CellA);
+                if (room.Contains(cw.CellB)) doorRoomCells.Add(cw.CellB);
+            }
+
             foreach (var c in rz.Floor)
             {
                 if (doorRoomCells.Contains(c)) { rz.Reserved.Add(c); continue; }

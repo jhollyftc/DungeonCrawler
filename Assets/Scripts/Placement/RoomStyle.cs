@@ -278,6 +278,32 @@ namespace DungeonGen
         [Tooltip("Audio for prison closets. Falls back to the hallway profile.")]
         public AudioProfile prisonAudio;
 
+        [Header("═══ SEWER CHAMBERS (off crawlways) ═══")]
+        [Tooltip("Wall assets for a sewer chamber — the room a crawlway opens into (band is always Bottom). Empty = the chamber inherits HALLWAY walls, which is what its cells are typed as, so leaving this unauthored changes nothing.\n\nThis is the slot that makes a chamber read as somewhere else entirely. It is reached only on your knees through a grate and connects to nothing, so brick sewer, wet stone or rough-cut rock all land very differently from the corridor masonry three metres away — and unlike a pit, the player is standing IN it with time to look around.")]
+        public List<WallAsset> chamberWalls = new List<WallAsset>();
+        [Tooltip("Floor tiles for a sewer chamber. Empty = hallway floors.")]
+        public GameObject[] chamberFloorPrefabs;
+        [Tooltip("Ceiling tiles for a sewer chamber. Empty = hallway ceilings.")]
+        public GameObject[] chamberCeilingPrefabs;
+        [Tooltip("Contents for sewer chambers, chosen PER CHAMBER by a weighted roll — the same shape prison cells and alcoves use, because all three are the SAME generator primitive (they come out of RecessFits) and so take the same anchors: Direction gives the back/left/right frame, WallSide.Back is the far wall, FeatureFacing.Outward looks back at the grate you crawled in through.\n\nBLOCKING PROPS ARE SAFE HERE — a chamber is a dead end, so a collider severs nothing — EXCEPT on the entry tile, which the placer reserves for you.\n\nEmpty = a bare chamber, which is a wasted secret: this is the payoff for the whole crawlway.")]
+        public List<WeightedPropSet> chamberProps = new List<WeightedPropSet>();
+        [Tooltip("Audio for a sewer chamber. Falls back to the hallway profile. Worth authoring: it is a small sealed box, so a tight loud reverb reads very differently from the corridor you left.")]
+        public AudioProfile chamberAudio;
+        [Tooltip("Torch palette for a sewer chamber. UNLIKE A CRAWL BORE, a chamber is an open cell with real wall faces, so this drives actual torchlight as well as fog and emissive tinting — it is a full palette, not a fog-only one.\n\n0 intensity = unauthored, and corridors' defaultTorchColor is used (§7: 0 never means black).")]
+        [ColorUsage(false, true)] public Color chamberTorchColor = new Color(0.5f, 0.75f, 0.45f);
+        [Tooltip("Fog intensity inside a sewer chamber, separate from the colour's HDR magnitude. 0 = unauthored.")]
+        public float chamberFogIntensity = 1f;
+        [Tooltip("Torch light intensity scale inside a sewer chamber. 0 = unauthored (use 0.05 for near-dark — a chamber lit like a corridor loses most of what makes it feel found rather than built).")]
+        public float chamberIntensityScale = 0.7f;
+
+        [Header("═══ CRAWLWAYS (the 1.5m bores) ═══")]
+        [Tooltip("Torch colour for the inside of a crawl passage. NOTHING IS LIT IN HERE — a bore's cell is solid rock, so it has no wall faces and no torch can ever be placed in one — so in practice this drives the FOG and any emissive authored onto the pipe asset itself. That is still the whole atmosphere of the space: a sickly green haze down a long pipe is most of what sells a sewer.\n\n0 intensity = unauthored, and the corridor default is used (§7's convention: 0 never means black).")]
+        public Color crawlwayTorchColor = new Color(0.45f, 0.65f, 0.4f, 1f);
+        [Tooltip("Fog intensity inside a crawl passage, separate from the colour's HDR magnitude exactly as room entries are. 0 = unauthored.")]
+        public float crawlwayFogIntensity = 1f;
+        [Tooltip("Audio for the inside of a crawl passage. Falls back to the hallway profile. The one space in the dungeon with no room to measure, so a very tight, very dry reverb is right — and its floorSurface is what your knees and hands sound like on the pipe.")]
+        public AudioProfile crawlwayAudio;
+
         [Header("═══ ROOM PITS ═══")]
         [Tooltip("Wall assets for the inside of a PIT (band is always Bottom). A chasm exposes what lies BENEATH the dungeon, so raw rock, old foundations and rough stonework read better here than the room's own masonry continuing downward. Empty = the pit inherits its room's walls, which is the current behaviour, so leaving this unauthored changes nothing. Purely cosmetic — pit floors and collision already work regardless.")]
         public List<WallAsset> pitWalls = new List<WallAsset>();
@@ -354,6 +380,7 @@ namespace DungeonGen
         List<WallAsset> hallwayWallCache;
         List<WallAsset> prisonWallCache;
         List<WallAsset> pitWallCache;
+        List<WallAsset> chamberWallCache;
 
         /// <summary>Band-eligible wall assets for a room type — STRICT: a band
         /// with no eligible assets returns null (kit generic walls fill in).
@@ -416,6 +443,8 @@ namespace DungeonGen
 
         /// <summary>Raw prison wall list (capped entries included) for the reservation pre-pass.</summary>
         public List<WallAsset> PrisonWallSet() => prisonWalls;
+        /// <summary>Raw chamber wall list (capped entries included) for the reservation pre-pass.</summary>
+        public List<WallAsset> ChamberWallSet() => chamberWalls;
         /// <summary>Raw pit wall list (capped entries included) for the reservation pre-pass.</summary>
         public List<WallAsset> PitWallSet() => pitWalls;
 
@@ -433,6 +462,17 @@ namespace DungeonGen
             return prisonWallCache.Count > 0 ? prisonWallCache : null;
         }
 
+        /// <summary>Sewer-chamber wall prefabs, or null to inherit the hallway's walls.</summary>
+        public List<WallAsset> ChamberWalls()
+        {
+            if (chamberWallCache != null) return chamberWallCache.Count > 0 ? chamberWallCache : null;
+            var list = new List<WallAsset>();
+            foreach (var w in chamberWalls)
+                if (w.prefab != null && w.maxPerRoom <= 0 && w.Allows(WallBand.Bottom)) list.Add(w);
+            chamberWallCache = list;
+            return chamberWallCache.Count > 0 ? chamberWallCache : null;
+        }
+
         /// <summary>Pit-interior wall prefabs, or null to inherit the room's walls.</summary>
         public List<WallAsset> PitWalls()
         {
@@ -446,7 +486,7 @@ namespace DungeonGen
 
         /// <summary>Which wall LIST a face's prefab was picked from. Flags are authored per
         /// WallAsset — i.e. per list — so they must be read back per list too.</summary>
-        public enum WallContext { Room, Hallway, Prison, Pit }
+        public enum WallContext { Room, Hallway, Prison, Pit, Chamber }
 
         Dictionary<(GameObject prefab, int ctx), (bool props, bool torch)> wallFlagCache;
 
@@ -496,6 +536,7 @@ namespace DungeonGen
                 // walls silently do nothing — the same omission §7 warns about for any new
                 // wall list.
                 Add(pitWalls, ContextKey(WallContext.Pit, default));
+                Add(chamberWalls, ContextKey(WallContext.Chamber, default));
             }
             if (wallFlagCache.TryGetValue((prefab, ContextKey(ctx, roomType)), out var flags))
             {
@@ -516,6 +557,7 @@ namespace DungeonGen
             hallwayWallCache = null;
             prisonWallCache = null;
             pitWallCache = null;
+            chamberWallCache = null;
             wallFlagCache = null;
             lookup = null;
         }
@@ -690,6 +732,14 @@ namespace DungeonGen
         /// <summary>Contents for one prison cell, chosen by `roll01`. Null = a bare cell.</summary>
         public PropSet PrisonProps(float roll01) => PickWeighted(null, prisonProps, roll01);
 
+        /// <summary>Contents for a sewer chamber, by weighted roll. Same shape as prisons.</summary>
+        public PropSet ChamberProps(float roll01) => PickWeighted(null, chamberProps, roll01);
+
+        /// <summary>Floor tiles for a sewer chamber, or null to inherit hallway floors.</summary>
+        public GameObject[] ChamberFloors() => Nullable(chamberFloorPrefabs);
+        /// <summary>Ceiling tiles for a sewer chamber, or null to inherit hallway ceilings.</summary>
+        public GameObject[] ChamberCeilings() => Nullable(chamberCeilingPrefabs);
+
         // ---------------- Audio ----------------
 
         [Header("═══ AUDIO FALLBACK ═══")]
@@ -723,6 +773,35 @@ namespace DungeonGen
 
         /// <summary>Prison audio, falling back to the hallway profile.</summary>
         public AudioProfile PrisonAudio() => prisonAudio != null ? prisonAudio : HallwayAudio();
+
+        /// <summary>Audio for a sewer chamber. Falls back to the hallway profile — its cells are
+        /// typed Hallway, so that is the same space it inherits everything else from.</summary>
+        public AudioProfile ChamberAudio() => chamberAudio != null ? chamberAudio : HallwayAudio();
+
+        /// <summary>Audio inside a crawl passage. Falls back to the hallway profile.</summary>
+        public AudioProfile CrawlwayAudio() => crawlwayAudio != null ? crawlwayAudio : HallwayAudio();
+
+        /// <summary>
+        /// Hue and fog intensity for the inside of a crawl passage. Follows §7's rule that 0
+        /// means UNAUTHORED and never black, so an unfilled slot falls back to the corridor
+        /// default rather than blacking the fog out.
+        /// </summary>
+        /// <summary>Raw HDR palette for a sewer chamber — the form the FLAME VFX wants (§7's
+        /// rule that the flame keeps magnitude while every other consumer takes the hue).</summary>
+        public Color ChamberPalette() =>
+            chamberFogIntensity <= 0f && chamberIntensityScale <= 0f ? defaultTorchColor : chamberTorchColor;
+
+        public Color ChamberHue() => Hue(ChamberPalette());
+        public float ChamberFogIntensity() =>
+            chamberFogIntensity <= 0f ? DefaultFogIntensity : chamberFogIntensity;
+        public float ChamberIntensityScale() =>
+            chamberIntensityScale <= 0f ? 1f : chamberIntensityScale;
+
+        public Color CrawlwayHue() =>
+            crawlwayFogIntensity <= 0f ? Hue(defaultTorchColor) : Hue(crawlwayTorchColor);
+
+        public float CrawlwayFogIntensity() =>
+            crawlwayFogIntensity <= 0f ? DefaultFogIntensity : crawlwayFogIntensity;
 
         /// <summary>Pit audio, falling back to the OWNING ROOM's profile — a pit is styled as
         /// part of its room everywhere else (RoomAt resolves through PitAt), so its sound

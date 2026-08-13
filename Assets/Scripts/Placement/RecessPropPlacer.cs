@@ -85,6 +85,9 @@ namespace DungeonGen
         // two callers differ only by base. 12002/12003/12005 are the hallway pass; 110xx rooms.
         const int AlcoveSaltBase = 12100;
         const int PrisonSaltBase = 12300;
+        // A salt BLOCK per caller, never a shared counter — tuning chambers must not reshuffle
+        // every alcove and prison in the dungeon (rule 4).
+        const int ChamberSaltBase = 12500;
         const int FeatureOffset = 1;
         const int WallOffset = 2;
         const int ScatterOffset = 3;
@@ -96,12 +99,29 @@ namespace DungeonGen
                                               Transform parent, InstancedDungeonRenderer instancer,
                                               WallFaceRegistry wallFaces = null)
         {
+            // A crawlway mouth may land in an alcove — deliberately, since a grate at the back
+            // of a collapsed dig is the best entrance the feature can have. But the alcove's own
+            // hero prop stands against that same back wall, so without this the recess gets a
+            // statue planted over its grate. Same NoBlocking mechanism a prison uses for its
+            // doorway tile: décor is still welcome there, only colliders are refused.
+            var crawlMouths = new HashSet<Vector3Int>();
+            foreach (var cw in gen.Crawlways)
+            {
+                crawlMouths.Add(cw.CellA);
+                crawlMouths.Add(cw.CellB);
+            }
+
             var targets = new List<RecessTarget>();
             foreach (var a in gen.Alcoves)
             {
                 var kind = a.Kind;   // captured per target, so the placer never sees AlcoveKind
+                HashSet<Vector3Int> noBlocking = null;
+                foreach (var c in a.Cells)
+                    if (crawlMouths.Contains(c)) (noBlocking ??= new HashSet<Vector3Int>()).Add(c);
+
                 targets.Add(new RecessTarget(a.Cells, a.Direction, a.MouthCell,
-                                             roll => style != null ? style.AlcoveProps(kind, roll) : null));
+                                             roll => style != null ? style.AlcoveProps(kind, roll) : null,
+                                             noBlocking));
             }
             return Build(gen, style, cellSize, parent, instancer, wallFaces,
                          "DungeonAlcoveProps", "Alcoves", AlcoveSaltBase, targets);
@@ -130,6 +150,36 @@ namespace DungeonGen
             }
             return Build(gen, style, cellSize, parent, instancer, wallFaces,
                          "DungeonPrisonProps", "Prisons", PrisonSaltBase, targets);
+        }
+
+        /// <summary>
+        /// Sewer chambers, contents from RoomStyle.chamberProps. The THIRD caller of this pass,
+        /// and the one that confirms the generalisation was right: a chamber comes out of
+        /// RecessFits exactly as a prison and an alcove do, so it arrives already shaped as a
+        /// RecessTarget and needed no new machinery at all.
+        ///
+        /// Its Direction points AWAY from the tube (bore → chamber), so the authored frame reads
+        /// the way it should: WallSide.Back is the far wall you see on entering, and
+        /// FeatureFacing.Outward looks back at the grate you crawled in through.
+        /// </summary>
+        public static GameObject BuildChambers(DungeonGenerator gen, RoomStyle style, float cellSize,
+                                               Transform parent, InstancedDungeonRenderer instancer,
+                                               WallFaceRegistry wallFaces = null)
+        {
+            var targets = new List<RecessTarget>();
+            foreach (var cw in gen.Crawlways)
+            {
+                if (!cw.HasChamber) continue;
+                // The entry tile is the only way out of a sealed room, and it is the tightest
+                // cell in it. A crate there does not clutter the chamber, it entombs whatever
+                // the chamber was built to hold.
+                var noBlocking = new HashSet<Vector3Int> { cw.ChamberMouthCell };
+                targets.Add(new RecessTarget(cw.ChamberCells, cw.ChamberDir, cw.ChamberMouthCell,
+                                             roll => style != null ? style.ChamberProps(roll) : null,
+                                             noBlocking));
+            }
+            return Build(gen, style, cellSize, parent, instancer, wallFaces,
+                         "DungeonChamberProps", "Chambers", ChamberSaltBase, targets);
         }
 
         static GameObject Build(DungeonGenerator gen, RoomStyle style, float cellSize, Transform parent,
