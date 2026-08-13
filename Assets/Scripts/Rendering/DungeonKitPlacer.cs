@@ -72,7 +72,7 @@ namespace DungeonGen
         [Tooltip("Nudge for the lintel in its OWN frame: Z = further into the shaft / back into the wall, Y = up or down from the ceiling line, X = along the run. Rotated with the piece, so one value is correct on all four wall directions.")]
         public Vector3 lintelOffset;
 
-        [Tooltip("GRATE / MOUTH piece where a crawlway breaks out of a wall — the framed 1.5m opening plus the masonry filling the rest of that 3m face.\n\nTHIS PIECE CARRIES THE WALL'S COLLISION AND THE FEATURE DOES NOT WORK WITHOUT IT. The greybox emits ONE quad per cell face, so opening a crawlway suppresses a whole 3m x 3m collider, not a 1.5m one — without a ring of colliders here (four boxes around the bore is the simple shape) the player walks through the rock either side of the grate. Suppression is GATED on this slot being filled, so leaving it empty is safe: crawlways simply stay sealed behind solid wall.\n\nAuthor facing +Z, rotated to point INTO the open cell you see it from — the same convention as a wall — and floor-aligned, matching the tube. KIT-FRAME: globalVisualOffset IS applied, because this piece has to line up with the walls it interrupts. That differs from the TUBE pieces below, which are base-origin like ladders and bridges; the two halves of one feature genuinely follow different conventions, which is why they are filed in different sections here.")]
+        [Tooltip("GRATE / MOUTH piece where a crawlway breaks out of a wall — the framed 1.5m opening plus the masonry filling the rest of that 3m face.\n\nTO MAKE IT BREAKABLE, put a CrawlwayGrate component on the BARS as a child, never on the frame: the frame carries the collision standing in for the suppressed 3m wall quad, and detaching that opens a hole in the rock either side of the opening. The placer detects the component and switches this piece to FullGameObject automatically (an instanced mesh cannot be un-drawn), and tells it which way to fall. Give the bars an ImpactAudio for the landing clang.\n\nTHIS PIECE CARRIES THE WALL'S COLLISION AND THE FEATURE DOES NOT WORK WITHOUT IT. The greybox emits ONE quad per cell face, so opening a crawlway suppresses a whole 3m x 3m collider, not a 1.5m one — without a ring of colliders here (four boxes around the bore is the simple shape) the player walks through the rock either side of the grate. Suppression is GATED on this slot being filled, so leaving it empty is safe: crawlways simply stay sealed behind solid wall.\n\nAuthor facing +Z, rotated to point INTO the open cell you see it from — the same convention as a wall — and floor-aligned, matching the tube. KIT-FRAME: globalVisualOffset IS applied, because this piece has to line up with the walls it interrupts. That differs from the TUBE pieces below, which are base-origin like ladders and bridges; the two halves of one feature genuinely follow different conventions, which is why they are filed in different sections here.")]
         public GameObject[] crawlwayMouthPrefabs; // optional — skipped if empty, and suppression is skipped with it
         [Tooltip("Nudge for the mouth in its OWN frame: Z = further into the room / back into the wall, Y = up, X = along the face. Rotated with the piece, so one value is correct on all four wall directions (the ladderOffset lesson).")]
         public Vector3 crawlwayMouthOffset;
@@ -1640,18 +1640,39 @@ namespace DungeonGen
                 Quaternion rot = Quaternion.LookRotation(-(Vector3)intoRock);
                 Vector3 pos = face + kit.globalVisualOffset + rot * kit.crawlwayMouthOffset + parent.position;
 
-                PlaceOne(prefab, pos, rot, PropTier.StaticCollider);
+                // FullGameObject, NOT StaticCollider, whenever the mouth carries a breakable
+                // grate. An instanced tier bakes the mesh into a static matrix and
+                // InstancedDungeonRenderer has NO REMOVAL PATH (§8), so a grate that detaches
+                // would leave its mesh welded across the opening while its collider fell away —
+                // the identical rule carryables and destructibles follow. Mouths are single
+                // digits per run, so the batching loss is irrelevant; the check keeps the
+                // instanced path for a purely decorative mouth prefab.
+                bool breakable = prefab.GetComponentInChildren<CrawlwayGrate>(true) != null;
+                GameObject placed = PlaceOne(prefab, pos, rot,
+                    breakable ? PropTier.FullGameObject : PropTier.StaticCollider);
+
+                // WHICH WAY IT FALLS IS A PROPERTY OF THE MOUTH, not of the player who breaks
+                // it: `-intoRock` points out of the bore into the open cell, which is the only
+                // place a freed grate both fits and does not block the passage. See
+                // CrawlwayGrate for why "push it away from the player" is the wrong rule.
+                if (placed != null)
+                {
+                    var g = placed.GetComponentInChildren<CrawlwayGrate>(true);
+                    if (g != null) g.OutwardDirection = -(Vector3)intoRock;
+                }
                 return 1;
             }
 
-            void PlaceOne(GameObject prefab, Vector3 pos, Quaternion rot, PropTier tier)
+            GameObject PlaceOne(GameObject prefab, Vector3 pos, Quaternion rot, PropTier tier)
             {
-                if (instancer != null)
+                if (instancer != null && tier != PropTier.FullGameObject)
+                {
                     PropInstancer.PlaceProps(instancer, prefab,
                         new[] { new PropPlacement { position = pos, rotation = rot } },
                         tier, cellSize, root.transform);
-                else
-                    Object.Instantiate(prefab, pos, rot * prefab.transform.rotation, root.transform);
+                    return null;   // mesh went to the instancer; there is no GameObject to hand back
+                }
+                return Object.Instantiate(prefab, pos, rot * prefab.transform.rotation, root.transform);
             }
 
             if (tubes > 0 || mouths > 0)

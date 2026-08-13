@@ -115,6 +115,26 @@ namespace DungeonGen
                 }
             }
 
+            // CRAWLWAY GRATES, for exactly the reason doors are excluded — and it cannot be done
+            // by root name, which is why it is a second pass. The grate and the tube's walkable
+            // floor live under the SAME root, so excluding "DungeonCrawlways" would remove the
+            // passage itself from the navmesh and there would be nothing to path through.
+            //
+            // Baked shut, a grate makes the bore an ISLAND permanently: breaking one at runtime
+            // does not rebake, so the nav work would be dead on arrival. Baked open, the navmesh
+            // is OPTIMISTIC — an NPC may path toward a crawlway the player has not opened yet
+            // and bunch against the bars. That is the lesser evil (it self-corrects the moment
+            // the player opens it, which they must do anyway to use the route at all), but it is
+            // the same shape as the ladder trap: an agent routed onto something it cannot
+            // traverse. The clean fix is letting an NPC break the grate itself —
+            // CrawlwayGrate.Break() is public for that.
+            foreach (var grate in GetComponentsInChildren<CrawlwayGrate>(true))
+            {
+                if (grate.IsOpen) continue;   // already broken: its collider is off anyway
+                foreach (var c in grate.GetComponentsInChildren<Collider>(true))
+                    if (c.enabled) { c.enabled = false; disabled.Add(c); }
+            }
+
             // BUILD-ONLY FAILURE, checked here so it's caught in the EDITOR:
             // runtime navmesh baking reads triangles off MeshColliders, which in a
             // player build requires the mesh's Read/Write Enabled import setting.
