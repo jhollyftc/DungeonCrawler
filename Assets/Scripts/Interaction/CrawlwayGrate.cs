@@ -37,6 +37,62 @@ namespace DungeonGen
         [Tooltip("Collider used once the grate is LOOSE. Author a disabled BoxCollider roughly the size of the bars and put it here.\n\nWHY IT MUST BE A DIFFERENT COLLIDER: PhysX rejects a concave MeshCollider on a non-kinematic Rigidbody, so the shape that lets arrows through the bars cannot be the shape that falls. Leaving it null auto-fits a box from the renderer bounds, which is fine — but authoring one is better, because you can inset it so the grate lies flat rather than balancing on a bounding box that includes the frame lugs.\n\nDELIBERATELY NOT 'flip the MeshCollider to convex at runtime', which is the obvious fix and is a BUILD-ONLY TRAP: cooking a hull needs mesh DATA, so a grate mesh without Read/Write Enabled cooks fine in the editor and fails in a player build. DestructibleProp carries the same warning after learning it the hard way. A primitive needs no cooking at all.")]
         public Collider brokenCollider;
 
+        [Header("Grip and strain")]
+        [Tooltip("Hold the interact key and WORK the grate loose instead of popping it off with one press. Off = a single press breaks it (the original behaviour).")]
+        public bool requireStrain = true;
+
+        [Tooltip("Metres of accumulated hauling needed to break it free. This is DISTANCE TRAVELLED along the mouth's axis, not time — so pulling back counts, shoving forward counts, and WIGGLING counts fastest because you are always moving. That is what makes the motion the player invents match the motion the mechanic rewards, with nothing to explain.\n\nKeep it short. Resistance is characterful once and a chore the fifth time; ~2m is about a second and a half of real hauling.")]
+        public float strainToBreak = 2f;
+
+        [Tooltip("Strain bled off per second WHILE THE PLAYER IS NOT PUSHING OR PULLING, so letting go costs you and a nudge-and-wait does nothing.\n\nIt is deliberately NOT applied while they are working. As a constant it was silently a SPEED FLOOR — anything above the slowest speed the player can apply makes the mechanic impossible, and from inside a bore they are crouched by necessity at 1 m/s. A decay of 1.2 outran that at every framerate, so pushing perfectly on-axis still made no progress, with nothing in either system hinting the two numbers were related.")]
+        public float strainDecayPerSecond = 1.2f;
+
+        [Tooltip("Let go if the player gets this far from the grate. Must comfortably EXCEED PlayerInteractor.range, because Interact() hands over the interactor's own transform — which may sit at the player's feet while the cast that reached the grate came from the camera. Size it under that and the grip ends on the frame it begins, which looks exactly like the interaction doing nothing.")]
+        public float gripBreakDistance = 4f;
+
+        [Tooltip("How far from the grate you can get before it starts hauling you back. Inside this you move freely; past it you are on the leash.")]
+        public float tetherSlack = 0.6f;
+        [Tooltip("How hard the leash pulls, per metre past the slack. Size it so a full walk BARELY makes headway — that is the whole feel: you are hanging off an iron grating, not strolling away from it. Too low and the grip is decorative; too high and you cannot pull at all and no strain accumulates.")]
+        public float tetherPull = 9f;
+        [Tooltip("Hard ceiling on the leash speed, so a player who somehow gets far out is reeled in firmly rather than catapulted.")]
+        public float tetherMaxSpeed = 6f;
+
+        [Tooltip("How much feedback a grip shows before you have hauled at all, 0-1.\n\nNOT COSMETIC. Strain only accumulates while you MOVE, so pressing the key and standing still is genuinely zero progress — and with every channel scaled by strain, zero progress rendered as zero feedback and gripping was indistinguishable from the interaction failing. This is the floor that says 'you have hold of it, now pull'.")]
+        [Range(0f, 1f)] public float gripBaseline = 0.35f;
+
+        [Tooltip("Prompt while gripped FROM THE ROOM, where the grate comes toward you.")]
+        public string strainPrompt = "Pull it loose!";
+        [Tooltip("Prompt while gripped FROM INSIDE THE BORE, where it goes away from you.\n\nA separate string because the required input is genuinely the opposite instruction: the world direction is the same on both sides (+outward), but told to 'pull' while crouched in a tunnel a player backs away from the grate, which is the one input that does nothing there.")]
+        public string strainPromptInside = "Push it open!";
+
+        [Tooltip("Log grip state every frame while hauling, and say why a grip ended. 'Nothing happens when I interact' has several causes that all look identical — the grip never started, it ended on the frame it began, or it is working and you are simply not moving.")]
+        public bool debugGrip = false;
+
+        [Tooltip("How far the grate visibly shifts along its axis at full strain. Small — this is the whole feedback channel for 'it's giving', and without it the mechanic reads as a delay rather than as work.")]
+        public float strainVisualShift = 0.06f;
+        [Tooltip("Rattle at full strain, in metres. Sells stone grinding on iron.\n\nOnly shakes while you are actually pushing or pulling, and scales with STRAIN rather than with the grip baseline — a grate rattling while you stand still holding the key claims work nobody is doing, and one nearly out of its seating should shake far more than one that has not shifted yet.")]
+        public float strainRattle = 0.012f;
+        [Tooltip("Camera lean toward the grate at full strain, in degrees. Sustained rather than a kick, so it holds while you haul and eases home the moment you let go.")]
+        public float strainCameraLean = 2.5f;
+
+        /// <summary>Being hauled on right now.</summary>
+        public bool IsGripped { get; private set; }
+        /// <summary>Progress toward breaking free, 0-1. The hook an audio layer follows.</summary>
+        public float Strain01 => strainToBreak > 0f ? Mathf.Clamp01(strain / strainToBreak) : 0f;
+
+        float strain;
+        Transform gripper;
+        FirstPersonController controller;
+        PlayerCarry gripperCarry;
+        CameraKick gripperKick;
+        ViewmodelCamera gripperViewmodel;
+        KeyCode gripKey = KeyCode.E;
+        float lastAxial;   // displacement fallback only, when no controller is found
+        bool gripFromOutside;
+        Vector3 gripAnchor;
+        Vector3 restLocalPos;
+        bool restCaptured;
+
         [Header("Break")]
         [Tooltip("Mass of the freed grate. Iron bars: heavy enough to land with a thud and not skitter.")]
         public float mass = 30f;
@@ -88,24 +144,304 @@ namespace DungeonGen
         /// DungeonNavBaker needs to tell an intact grate (exclude from the bake) from a loose one
         /// lying on the floor (bake it, like any other prop).
         /// </summary>
-        public string Prompt => IsOpen ? loose?.Prompt : prompt;
+        public string Prompt => IsOpen ? loose?.Prompt
+                              : IsGripped ? (gripFromOutside ? strainPrompt : strainPromptInside)
+                              : prompt;
 
         public void Interact(Transform interactor)
         {
-            if (!IsOpen) { Break(); return; }
-            if (loose != null) loose.Interact(interactor);
+            if (IsOpen) { loose?.Interact(interactor); return; }
+            if (!requireStrain) { Break(HandsFreeSideOf(interactor)); return; }
+            BeginGrip(interactor);
+        }
+
+        void BeginGrip(Transform interactor)
+        {
+            if (IsGripped || interactor == null) return;
+
+            // MEASURE THE BODY, NOT WHATEVER TRANSFORM WAS HANDED OVER. PlayerInteractor calls
+            // Interact(transform) with ITS OWN transform, and there is no rule about which
+            // GameObject in the player rig that component sits on — if it is not one that moves
+            // with the capsule, every position read here is a constant and strain can never
+            // accumulate no matter which way the player walks. Resolving the controller makes
+            // this independent of that authoring choice, the same reason PlayerFov.Ensure
+            // resolves its owner rather than trusting a serialized reference.
+            var controller = interactor.GetComponentInParent<FirstPersonController>();
+            if (controller == null) controller = interactor.GetComponentInChildren<FirstPersonController>();
+            if (controller == null && interactor.root != null)
+                controller = interactor.root.GetComponentInChildren<FirstPersonController>();
+
+            this.controller = controller;
+            gripper = controller != null ? controller.transform : interactor;
+
+            // Which side you took hold from is fixed AT GRIP TIME, not re-evaluated per frame.
+            // The leash drags you around, so a live test would flip the moment it pulled you
+            // through the plane and the mechanic would fight itself.
+            gripFromOutside = HandsFreeSideOf(gripper);
+            gripAnchor = (grate != null ? grate : transform).position;
+
+            // Hands full — both of them are on the grate, same as carrying a prop. Resolved from
+            // the interactor rather than cached, because the player rig is rebuilt on regenerate.
+            gripperViewmodel = interactor.GetComponentInParent<ViewmodelCamera>();
+            if (gripperViewmodel == null && interactor.root != null)
+                gripperViewmodel = interactor.root.GetComponentInChildren<ViewmodelCamera>(true);
+            if (gripperViewmodel != null) gripperViewmodel.SetViewmodelVisible(false);
+            gripperCarry = interactor.GetComponentInParent<PlayerCarry>();
+            if (gripperCarry == null && interactor.root != null)
+                gripperCarry = interactor.root.GetComponentInChildren<PlayerCarry>();
+            gripperKick = interactor.GetComponentInParent<CameraKick>();
+            if (gripperKick == null && interactor.root != null)
+                gripperKick = interactor.root.GetComponentInChildren<CameraKick>();
+
+            // Which key to watch is the INTERACTOR'S, not a constant here — rebinding E must not
+            // leave the one hold-to-use interaction in the game stuck on the old key.
+            var pi = interactor.GetComponentInParent<PlayerInteractor>();
+            if (pi != null) gripKey = pi.key;
+
+            if (!restCaptured)
+            {
+                Transform part = grate != null ? grate : transform;
+                restLocalPos = part.localPosition;
+                restCaptured = true;
+            }
+
+            lastAxial = AxialOf(gripper.position);
+            IsGripped = true;
+
+            if (debugGrip)
+                Debug.Log($"[Grate] grip STARTED on '{name}' — key={gripKey} " +
+                          $"tracking '{gripper.name}' at {gripper.position.ToString("0.00")} " +
+                          $"(interactor handed over '{interactor.name}'{(gripper == interactor ? "" : " — resolved to the controller instead")}) " +
+                          $"dist={Vector3.Distance(gripper.position, (grate != null ? grate : transform).position):0.00} " +
+                          $"(breaks at {gripBreakDistance}) outward={OutwardDirection.normalized.ToString("0.00")} " +
+                          $"carry={(gripperCarry != null ? "found" : "MISSING")} " +
+                          $"kick={(gripperKick != null ? "found" : "MISSING")}. " +
+                          "Now MOVE — strain accumulates from travel along `outward`, not from holding still.", this);
+        }
+
+        void EndGrip(string why = null)
+        {
+            if (debugGrip && IsGripped && why != null)
+                Debug.Log($"[Grate] grip ENDED on '{name}': {why} (strain {strain:0.00}/{strainToBreak:0.00})", this);
+
+            // TWO OWNERS OF ONE PIECE OF STATE, so restoring blindly is wrong. A successful haul
+            // runs Break() first, which may hand the grate straight to PlayerCarry — and
+            // PlayerCarry stows the viewmodel for the same reason we did. Un-stowing here would
+            // put the sword back in a hand that is holding a grate, and only on the success
+            // path, which is the version you would ship without noticing.
+            if (gripperViewmodel != null &&
+                (gripperCarry == null || !gripperCarry.IsCarrying))
+                gripperViewmodel.SetViewmodelVisible(true);
+            gripperViewmodel = null;
+
+            IsGripped = false;
+            gripper = null;
+            gripperCarry = null;
+            gripperKick = null;
+
+            if (restCaptured && !IsOpen)
+            {
+                Transform part = grate != null ? grate : transform;
+                part.localPosition = restLocalPos;
+            }
+        }
+
+        /// <summary>Distance along the mouth's outward axis — the one number the whole mechanic
+        /// is built on.</summary>
+        float AxialOf(Vector3 worldPos) => Vector3.Dot(worldPos, OutwardDirection.normalized);
+
+        /// <summary>
+        /// Is the player on the OPEN side (the room), rather than crouched in the bore?
+        ///
+        /// Decides whether they end up holding the grate. From the room they have leverage and
+        /// somewhere to put it. From inside they are on their knees in a 1.5m tube with no room
+        /// to work — and handing them a carried grate there is actively harmful, because
+        /// PlayerCarry holds at 1.3m in front, the grate jams instantly, and breakDistance drops
+        /// it INSIDE the bore, which is the one outcome this whole feature exists to prevent.
+        /// </summary>
+        bool HandsFreeSideOf(Transform interactor)
+        {
+            if (interactor == null) return false;
+            return Vector3.Dot(interactor.position - transform.position,
+                               OutwardDirection.normalized) > 0f;
+        }
+
+        void Update()
+        {
+            if (!IsGripped) return;
+
+            Transform part = grate != null ? grate : transform;
+
+            // Any of these means the grip is over: the player let go, walked off, or the rig
+            // they were using went away (loadout swap, death, regenerate).
+            if (gripper == null) { EndGrip("the gripper transform went away"); return; }
+            if (!Input.GetKey(gripKey)) { EndGrip($"{gripKey} released"); return; }
+
+            float dist = Vector3.Distance(gripper.position, part.position);
+            if (dist > gripBreakDistance)
+            {
+                EndGrip($"too far ({dist:0.00} > gripBreakDistance {gripBreakDistance:0.00}) — " +
+                        "NB Interact() hands over the interactor's transform, which may be at the " +
+                        "player's feet while the cast came from the camera, so this wants to be " +
+                        "comfortably larger than PlayerInteractor.range");
+                return;
+            }
+
+            // INTENT, NOT ACHIEVED DISPLACEMENT — the same rule doors already taught (§10), and
+            // this is the case that proves it generalises. You haul on a grate from arm's length
+            // with your face at the wall, so the capsule is BLOCKED: measuring how far the body
+            // actually travelled reads ~0 exactly when the player is doing the thing hardest.
+            // Measured live it was 0.000 m/frame while walking straight into the wall.
+            //
+            // Intent has no such problem — pressing forward into stone registers as fully as
+            // backing away does. So shoving counts, hauling counts, and wiggling counts fastest
+            // because you are always demanding motion along the axis. Falls back to displacement
+            // only if there is no controller to ask, which is better than nothing.
+            Vector3 outwardDir = OutwardDirection.normalized;
+
+            // THE REQUIRED DIRECTION IS +OUTWARD ON BOTH SIDES, which is the neat part. Outside,
+            // hauling the grate toward you means backing away from the wall — +outward. Inside,
+            // shoving it out means driving toward the room — also +outward. One signed test
+            // covers both, and it reads as "pull" or "push" purely from where you are standing.
+            //
+            // SIGNED, NOT ABS. Taking the magnitude let shoving INTO the wall from outside count
+            // as hauling, which is backwards — and was why the only thing that worked was
+            // pressing yourself flat against the grate and holding W.
+            float axialEffort;
+            if (controller != null)
+            {
+                axialEffort = Mathf.Max(0f, Vector3.Dot(controller.IntendedVelocity, outwardDir))
+                            * Time.deltaTime;
+            }
+            else
+            {
+                float axialNow = AxialOf(gripper.position);
+                axialEffort = Mathf.Max(0f, axialNow - lastAxial);
+                lastAxial = axialNow;
+            }
+            strain += axialEffort;
+
+            // DECAY ONLY WHILE THE PLAYER IS NOT WORKING. It exists to punish letting go, not to
+            // set a speed floor — and as a constant it silently WAS a speed floor, which made
+            // the mechanic impossible from inside the bore. There you are crouched by necessity,
+            // so the fastest you can push is crouchSpeed (1 m/s), and a decay of 1.2/s outran
+            // that at every framerate: effort 0.0033 against decay 0.0039, forever, while the
+            // player pushed perfectly on-axis at dot 0.99.
+            //
+            // Coupling a feel constant to another system's speed constant like that is invisible
+            // from either end. Gating on effort removes the coupling entirely: any genuine push
+            // counts, and stopping still costs you.
+            if (axialEffort <= 0f)
+                strain = Mathf.Max(0f, strain - strainDecayPerSecond * Time.deltaTime);
+
+            // THE LEASH. Holding the key means holding ON: past the slack you are hauled back
+            // toward the grate, so walking away is a struggle rather than a stroll and letting
+            // go of the direction drags you in again. That is what makes the grip feel like
+            // gripping, and it is also what stops the old failure where backing off simply ended
+            // the grip at gripBreakDistance before the strain ever completed.
+            //
+            // Radial rather than axial, so sidling along the wall is leashed too — "held within
+            // distance of the grate" is a distance, not an axis.
+            //
+            // Only from OUTSIDE: from inside the bore you are shoving against the grate itself
+            // and the geometry already resists you. A leash there would fight the tube.
+            if (gripFromOutside && controller != null)
+            {
+                Vector3 toAnchor = gripAnchor - gripper.position;
+                float over = toAnchor.magnitude - tetherSlack;
+                if (over > 0f)
+                    controller.SetSustainedVelocity(
+                        toAnchor.normalized * Mathf.Min(over * tetherPull, tetherMaxSpeed));
+            }
+
+            float t = Strain01;
+
+            // FEEDBACK RUNS FROM A FLOOR, NOT FROM ZERO. Strain only accumulates while the
+            // player MOVES, so gripping and standing still is honestly no progress — and
+            // scaling every channel by strain meant that state rendered as no feedback at all,
+            // making a working grip look identical to an interaction that failed. The baseline
+            // is what says "you have hold of it"; the rise above it is what says "keep going".
+            float feel = Mathf.Lerp(gripBaseline, 1f, t);
+
+            // THE SHIFT AND THE RATTLE SAY DIFFERENT THINGS, so only one of them takes the
+            // baseline. The static shift means "you have hold of it" and should be there the
+            // moment you grip — that is what the baseline exists for. The rattle means "it is
+            // MOVING", and a grate that shakes while you stand still holding a key is claiming
+            // work nobody is doing.
+            //
+            // So the rattle is gated on actual effort and scaled by STRAIN rather than by the
+            // baselined `feel`: it starts almost still and builds as the thing works loose,
+            // which is also the honest direction — a grate nearly out of its seating rattles far
+            // more than one that has not shifted yet.
+            Vector3 shift = outwardDir * (feel * strainVisualShift);
+            if (strainRattle > 0f && axialEffort > 0f)
+                shift += Random.insideUnitSphere * (strainRattle * t);
+            // localPosition is in PARENT space, so the world-space shift has to be converted
+            // there — not into the part's own space, which is already rotated by the mouth.
+            Vector3 localShift = part.parent != null
+                ? part.parent.InverseTransformVector(shift) : shift;
+            part.localPosition = restLocalPos + localShift;
+
+            // Frame-stamped, so letting go eases the camera home with no explicit clear — the
+            // contract that stops a lean surviving a death or a regenerate (§10).
+            if (gripperKick != null && strainCameraLean > 0f)
+                gripperKick.SetSustained(new Vector3(-strainCameraLean * feel, 0f, 0f));
+
+            if (debugGrip)
+            {
+                Vector3 intent = controller != null ? controller.IntendedVelocity : Vector3.zero;
+                float decay = strainDecayPerSecond * Time.deltaTime;
+
+                // EFFORT AGAINST DECAY is the pair that matters, because a player pressing a
+                // direction that barely projects onto the axis loses ground and the raw numbers
+                // would not say so.
+                float signed = controller != null ? Vector3.Dot(intent, outwardDir) : 0f;
+                string verdict =
+                    controller == null
+                        ? "NO FirstPersonController FOUND — falling back to displacement, which reads ~0 while you are against the wall"
+                    : intent.sqrMagnitude < 1e-6f
+                        ? "no movement input"
+                    : signed < 0f
+                        ? $"pushing the WRONG WAY (dot {signed:0.00}) — the required direction is +outward on BOTH sides: from outside back AWAY from the wall, from inside drive TOWARD the room"
+                    : $"hauling ({(gripFromOutside ? "walk" : "crouch")} speed {signed:0.00} m/s — " +
+                      $"{Mathf.Max(0f, (strainToBreak - strain) / Mathf.Max(0.01f, signed)):0.0}s to go).";
+
+                Debug.Log($"[Grate] gripping '{name}' from {(gripFromOutside ? "OUTSIDE (pull back)" : "INSIDE (push out)")}: " +
+                          $"strain {strain:0.00}/{strainToBreak:0.00} ({t * 100f:0}%) " +
+                          $"effort={axialEffort:0.0000} decay={decay:0.0000} dot={signed:0.00} " +
+                          $"dist={dist:0.00} leash={Mathf.Max(0f, dist - tetherSlack):0.00}m past slack. {verdict}", this);
+            }
+
+            if (strain >= strainToBreak)
+            {
+                // BREAK BEFORE ENDING THE GRIP, because Break() needs gripperCarry to hand the
+                // grate over and EndGrip clears it. Safe in this order: EndGrip only restores
+                // the rest pose while `!IsOpen`, which Break has just made false.
+                // Fixed at grip time, not re-tested: the leash physically moves the player, so a
+                // live check could flip the moment it dragged them through the mouth plane.
+                Break(gripFromOutside);
+                EndGrip();
+            }
         }
 
         /// <summary>
         /// Free the grate. Public so a future damage path (or an NPC that wants through) can
         /// call it without going via the interaction system.
         /// </summary>
-        public void Break()
+        public void Break() => Break(false);
+
+        /// <param name="handToPlayer">Put it straight into the player's hands rather than
+        /// letting it drop. Only ever true from the room side — see HandsFreeSideOf.</param>
+        public void Break(bool handToPlayer)
         {
             if (IsOpen) return;
             IsOpen = true;
 
             Transform part = grate != null ? grate : transform;
+
+            // Undo any strain offset first, so the body starts from where the grate actually
+            // sits rather than from a pose that only existed while it was being hauled on.
+            if (restCaptured) part.localPosition = restLocalPos;
 
             // DELIBERATELY NOT REPARENTED. The instinct is to detach the grate from its frame,
             // and it is both unnecessary and harmful here. Unnecessary because a Rigidbody moves
@@ -144,6 +480,14 @@ namespace DungeonGen
             Invoke(nameof(AllowSleep), settleDelay);
 
             if (makeCarryable) MakeCarryable(part);
+
+            // STRAIGHT INTO THE PLAYER'S HANDS, which is the point of the strain mechanic: you
+            // hauled it out, so you are holding it, and where it lands is never a physics roll
+            // you have to live with. Only from the room side — from inside the bore there is
+            // nowhere to put it and PlayerCarry would jam it against the tube and drop it back
+            // in the passage.
+            if (handToPlayer && makeCarryable && loose != null && gripperCarry != null)
+                gripperCarry.TryPickUp(loose);
 
             // A grate coming out of stone is loud, and this is the ONE place the crawlway system
             // touches the AI: opening a secret route announces you. Emitted through NoiseBus so
@@ -228,6 +572,19 @@ namespace DungeonGen
         }
 
         static bool warnedAutoBox;
+
+        /// <summary>
+        /// A grip that ends because this component went away must still put the weapon back.
+        /// The dungeon regenerating, the player dying, or the grate being destroyed mid-haul all
+        /// take this object out without anyone calling EndGrip — and a stowed viewmodel has no
+        /// other owner to restore it, so the player would be left permanently empty-handed with
+        /// nothing pointing at why. Same defensive shape as PlayerBowAudio's OnDisable stopping
+        /// its loop so a weapon swap mid-draw cannot leave a creak running forever.
+        /// </summary>
+        void OnDisable()
+        {
+            if (IsGripped) EndGrip("component disabled");
+        }
 
         void AllowSleep()
         {

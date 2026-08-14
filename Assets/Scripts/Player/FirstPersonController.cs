@@ -82,6 +82,36 @@ namespace DungeonGen
         /// </summary>
         public Vector3 ExternalVelocity => externalVelocity;
 
+        /// <summary>
+        /// A SUSTAINED external velocity, re-asserted every frame by whoever owns it — a tether,
+        /// a conveyor, a current. Folded into the same cc.Move as everything else, so it still
+        /// collides and still composes with WASD.
+        ///
+        /// SEPARATE FROM AddImpulse BECAUSE THE TWO ARE DIFFERENT QUANTITIES, and faking this
+        /// one with the other is a documented trap: `externalVelocity` DECAYS, which is what
+        /// makes a hit read as a hit, so re-adding an impulse every frame silently resets that
+        /// decay forever and reads as a bug to whoever finds it. NpcLocomotion split
+        /// SetPlowVelocity out from AddImpulse for exactly this reason; this is the player's
+        /// half of the same distinction.
+        ///
+        /// FRAME-STAMPED, NOT LATCHED: stop calling and it stops applying. Same contract as
+        /// CameraKick.SetSustained and PlayerFov.AddOffset, and for the same reason — a driver
+        /// that dies mid-effect (the player lets go, dies, the dungeon regenerates) must not be
+        /// able to strand the player being dragged forever.
+        /// </summary>
+        public void SetSustainedVelocity(Vector3 velocity)
+        {
+            velocity.y = 0f;
+            sustainedVelocity = velocity;
+            sustainedFrame = Time.frameCount;
+        }
+
+        Vector3 sustainedVelocity;
+        int sustainedFrame = -1;
+
+        Vector3 ActiveSustained =>
+            sustainedFrame >= Time.frameCount - 1 ? sustainedVelocity : Vector3.zero;
+
         /// <summary>True while crouched. Read by anything that cares how quiet the player is (future NPC alerting).</summary>
         public bool IsCrouching { get; private set; }
         /// <summary>Current horizontal speed (m/s). Physics pushes scale off this, so how hard you shove things follows how fast you're actually moving.</summary>
@@ -97,6 +127,19 @@ namespace DungeonGen
         /// keep walking into it. Crouch lowers it, so sneaking still eases doors gently.
         /// </summary>
         public float IntendedSpeed { get; private set; }
+
+        /// <summary>
+        /// The same intent as <see cref="IntendedSpeed"/> but with its DIRECTION kept — where
+        /// the player is trying to go, before the world blocks it.
+        ///
+        /// Exists for the same reason the scalar does, and the reason generalises: anything
+        /// measuring effort against something the player is PRESSED AGAINST must read intent,
+        /// because achieved displacement collapses to zero exactly when they are leaning on it.
+        /// That cost a real bug on doors (shouldering a stuck door delivered almost no torque)
+        /// and again on crawlway grates, where hauling from arm's length at a wall produced no
+        /// measurable movement at all.
+        /// </summary>
+        public Vector3 IntendedVelocity { get; private set; }
 
         CharacterController cc;
         Vector3 externalVelocity;   // decaying dash/knockback velocity (horizontal), driven by AddImpulse
@@ -224,7 +267,8 @@ namespace DungeonGen
             // How hard we're TRYING to move (before the world blocks it) — the push
             // system scales its shove by this, not achieved velocity, so leaning on a
             // stuck door still delivers torque. Zero when giving no input.
-            IntendedSpeed = new Vector3(horizontal.x, 0f, horizontal.z).magnitude;
+            IntendedVelocity = new Vector3(horizontal.x, 0f, horizontal.z);
+            IntendedSpeed = IntendedVelocity.magnitude;
 
             if (OnLadder())
             {
@@ -247,7 +291,7 @@ namespace DungeonGen
                 verticalVelocity += gravity * Time.deltaTime;
             }
 
-            Vector3 horizontalIntent = (horizontal + externalVelocity) * Time.deltaTime;
+            Vector3 horizontalIntent = (horizontal + externalVelocity + ActiveSustained) * Time.deltaTime;
             Vector3 beforePos = transform.position;
             cc.Move(horizontalIntent + Vector3.up * verticalVelocity * Time.deltaTime);
 
