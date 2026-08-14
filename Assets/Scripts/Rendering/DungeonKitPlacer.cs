@@ -1571,6 +1571,14 @@ namespace DungeonGen
                         Object.Instantiate(prefab, pos, rot * prefab.transform.rotation, root.transform);
                     }
                 }
+
+                // Tell every climb zone on this ladder which way a climber must face. Done after
+                // the segments are placed and by searching the ROOT, because the instanced path
+                // hands back no GameObject — PropInstancer keeps the collider object under
+                // `root`, which is where the zone ends up either way.
+                foreach (var zone in root.GetComponentsInChildren<LadderClimbZone>(true))
+                    if (!zone.HasFacing) zone.FaceDirection = lad.WallDir;
+
                 count++;
             }
 

@@ -40,6 +40,10 @@ namespace DungeonGen
         public float climbSpeed = 3f;
         [Tooltip("Horizontal speed multiplier while climbing — enough to adjust sideways or step off, not enough to sprint mid-air.")]
         [Range(0f, 1f)] public float climbHorizontalDamp = 0.35f;
+        [Tooltip("How far off the ladder you may be looking to START climbing, in degrees. You climb a ladder facing it; without this, holding forward carried you up while looking sideways or fully backwards.\n\nMeasured on the HORIZONTAL heading only, so looking up at the opening you are climbing toward — or down at your feet — never breaks the climb. That is the natural thing to do on a ladder and gating on it would be maddening.")]
+        [Range(10f, 170f)] public float ladderFacingAngle = 75f;
+        [Tooltip("How far you must turn before you LET GO once climbing. Must exceed ladderFacingAngle: mouse look varies continuously, so a single threshold flaps on and off around the boundary and drops you repeatedly while you glance around — the same hysteresis NpcBrain's approach bands and TorchAudioPool's steal margin exist for.")]
+        [Range(10f, 179f)] public float ladderReleaseAngle = 105f;
 
         [Header("Developer UI")]
         [Tooltip("Draws the control list in the top-right corner. Dev aid — turn it off for a real build.")]
@@ -567,14 +571,51 @@ namespace DungeonGen
             Vector3 probe = transform.position + cc.center;
             int n = Physics.OverlapSphereNonAlloc(probe, cc.radius + 0.25f, ladderHits,
                                                   ~0, QueryTriggerInteraction.Collide);
+
+            // Any zone we are FACING wins. A pit can put two ladders near each other, so pick
+            // the one the player is actually addressing rather than whichever the overlap
+            // returned first.
+            LadderClimbZone best = null;
+            float bestAngle = 999f;
             for (int i = 0; i < n; i++)
             {
                 var hit = ladderHits[i];
-                if (hit != null && hit.isTrigger && hit.GetComponentInParent<LadderClimbZone>() != null)
-                    return true;
+                if (hit == null || !hit.isTrigger) continue;
+                var zone = hit.GetComponentInParent<LadderClimbZone>();
+                if (zone == null) continue;
+
+                float angle = FacingAngleTo(zone);
+                if (angle < bestAngle) { best = zone; bestAngle = angle; }
             }
-            return false;
+
+            if (best == null) { climbing = false; return false; }
+
+            // HYSTERESIS, not a single threshold. The heading varies continuously with the
+            // mouse, so one boundary flaps on and off while you glance around — and here that
+            // does not merely stutter, it DROPS YOU OFF THE LADDER. Enter strict, leave loose.
+            float limit = climbing ? ladderReleaseAngle : ladderFacingAngle;
+            climbing = bestAngle <= limit;
+            return climbing;
         }
+
+        /// <summary>
+        /// Angle between where the player is heading and the direction a climber must face.
+        ///
+        /// HORIZONTAL ONLY. `transform.forward` is already yaw-only (pitch lives on the camera),
+        /// but the zone's facing is flattened too so a ladder authored with any tilt still
+        /// compares cleanly. Looking up at the opening above you is the natural thing to do
+        /// while climbing and must never break the grip.
+        /// </summary>
+        float FacingAngleTo(LadderClimbZone zone)
+        {
+            if (!zone.HasFacing) return 0f;   // unset (hand-placed ladder): rule stands down
+            Vector3 want = zone.FaceDirection;
+            want.y = 0f;
+            if (want.sqrMagnitude < 0.0001f) return 0f;
+            return Vector3.Angle(transform.forward, want.normalized);
+        }
+
+        bool climbing;
         void Quit()
             {
         #if UNITY_EDITOR
