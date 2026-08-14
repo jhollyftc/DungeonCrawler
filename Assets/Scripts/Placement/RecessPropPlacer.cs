@@ -107,8 +107,7 @@ namespace DungeonGen
             var crawlMouths = new HashSet<Vector3Int>();
             foreach (var cw in gen.Crawlways)
             {
-                crawlMouths.Add(cw.CellA);
-                crawlMouths.Add(cw.CellB);
+                foreach (var m in cw.Mouths) crawlMouths.Add(m.OpenCell);
             }
 
             var targets = new List<RecessTarget>();
@@ -169,14 +168,16 @@ namespace DungeonGen
             var targets = new List<RecessTarget>();
             foreach (var cw in gen.Crawlways)
             {
-                if (!cw.HasChamber) continue;
                 // The entry tile is the only way out of a sealed room, and it is the tightest
                 // cell in it. A crate there does not clutter the chamber, it entombs whatever
                 // the chamber was built to hold.
-                var noBlocking = new HashSet<Vector3Int> { cw.ChamberMouthCell };
-                targets.Add(new RecessTarget(cw.ChamberCells, cw.ChamberDir, cw.ChamberMouthCell,
-                                             roll => style != null ? style.ChamberProps(roll) : null,
-                                             noBlocking));
+                foreach (var ch in cw.Chambers)
+                {
+                    var noBlocking = new HashSet<Vector3Int> { ch.MouthCell };
+                    targets.Add(new RecessTarget(ch.Cells, ch.Dir, ch.MouthCell,
+                                                 roll => style != null ? style.ChamberProps(roll) : null,
+                                                 noBlocking));
+                }
             }
             return Build(gen, style, cellSize, parent, instancer, wallFaces,
                          "DungeonChamberProps", "Chambers", ChamberSaltBase, targets);

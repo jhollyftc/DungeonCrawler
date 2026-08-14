@@ -169,21 +169,20 @@ namespace DungeonGen
         [Header("Crawlways")]
         [Tooltip("Run depth below which no crawlways are bored. Later than alcoves by default: a crawl passage is a reward for knowing the dungeon, and it reads better once the player has learned what an ordinary route costs.")]
         public int crawlwayMinDepth = 2;
-        [Tooltip("Chance per VIABLE wall face at crawlwayMinDepth. Viable = an open cell whose neighbour is solid rock. This wants to be MUCH higher than alcoveBaseChance for the same yield: an alcove needs only room in the rock, while a crawlway must also find a far end that is legal AND far away on foot, so the great majority of rolls are rejected by design.")]
-        [Range(0f, 1f)] public float crawlwayBaseChance = 0.35f;
-        [Tooltip("Added to the chance per depth above crawlwayMinDepth.")]
-        public float crawlwayChancePerDepth = 0.05f;
-        [Tooltip("Ceiling on the per-face chance, however deep the run gets.")]
-        [Range(0f, 1f)] public float crawlwayMaxChance = 0.7f;
-        [Tooltip("Hard ceiling on crawlways per run. Deliberately small — a crawlway is a landmark, and a dungeon riddled with them stops being one you learn the shape of.")]
-        public int crawlwayMaxCount = 3;
+        [Tooltip("Sewer networks at crawlwayMinDepth. A network is a PLACE, so this stays small — three sprawling systems read as a second dungeon rather than as a secret.")]
+        public int sewerBaseNetworks = 1;
+        [Tooltip("Extra networks per depth above crawlwayMinDepth, rounded down. 0.34 gives roughly one more every three depths.")]
+        public float sewerNetworksPerDepth = 0.34f;
+        [Tooltip("Ceiling on networks per run, however deep it gets. NB the real limiter is usually the ROCK, not this — a dense dungeon simply has nowhere to put them, and the tally says so.")]
+        public int sewerMaxNetworks = 3;
 
-        /// <summary>Per-face crawlway chance at a depth. 0 below crawlwayMinDepth.</summary>
-        public float CrawlwayChanceAt(int depth)
+        /// <summary>Sewer networks to attempt at a depth. 0 below crawlwayMinDepth.</summary>
+        public int SewerNetworksAt(int depth)
         {
-            if (depth < crawlwayMinDepth) return 0f;
-            return Mathf.Clamp(crawlwayBaseChance + (depth - crawlwayMinDepth) * crawlwayChancePerDepth,
-                               0f, crawlwayMaxChance);
+            if (depth < crawlwayMinDepth) return 0;
+            return Mathf.Clamp(
+                sewerBaseNetworks + Mathf.FloorToInt((depth - crawlwayMinDepth) * sewerNetworksPerDepth),
+                0, sewerMaxNetworks);
         }
 
         /// <summary>Kinds legal at this depth, in authored order. Empty = carve no alcoves.</summary>

@@ -510,35 +510,45 @@ namespace DungeonGen
                     // cell where it actually sits rather than at the cell's middle.
                     Vector3 Bore(Vector3Int c) => Centre(c) - Vector3.up * cellSize * 0.25f;
 
-                    Vector3 prev = Centre(cw.CellA);
+                    // A GRAPH, so draw the edges rather than a route. Each bore cell links to the
+                    // neighbours its mask reports, which is also a live check on the thing piece
+                    // selection depends on — a tunnel that looks disconnected here will render
+                    // with the wrong tube pieces.
                     foreach (var c in cw.Cells)
                     {
                         Vector3 p = Bore(c);
-                        Gizmos.DrawLine(prev, p);
                         Gizmos.DrawWireCube(p, Vector3.one * cellSize * 0.5f);
-                        prev = p;
+                        int mask = cw.NeighbourMask(c);
+                        for (int bit = 0; bit < 4; bit++)
+                            if ((mask & (1 << bit)) != 0)
+                                Gizmos.DrawLine(p, Bore(c + CrawlwaySpec.DirOfBit(bit)));
                     }
-                    Gizmos.DrawLine(prev, Centre(cw.CellB));
-                    Gizmos.DrawWireSphere(Centre(cw.CellA), cellSize * 0.22f);
-                    Gizmos.DrawWireSphere(Centre(cw.CellB), cellSize * 0.22f);
 
-                    // The sewer chamber. Its cells ARE typed Hallway, so without this they read
-                    // as ordinary corridor in the gizmo view — the same reason alcoves need
-                    // their own colour.
-                    if (cw.HasChamber)
+                    foreach (var m in cw.Mouths)
                     {
-                        Gizmos.DrawLine(Bore(cw.Cells[cw.ChamberBoreIndex]), Centre(cw.ChamberMouthCell));
-                        foreach (var c in cw.ChamberCells)
+                        Gizmos.DrawWireSphere(Centre(m.OpenCell), cellSize * 0.22f);
+                        Gizmos.DrawLine(Centre(m.OpenCell), Bore(m.BoreCell));
+                    }
+
+                    // Sewer chambers. Their cells ARE typed Hallway, so without this they read as
+                    // ordinary corridor in the gizmo view — the same reason alcoves need a colour.
+                    foreach (var ch in cw.Chambers)
+                    {
+                        Gizmos.DrawLine(Bore(ch.BoreCell), Centre(ch.MouthCell));
+                        foreach (var c in ch.Cells)
                             Gizmos.DrawWireCube(Centre(c), Vector3.one * cellSize * 0.8f);
                     }
 #if UNITY_EDITOR
                     UnityEditor.Handles.color = crawlwayColor;
-                    int turns = 0;
-                    for (int i = 0; i < cw.Cells.Count; i++) if (cw.IsCorner(i)) turns++;
-                    UnityEditor.Handles.Label(Centre(cw.CellA) + Vector3.up * cellSize * 0.4f,
-                        $"crawl {cw.Cells.Count} cells, {turns} turn{(turns == 1 ? "" : "s")} — " +
-                        $"saves a {cw.WalkDistance}-cell walk (x{cw.DetourRatio:0.#})" +
-                        $"{(cw.HasChamber ? $" + {cw.ChamberCells.Count}-cell sewer chamber" : "")}");
+                    int chamberCells = 0;
+                    foreach (var ch in cw.Chambers) chamberCells += ch.Cells.Count;
+                    Vector3 label = cw.Mouths.Count > 0
+                        ? Centre(cw.Mouths[0].OpenCell)
+                        : transform.position + (cw.CenterCell + Vector3.one * 0.5f) * cellSize;
+                    UnityEditor.Handles.Label(label + Vector3.up * cellSize * 0.4f,
+                        $"sewer: {cw.Cells.Count} cells, {cw.Mouths.Count} mouth(s), " +
+                        $"{cw.Chambers.Count} chamber(s) ({chamberCells} cells)" +
+                        $"{(cw.BestDetour > 0 ? $" — longest walk it short-circuits: {cw.BestDetour}" : "")}");
 #endif
                 }
             }

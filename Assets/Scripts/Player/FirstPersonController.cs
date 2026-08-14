@@ -378,24 +378,26 @@ namespace DungeonGen
             {
                 if (spaceIndex == 0)
                 {
-                    if (!cw.HasChamber) continue;
+                    if (cw.Chambers.Count == 0) continue;
+                    var ch = cw.Chambers[0];
 
                     // Prefer a cell that ISN'T the entry tile — on a wide chamber that tile is a
                     // 1x1 vestibule, and landing in it puts you nose-first against the grate you
                     // came to look past.
-                    Vector3Int target = cw.ChamberMouthCell;
-                    foreach (var c in cw.ChamberCells)
-                        if (c != cw.ChamberMouthCell) { target = c; break; }
+                    Vector3Int target = ch.MouthCell;
+                    foreach (var c in ch.Cells)
+                        if (c != ch.MouthCell) { target = c; break; }
 
                     WarpToCell(target, "sewer chamber");
                     return;
                 }
 
-                // CellA, not a bore cell: the mouth puts you in the room facing the grate, which
-                // is what you want to inspect. Standing IN a bore would wedge a 1.8m capsule in
-                // a 1.5m tube — the crouch is what makes crawlways passable, and a warp does not
-                // crouch you.
-                WarpToCell(cw.CellA, "crawlway mouth");
+                // A mouth's OPEN cell, not a bore cell: it puts you in the room facing the grate,
+                // which is what you want to inspect. Standing IN a bore would wedge a 1.8m
+                // capsule in a 1.5m tube — the crouch is what makes bores passable, and a warp
+                // does not crouch you.
+                if (cw.Mouths.Count == 0) continue;
+                WarpToCell(cw.Mouths[0].OpenCell, "sewer mouth");
                 return;
             }
 

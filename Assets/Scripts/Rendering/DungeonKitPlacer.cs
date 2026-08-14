@@ -116,10 +116,18 @@ namespace DungeonGen
 
         [Tooltip("STRAIGHT crawlway tube — a 1.5m x 1.5m bore, 3.0m LONG, one piece per grid cell. NOT a 1.5m cube: the cross-section is 1.5m but the piece spans a whole cell along its run.\n\nOne CLOSED tube asset, not separate floor/wall/ceiling pieces — a crawlway is not a room and the kit's 3m faces do not apply to it. Author it FLOOR-ALIGNED (the bore's floor at the piece's base, not centred: a centred bore puts the sill 0.75m up, past the controller's 0.5m step height with no mantle mechanic, and the player could not enter their own crawlway) with the run along +Z, and BASE-ORIGIN — globalVisualOffset does NOT apply, same as ladders and bridges.\n\nCOLLISION: give it BOX colliders — floor, ceiling and two sides. Nothing exists inside solid rock, so this piece is the only collision in the bore. Boxes rather than a MeshCollider on purpose: a hollow tube is non-convex, and a non-readable MeshCollider is silently dropped from the navmesh bake in a PLAYER BUILD only (the trap that once removed stairs from builds). Put the colliders on a layer INCLUDED IN FirstPersonController.ceilingMask, or the stand-up block never fires and the player stands up through the rock.")]
         public GameObject[] crawlwayTubePrefabs; // optional — skipped if empty
-        [Tooltip("CORNER crawlway tube — the same 1.5m bore turning 90 degrees within one cell. Author with its two openings on the -Z and +X faces; the placer tries all four yaw steps to match a turn, and those four rotations cover every perpendicular pair, so ONE corner asset is all that is ever needed (a tube is symmetric end to end — there is no left-hand and right-hand version).\n\nSame conventions as the straight: floor-aligned, base-origin, box colliders. Empty = corners fall back to the straight piece, which will visibly not turn — author this before raising crawlwayMaxCells, since a turn is what makes the length read as tension rather than a corridor tax.")]
+        [Tooltip("CORNER crawlway tube — the same 1.5m bore turning 90 degrees within one cell. Author with its two openings on the -Z and +X faces; the placer tries all four yaw steps to match a turn, and those four rotations cover every perpendicular pair, so ONE corner asset is all that is ever needed (a tube is symmetric end to end — there is no left-hand and right-hand version).\n\nSame conventions as the straight: floor-aligned, base-origin, box colliders. Empty = corners fall back to the straight piece, which will visibly not turn — author this before raising sewerCellBudget, since turns are most of what makes a network read as winding rather than as a long pipe.")]
         public GameObject[] crawlwayCornerPrefabs; // optional — falls back to the straight piece
         [Tooltip("TEE crawlway tube — a straight run with a 1.5m opening in ONE SIDE, where the bore passes a sewer chamber. Author with the run along +Z and the side opening on +X; the placer flips the run end-for-end when the chamber is on the other side, which is invisible because a straight tube is symmetric, so ONE tee asset covers both hands.\n\nSame conventions as the straight: floor-aligned, base-origin, box colliders — and leave the side opening genuinely open, since the chamber's own grate piece frames it. Empty = the tee cell falls back to a closed straight tube, which seals the chamber off entirely (it stays carved but unreachable), so author this alongside the chamber.")]
         public GameObject[] crawlwayTeePrefabs; // optional — falls back to the closed straight piece
+        [Tooltip("CROSS crawlway tube — a 4-way junction, all four faces open. Author centred with openings on every side; it needs no particular orientation, but the placer still rotates it to fit so any asymmetric detailing lands consistently.\n\nSame conventions as the straight: floor-aligned, base-origin, box colliders. Empty = a 4-way cell falls back to the straight piece, which will seal two of its four connections.")]
+        public GameObject[] crawlwayCrossPrefabs;
+        [Tooltip("DEAD-END CAP — a tube closed at one end, for the tips of a network's branches. Author with its single opening on -Z.\n\nSewer networks are grown as branching trees, so dead ends are normal and numerous rather than a failure: most branch tips are one. Empty = a dead end falls back to the straight piece, leaving a tunnel that visibly opens into solid rock.")]
+        public GameObject[] crawlwayCapPrefabs;
+        [Tooltip("WEIGHTED variants for cross tubes. Same rules as the straight variants.")]
+        public WeightedPrefab[] crawlwayCrossVariants;
+        [Tooltip("WEIGHTED variants for dead-end caps. Same rules as the straight variants.")]
+        public WeightedPrefab[] crawlwayCapVariants;
         [Tooltip("WEIGHTED variants for straight tubes. Weight is relative within the list — 3 vs 1 means three times as often — and 0 mutes an entry without deleting it.\n\nThe plain Crawlway Tube Prefabs list above still works and its entries count as WEIGHT 1, so these EXTEND the pool rather than replacing it. Move a prefab here to change how often it appears; the alternative was listing it twice, which is the same trick the wall variants had to abandon.")]
         public WeightedPrefab[] crawlwayTubeVariants;
         [Tooltip("WEIGHTED variants for corner tubes. Same rules as the straight variants above.")]
@@ -1612,6 +1620,8 @@ namespace DungeonGen
             var tubePool = MergePool(kit.crawlwayTubePrefabs, kit.crawlwayTubeVariants);
             var cornerPool = MergePool(kit.crawlwayCornerPrefabs, kit.crawlwayCornerVariants);
             var teePool = MergePool(kit.crawlwayTeePrefabs, kit.crawlwayTeeVariants);
+            var crossPool = MergePool(kit.crawlwayCrossPrefabs, kit.crawlwayCrossVariants);
+            var capPool = MergePool(kit.crawlwayCapPrefabs, kit.crawlwayCapVariants);
 
             var mouthPool = MergePool(kit.crawlwayMouthPrefabs, kit.crawlwayMouthVariants);
 
@@ -1632,24 +1642,34 @@ namespace DungeonGen
             {
                 if (haveTube)
                 {
-                    for (int i = 0; i < cw.Cells.Count; i++)
+                    foreach (var cell in cw.Cells)
                     {
-                        Vector3Int cell = cw.Cells[i];
-                        Vector3Int inDir = cw.DirInto(i), outDir = cw.DirOutOf(i);
-                        bool corner = cw.IsCorner(i);
-                        bool tee = i == cw.ChamberBoreIndex && teePool.Count > 0;
+                        // PIECE AND YAW BOTH COME FROM THE NEIGHBOUR MASK, which is what replaced
+                        // v1's in/out direction pair when a crawlway stopped being a path and
+                        // became a graph. Popcount picks the piece — 1 dead end, 2 straight or
+                        // corner, 3 tee, 4 cross — and the bit pattern picks the yaw. The same
+                        // bitmask approach DungeonMapper already uses for walls.
+                        //
+                        // A CHAMBER OPENING OVERRIDES to a tee, and does NOT set a mask bit: the
+                        // chamber is a room off the side, so its opening is a hole in the tube
+                        // wall rather than another length of tube. Where a bore cell has two
+                        // tunnel neighbours AND a chamber it is geometrically a tee already, so
+                        // the mask alone would pick a straight and seal the chamber behind it.
+                        int mask = cw.NeighbourMask(cell);
+                        bool hasChamber = cw.ChamberAt(cell, out Vector3Int chamberDir);
 
-                        var pool = tee ? teePool
-                                 : corner && cornerPool.Count > 0 ? cornerPool
-                                 : tubePool;
+                        List<WeightedPrefab> pool = null;
+                        Quaternion rot = Quaternion.identity;
+                        if (!TubePieceFor(mask, hasChamber, chamberDir,
+                                          tubePool, cornerPool, teePool, crossPool, capPool,
+                                          ref pool, ref rot))
+                            continue;
+
                         GameObject prefab = PickWeightedPrefab(pool, cell, 149);
                         if (prefab == null) continue;
 
                         // The tube is FLOOR-ALIGNED, so its origin is the cell's base corner
                         // centre — not the cell centre. Base-origin: no globalVisualOffset.
-                        Quaternion rot = tee ? TeeYaw(outDir, cw.ChamberDir)
-                                      : corner ? CornerYaw(inDir, outDir)
-                                               : Quaternion.LookRotation((Vector3)outDir);
                         Vector3 pos = new Vector3(cell.x + 0.5f, cell.y, cell.z + 0.5f) * cellSize
                                     + rot * kit.crawlwayTubeOffset + parent.position;
 
@@ -1660,12 +1680,9 @@ namespace DungeonGen
 
                 if (haveMouth)
                 {
-                    mouths += PlaceMouth(cw.CellA, cw.DirA);
-                    // DirB runs from the last bore cell INTO CellB, so the face is on CellB's
-                    // -DirB side — the mouth is seen from CellB and faces back the other way.
-                    mouths += PlaceMouth(cw.CellB, -cw.DirB);
-                    // The chamber's grate, seen from inside the chamber looking back at the tube.
-                    if (cw.HasChamber) mouths += PlaceMouth(cw.ChamberMouthCell, -cw.ChamberDir);
+                    foreach (var m in cw.Mouths) mouths += PlaceMouth(m.OpenCell, m.IntoRock);
+                    // Each chamber's grate, seen from inside the chamber looking back at the tube.
+                    foreach (var ch in cw.Chambers) mouths += PlaceMouth(ch.MouthCell, -ch.Dir);
                 }
             }
 
@@ -1744,6 +1761,81 @@ namespace DungeonGen
                 if (match) return q;
             }
             return Quaternion.LookRotation(openB); // unreachable for perpendicular pairs
+        }
+
+        /// <summary>
+        /// Pick the tube piece and its yaw from a cell's 4-bit neighbour mask.
+        ///
+        /// ONE FUNCTION REPLACING v1's IsCorner/DirInto/DirOutOf. A path could name an "in" and
+        /// an "out"; a graph cannot, so the connections themselves decide. Bits are +X, -X, +Z,
+        /// -Z (CrawlwaySpec.MaskPosX and friends).
+        ///
+        /// Every piece is authored to ONE canonical orientation and rotated to fit, so the
+        /// number of assets stays at five however tangled the network gets:
+        ///   straight  run along Z            corner  openings on -Z and +X
+        ///   tee       run along Z, hole +X   cross   all four
+        ///   cap       single opening on -Z
+        /// Yaw is found by TRYING the four 90-degree steps and comparing the resulting opening
+        /// set, rather than by deriving a formula per case — the comparison is obviously correct
+        /// where a closed form across five piece types is easy to get subtly wrong and hard to
+        /// read.
+        /// </summary>
+        static bool TubePieceFor(int mask, bool hasChamber, Vector3Int chamberDir,
+                                 List<WeightedPrefab> straight, List<WeightedPrefab> corner,
+                                 List<WeightedPrefab> tee, List<WeightedPrefab> cross,
+                                 List<WeightedPrefab> cap,
+                                 ref List<WeightedPrefab> pool, ref Quaternion rot)
+        {
+            // Openings this cell needs, as world directions.
+            var want = new List<Vector3Int>();
+            for (int bit = 0; bit < 4; bit++)
+                if ((mask & (1 << bit)) != 0) want.Add(CrawlwaySpec.DirOfBit(bit));
+
+            // A chamber adds a SIDE opening for fitting purposes without being a tunnel link.
+            if (hasChamber) want.Add(chamberDir);
+
+            List<WeightedPrefab> chosen;
+            Vector3[] canonical;
+            switch (want.Count)
+            {
+                case 1: chosen = cap;      canonical = new[] { Vector3.back }; break;
+                case 2:
+                    // Straight if the two openings are opposite, corner if perpendicular.
+                    chosen = (want[0] == -want[1]) ? straight : corner;
+                    canonical = (want[0] == -want[1])
+                        ? new[] { Vector3.back, Vector3.forward }
+                        : new[] { Vector3.back, Vector3.right };
+                    break;
+                case 3: chosen = tee;      canonical = new[] { Vector3.back, Vector3.forward, Vector3.right }; break;
+                case 4: chosen = cross;    canonical = new[] { Vector3.back, Vector3.forward, Vector3.right, Vector3.left }; break;
+                default: return false;     // isolated cell — nothing sensible to place
+            }
+
+            // Fall back to the straight piece rather than dropping the cell: a hole in the tunnel
+            // is far worse than a piece that does not quite match, and an unauthored cross or cap
+            // is a likely state while a kit is being built up.
+            if (chosen == null || chosen.Count == 0) chosen = straight;
+            if (chosen == null || chosen.Count == 0) return false;
+
+            for (int k = 0; k < 4; k++)
+            {
+                Quaternion q = Quaternion.Euler(0f, k * 90f, 0f);
+                bool all = true;
+                foreach (var c in canonical)
+                {
+                    Vector3 world = q * c;
+                    bool matched = false;
+                    foreach (var w in want)
+                        if (Approx(world, (Vector3)w)) { matched = true; break; }
+                    if (!matched) { all = false; break; }
+                }
+                if (all) { pool = chosen; rot = q; return true; }
+            }
+
+            // Unreachable for well-formed masks; place unrotated rather than leaving a gap.
+            pool = chosen;
+            rot = Quaternion.identity;
+            return true;
         }
 
         /// <summary>

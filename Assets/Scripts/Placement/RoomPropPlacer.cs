@@ -129,8 +129,8 @@ namespace DungeonGen
             // exactly as it does for door thresholds and bridge landings above.
             foreach (var cw in gen.Crawlways)
             {
-                if (room.Contains(cw.CellA)) doorRoomCells.Add(cw.CellA);
-                if (room.Contains(cw.CellB)) doorRoomCells.Add(cw.CellB);
+                foreach (var m in cw.Mouths)
+                    if (room.Contains(m.OpenCell)) doorRoomCells.Add(m.OpenCell);
             }
 
             foreach (var c in rz.Floor)

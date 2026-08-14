@@ -33,7 +33,47 @@ cannot provide them (§5).
 confirm the dungeon is byte-identical to one generated with them off. Nothing may change
 until Phase 2 places geometry.
 
-## 2. Where a crawlway begins and ends
+## 2. v2 — SEWER NETWORKS (supersedes §2 below)
+
+**The pointless-shortcut problem was a symptom of generating from the endpoints.** A crawlway
+was *defined* as a pair of mouths with a bore between them, so mouths were the thing being
+chosen and "two hallways four metres apart through one cell of rock" was a valid answer to the
+question being asked. `crawlwayMinCells`, the detour gate and the one-per-space-pair rule were
+all patches on a badly framed question.
+
+**Inverted: grow the network from the rock, then spend a small budget of mouths on it.**
+
+1. **Find the rock.** Flood `Empty` cells with solid below — literally "space the dungeon
+   generator isn't using".
+2. **Grow a tree** per region: recursive-backtracker walk, which produces long winding corridors
+   and branches on backtrack. Capped by a cell budget. Degree up to 4.
+3. **Hang chambers** off leaves and trunk, still via `RecessFits`.
+4. **Only then choose mouths**, from a budget, at network cells adjacent to open dungeon space.
+
+A one-cell hole between two corridors is no longer *expressible*: there is no step at which the
+generator considers a pair of nearby mouths.
+
+**Rule changes that follow:**
+- `crawlwayMinCells` retires — size is a budget, not an accident.
+- **The detour ratio stops being a veto** and becomes a tiebreak for placing the 2nd+ mouth. A
+  sewer wing worth exploring does not have to save you a walk; its size and its chambers are
+  what justify it.
+- **The new hard rule is mouth separation, measured twice** — far apart *along the network* and
+  far apart *in the dungeon*. That is the original complaint stated at the level where it is
+  decidable.
+- **Access budget scales with network size**, not depth. Entry stays rare while the interior
+  gets generous.
+
+**Decisions taken:** dead-end networks are allowed (a cap asset exists), 4-way crosses are
+allowed (asset exists), networks may be local pockets OR span distant parts of the map, and the
+sewer is **deliberately absent from the automap** — getting lost in it is the point.
+
+**Data model:** `Cells` stops being an ordered path and becomes a set plus a per-cell **4-bit
+neighbour mask**. `IsCorner`/`DirInto`/`DirOutOf` collapse into one mask→(piece, yaw) function,
+the same bitmask approach `DungeonMapper` uses for walls. Piece set: straight, corner, tee,
+cross, dead-end cap.
+
+## 3. Where a crawlway begins and ends (v1, retained for the rules that still apply)
 
 The endpoints are the feature. The bore between them is trivial.
 

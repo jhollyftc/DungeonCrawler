@@ -241,17 +241,33 @@ namespace DungeonGen
         {
             if (gen.Crawlways.Count == 0) return;
 
-            // Middle of the first bore — floor-aligned like the tube, lifted slightly so the
-            // sample starts inside the passage rather than on its floor plane.
-            var cw = gen.Crawlways[0];
-            Vector3Int cell = cw.Cells[cw.Cells.Count / 2];
+            // The first network that actually has a way in — a mouthless one cannot be tested
+            // for reachability and would report a misleading "blocked" for every agent type.
+            CrawlwaySpec cw = null;
+            foreach (var n in gen.Crawlways)
+                if (n.Mouths.Count > 0 && n.Cells.Count > 0) { cw = n; break; }
+            if (cw == null) return;
+
+            // A cell DEEP in the network, not simply the first one: probing next to the mouth
+            // would pass on navmesh that spilled in from the room and say nothing about whether
+            // the tunnel itself baked. Furthest-by-bore from the mouth is the honest sample.
+            Vector3Int mouthBore = cw.Mouths[0].BoreCell;
+            Vector3Int cell = mouthBore;
+            int best = -1;
+            foreach (var c in cw.Cells)
+            {
+                int d = Mathf.Abs(c.x - mouthBore.x) + Mathf.Abs(c.z - mouthBore.z) + Mathf.Abs(c.y - mouthBore.y);
+                if (d > best) { best = d; cell = c; }
+            }
+
             Vector3 probe = transform.position
                           + (new Vector3(cell.x + 0.5f, cell.y, cell.z + 0.5f) * vis.cellSize)
                           + Vector3.up * 0.3f;
 
-            // Mouth A, so the path test starts on ordinary room/corridor navmesh.
+            // The mouth's OPEN cell, so the path test starts on ordinary room/corridor navmesh.
+            Vector3Int mouthCell = cw.Mouths[0].OpenCell;
             Vector3 mouth = transform.position
-                          + (new Vector3(cw.CellA.x + 0.5f, cw.CellA.y, cw.CellA.z + 0.5f) * vis.cellSize)
+                          + (new Vector3(mouthCell.x + 0.5f, mouthCell.y, mouthCell.z + 0.5f) * vis.cellSize)
                           + Vector3.up * 0.3f;
 
             var sb = new System.Text.StringBuilder();

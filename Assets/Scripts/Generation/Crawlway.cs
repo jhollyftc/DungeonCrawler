@@ -3,130 +3,135 @@ using UnityEngine;
 
 namespace DungeonGen
 {
+    /// <summary>One access point: a grate in a wall between an open cell and a bore cell.</summary>
+    public struct CrawlwayMouth
+    {
+        /// <summary>The OPEN dungeon cell the grate is seen from. Not part of the network.</summary>
+        public Vector3Int OpenCell;
+        /// <summary>From <see cref="OpenCell"/> into the rock — the face the grate replaces.</summary>
+        public Vector3Int IntoRock;
+        /// <summary>The bore cell behind the grate. <c>OpenCell + IntoRock</c>.</summary>
+        public Vector3Int BoreCell => OpenCell + IntoRock;
+    }
+
     /// <summary>
-    /// A 1.5m crawl passage bored through solid rock between two places that are otherwise a
-    /// long walk apart. The player crouches through; at 1.5m nothing bakes walkable, so NPCs
-    /// are excluded by GEOMETRY rather than by a rule anyone has to maintain.
+    /// A sewer chamber: a full-height room carved off one bore cell, sealed but for its grate.
+    /// </summary>
+    public class CrawlwayChamber
+    {
+        public HashSet<Vector3Int> Cells = new HashSet<Vector3Int>();
+        public BoundsInt Bounds;
+        /// <summary>The bore cell it opens off.</summary>
+        public Vector3Int BoreCell;
+        /// <summary>Bore → chamber. The tube's side opening faces this way.</summary>
+        public Vector3Int Dir;
+        /// <summary>Entry tile, <c>BoreCell + Dir</c>. On a wide chamber this is the vestibule.</summary>
+        public Vector3Int MouthCell;
+    }
+
+    /// <summary>
+    /// A SEWER NETWORK — a branching system of 1.5m bores through solid rock, with chambers
+    /// hanging off it and a small number of grates connecting it to the dungeon.
     ///
-    /// ITS CELLS STAY <see cref="CellType.Empty"/>, and that is the whole design — the sharpest
-    /// difference from <see cref="AlcoveSpec"/>, which is typed Hallway precisely so it inherits
-    /// walls, floors and ceilings free from the kit and mesher. A crawlway must NOT: every kit
-    /// piece is authored to a 3m face, so an open CellType would emit full-size masonry into a
-    /// hole meant to be a bore through rock. To the mesher, the kit placer, NeedsSlabBetween,
-    /// the automap and every `!= CellType.Empty` test in the project, a crawlway DOES NOT EXIST
-    /// and the rock is solid.
+    /// GROWN FROM THE ROCK, NOT BETWEEN TWO POINTS, and that inversion is the whole v2 design.
+    /// The first version defined a crawlway AS a pair of mouths with a bore between them, so
+    /// mouths were what the generator chose — and "two corridors four metres apart through one
+    /// cell of rock" is a perfectly valid answer to that question. Every constraint bolted on to
+    /// stop that (a minimum length, a detour ratio, one crawlway per pair of spaces) was a patch
+    /// on a badly framed question. Growing the network first and spending a small budget of
+    /// mouths on it afterwards makes the degenerate case INEXPRESSIBLE: there is no step at
+    /// which two nearby mouths are ever considered as a pair.
     ///
-    /// The price of that choice, and the entire cost of the feature: the crawlway brings its
-    /// OWN mesh and its OWN collider. Precedent is the bridge deck and the ladder — generator-
-    /// owned kit pieces placed at nominal grid coordinates, base-origin, carrying prefab
-    /// colliders because the greybox cannot provide them (§5).
+    /// CELLS STAY <see cref="CellType.Empty"/>, exactly as in v1 — the mesher, the kit placer
+    /// and every `!= CellType.Empty` test read solid rock, and the network brings its own mesh
+    /// and collision. Chamber cells are the exception and are typed Hallway, because a chamber
+    /// is a real 3m space that wants the kit's walls and floors.
     ///
-    /// Consequence worth knowing: because the cells read as solid, a crawlway is NOT a legal
-    /// host for another crawlway, so it is immune to §12's self-hosting trap that alcoves and
-    /// junction plazas both hit. The <c>IsCrawlwayCell</c> guard still exists — two bores must
-    /// not intersect — but there is no creeping-blob failure mode here.
+    /// THE CELL SET IS A GRAPH, NOT A PATH. v1 carried an ordered list because a crawlway was a
+    /// route; a network branches, so piece selection comes from each cell's 4-bit
+    /// <see cref="NeighbourMask"/> instead of from an in/out direction pair. That collapsed
+    /// IsCorner/DirInto/DirOutOf into one mask→(piece, yaw) lookup — the same bitmask approach
+    /// DungeonMapper already uses for walls.
     /// </summary>
     public class CrawlwaySpec
     {
-        /// <summary>
-        /// The bored cells, IN ORDER from the A end to the B end. Every one stays
-        /// <see cref="CellType.Empty"/> in the grid; this list is the only thing that knows
-        /// they are a tunnel. Never empty — a crawlway is at minimum one cell of rock punched
-        /// through, which is the "breach a thin wall" case.
-        /// </summary>
-        public List<Vector3Int> Cells = new List<Vector3Int>();
+        /// <summary>Every bore cell. Unordered — this is a graph.</summary>
+        public HashSet<Vector3Int> Cells = new HashSet<Vector3Int>();
 
-        /// <summary>The OPEN cell the A mouth opens off. NOT part of <see cref="Cells"/>.</summary>
-        public Vector3Int CellA;
-        /// <summary>The OPEN cell the B mouth opens into. NOT part of <see cref="Cells"/>.</summary>
-        public Vector3Int CellB;
+        /// <summary>Grates into the dungeon. Kept small on purpose: the interior is generous,
+        /// the way in is not.</summary>
+        public List<CrawlwayMouth> Mouths = new List<CrawlwayMouth>();
 
-        /// <summary><c>CellA</c> → <c>Cells[0]</c>. The direction the A grate faces out of.</summary>
-        public Vector3Int DirA;
-        /// <summary>Last bore cell → <c>CellB</c>. The direction the B grate faces out of.</summary>
-        public Vector3Int DirB;
+        /// <summary>Sewer rooms hanging off the network.</summary>
+        public List<CrawlwayChamber> Chambers = new List<CrawlwayChamber>();
 
-        /// <summary>
-        /// Length of the pre-existing walk between the two mouths, in cells. Always finite and
-        /// always found: a pair whose ends are NOT already connected is rejected outright, which
-        /// is what keeps a crawlway from ever being load-bearing for connectivity.
-        /// </summary>
-        public int WalkDistance;
+        /// <summary>Longest walk between any two mouths through the OPEN dungeon, in cells —
+        /// what the network short-circuits. Informational; used for the gizmo label and for
+        /// judging whether a network earned its mouths.</summary>
+        public int BestDetour;
 
-        /// <summary>How much walking the crawlway saves — <c>WalkDistance / Cells.Count</c>.
-        /// The rule that makes a crawlway MEAN something rather than being a hole between two
-        /// spots you could already see each other from.</summary>
-        public float DetourRatio => Cells.Count > 0 ? WalkDistance / (float)Cells.Count : 0f;
+        public bool HasChamber => Chambers.Count > 0;
 
-        /// <summary>Direction of travel INTO cell <paramref name="i"/>. For the first cell that
-        /// is <see cref="DirA"/> — you enter through the grate, so the mouth's direction is a
-        /// real part of the run and not a special case.</summary>
-        public Vector3Int DirInto(int i) => i == 0 ? DirA : Cells[i] - Cells[i - 1];
+        // Bit per horizontal direction, matching HorizontalDirs' order in DungeonGenerator:
+        // +X, -X, +Z, -Z.
+        public const int MaskPosX = 1 << 0;
+        public const int MaskNegX = 1 << 1;
+        public const int MaskPosZ = 1 << 2;
+        public const int MaskNegZ = 1 << 3;
 
-        /// <summary>Direction of travel OUT OF cell <paramref name="i"/>. For the last cell that
-        /// is <see cref="DirB"/>.</summary>
-        public Vector3Int DirOutOf(int i) =>
-            i == Cells.Count - 1 ? DirB : Cells[i + 1] - Cells[i];
+        static readonly Vector3Int[] MaskDirs =
+        {
+            new Vector3Int(1, 0, 0), new Vector3Int(-1, 0, 0),
+            new Vector3Int(0, 0, 1), new Vector3Int(0, 0, -1),
+        };
+
+        /// <summary>Direction for a mask bit index (0-3).</summary>
+        public static Vector3Int DirOfBit(int bit) => MaskDirs[bit];
 
         /// <summary>
-        /// Does the bore turn within cell <paramref name="i"/>, so it wants a corner piece
-        /// rather than a straight?
+        /// Which of this cell's four horizontal neighbours are also bore.
         ///
-        /// THE END CELLS COUNT. A first cell entered through a grate on one face and left
-        /// through another is geometrically a corner, whatever it is called — an earlier
-        /// version excluded the ends on the reasoning that "their outward direction is the
-        /// mouth's", which is true and irrelevant, and would have put a straight tube where
-        /// the tunnel visibly turns. Defined here rather than recomputed by the placer so
-        /// there is one answer (§10b's one-resolution rule).
+        /// THE ONE INPUT PIECE SELECTION NEEDS. Popcount gives the piece — 1 dead end, 2 either
+        /// straight or corner, 3 tee, 4 cross — and the bit pattern gives the yaw. A chamber
+        /// opening does NOT set a bit: the chamber is a room off the side, and its opening is a
+        /// grate in the tube wall rather than another length of tube, so it is a tee's SIDE
+        /// hole and not a fifth connection.
         /// </summary>
-        public bool IsCorner(int i) => DirInto(i) != DirOutOf(i);
+        public int NeighbourMask(Vector3Int c)
+        {
+            int mask = 0;
+            for (int i = 0; i < MaskDirs.Length; i++)
+                if (Cells.Contains(c + MaskDirs[i])) mask |= 1 << i;
+            return mask;
+        }
 
-        // ---- Sewer chamber (optional) ----
+        /// <summary>Does a chamber open off this bore cell, and in which direction?</summary>
+        public bool ChamberAt(Vector3Int c, out Vector3Int dir)
+        {
+            foreach (var ch in Chambers)
+                if (ch.BoreCell == c) { dir = ch.Dir; return true; }
+            dir = Vector3Int.zero;
+            return false;
+        }
 
-        /// <summary>
-        /// A full-height room carved in the rock, opening straight off one bore cell — sealed
-        /// from the rest of the dungeon except for that one grate. Empty when this crawlway has
-        /// no chamber.
-        ///
-        /// Typed <see cref="CellType.Hallway"/>, unlike the bore: a chamber IS a 3m space you
-        /// stand and fight in, so it wants the kit's walls, floors and ceilings, which is exactly
-        /// what alcoves get that trick for. The bore stays Empty because a 1.5m tube must not.
-        ///
-        /// IT HANGS DIRECTLY OFF A BORE CELL WITH NO SPUR TUNNEL, and that is what keeps
-        /// <see cref="Cells"/> a LIST rather than a tree — the whole branching feature costs an
-        /// index and a direction instead of a restructure. It also makes the only backtracking
-        /// in the design a single step back into the tube.
-        /// </summary>
-        /// A HashSet, matching AlcoveSpec.Cells and PrisonSpec.Cells — the three are the same
-        /// primitive and feed the same RecessPropPlacer, which takes a set. RecessFits hands back
-        /// a List, so the caller converts, exactly as the other two do.
-        public HashSet<Vector3Int> ChamberCells = new HashSet<Vector3Int>();
-
-        /// <summary>Bounding box of the chamber, mirroring PrisonSpec/AlcoveSpec semantics.</summary>
-        public BoundsInt ChamberBounds;
-
-        /// <summary>Index into <see cref="Cells"/> of the bore cell the chamber opens off, or -1.
-        /// Always a STRAIGHT cell — a tee in a corner piece would need its own asset and reads
-        /// badly.</summary>
-        public int ChamberBoreIndex = -1;
-
-        /// <summary>Bore cell → chamber. The tube's side opening faces this way.</summary>
-        public Vector3Int ChamberDir;
-
-        /// <summary>The chamber's entry tile, <c>Cells[ChamberBoreIndex] + ChamberDir</c>. On a
-        /// wide chamber this is the 1x1 vestibule and the room widens behind it.</summary>
-        public Vector3Int ChamberMouthCell;
-
-        public bool HasChamber => ChamberBoreIndex >= 0 && ChamberCells.Count > 0;
+        /// <summary>Is this cell an access point, and which way does its grate face out?</summary>
+        public bool MouthAt(Vector3Int boreCell, out Vector3Int outward)
+        {
+            foreach (var m in Mouths)
+                if (m.BoreCell == boreCell) { outward = -m.IntoRock; return true; }
+            outward = Vector3Int.zero;
+            return false;
+        }
 
         /// <summary>World-space centre of the bore, for gizmos and distance tests.</summary>
         public Vector3 CenterCell
         {
             get
             {
+                if (Cells.Count == 0) return Vector3.zero;
                 Vector3 sum = Vector3.zero;
                 foreach (var c in Cells) sum += c;
-                return Cells.Count > 0 ? sum / Cells.Count : (Vector3)CellA;
+                return sum / Cells.Count;
             }
         }
     }

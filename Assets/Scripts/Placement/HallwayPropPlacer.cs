@@ -77,9 +77,8 @@ namespace DungeonGen
             // both the tightest cell in the chamber and the only way out.
             foreach (var cw in gen.Crawlways)
             {
-                reserved.Add(cw.CellA);
-                reserved.Add(cw.CellB);
-                if (cw.HasChamber) reserved.Add(cw.ChamberMouthCell);
+                foreach (var m in cw.Mouths) reserved.Add(m.OpenCell);
+                foreach (var ch in cw.Chambers) reserved.Add(ch.MouthCell);
             }
 
             var usedFloor = new HashSet<Vector3Int>();
