@@ -111,7 +111,20 @@ namespace DungeonGen
         private PlayerCarry carry;
         private Health health;
         static readonly RoomType[] warpRoomTypes = (RoomType[])Enum.GetValues(typeof(RoomType));
+
+        /// <summary>Warp targets that are NOT room types, appended after them. Sewer chambers
+        /// and crawlways are registry entries rather than RoomTypes (§4), and they are also the
+        /// two spaces you cannot reach without breaking a grate and crawling — so they are worth
+        /// far more on this list than most of the rooms are.</summary>
+        static readonly string[] warpSpaces = { "Sewer Chamber", "Crawlway Mouth" };
+
         int warpTypeIndex;
+
+        int WarpTargetCount => warpRoomTypes.Length + warpSpaces.Length;
+
+        string WarpTargetLabel => warpTypeIndex < warpRoomTypes.Length
+            ? warpRoomTypes[warpTypeIndex].ToString()
+            : warpSpaces[warpTypeIndex - warpRoomTypes.Length];
 
         void Awake()
         {
@@ -161,9 +174,13 @@ namespace DungeonGen
             // Home / End: cycle the warp-target RoomType; F2: teleport there. Lets
             // you jump straight to a Throne/Shrine/etc. to check its props/lighting
             // without walking the whole generated layout to find one.
-            if (Input.GetKeyDown(KeyCode.Home)) warpTypeIndex = (warpTypeIndex - 1 + warpRoomTypes.Length) % warpRoomTypes.Length;
-            if (Input.GetKeyDown(KeyCode.End)) warpTypeIndex = (warpTypeIndex + 1) % warpRoomTypes.Length;
-            if (Input.GetKeyDown(KeyCode.F2)) WarpToRoomType(warpRoomTypes[warpTypeIndex]);
+            if (Input.GetKeyDown(KeyCode.Home)) warpTypeIndex = (warpTypeIndex - 1 + WarpTargetCount) % WarpTargetCount;
+            if (Input.GetKeyDown(KeyCode.End)) warpTypeIndex = (warpTypeIndex + 1) % WarpTargetCount;
+            if (Input.GetKeyDown(KeyCode.F2))
+            {
+                if (warpTypeIndex < warpRoomTypes.Length) WarpToRoomType(warpRoomTypes[warpTypeIndex]);
+                else WarpToSpace(warpTypeIndex - warpRoomTypes.Length);
+            }
 
             // Cursor capture.
             if (Input.GetKeyDown(KeyCode.Escape))
@@ -292,7 +309,54 @@ namespace DungeonGen
                 return;
             }
 
-            Vector3Int fc = room.InteriorFloorCell;
+            WarpToCell(room.InteriorFloorCell, $"{type} room");
+        }
+
+        /// <summary>
+        /// Warp to one of the spaces that is NOT a RoomType — sewer chambers and crawlways.
+        ///
+        /// They need their own path precisely because they are not rooms: they are registry
+        /// entries whose cells are typed Hallway or left solid (§4), which is what lets a 1.5m
+        /// bore exist at all. They also happen to be the two hardest places in the dungeon to
+        /// reach on foot for testing — a chamber needs a grate broken and a tunnel crawled —
+        /// which is exactly why they belong on this list.
+        /// </summary>
+        void WarpToSpace(int spaceIndex)
+        {
+            var gen = dungeon != null ? dungeon.Generator : null;
+            if (gen == null) return;
+
+            foreach (var cw in gen.Crawlways)
+            {
+                if (spaceIndex == 0)
+                {
+                    if (!cw.HasChamber) continue;
+
+                    // Prefer a cell that ISN'T the entry tile — on a wide chamber that tile is a
+                    // 1x1 vestibule, and landing in it puts you nose-first against the grate you
+                    // came to look past.
+                    Vector3Int target = cw.ChamberMouthCell;
+                    foreach (var c in cw.ChamberCells)
+                        if (c != cw.ChamberMouthCell) { target = c; break; }
+
+                    WarpToCell(target, "sewer chamber");
+                    return;
+                }
+
+                // CellA, not a bore cell: the mouth puts you in the room facing the grate, which
+                // is what you want to inspect. Standing IN a bore would wedge a 1.8m capsule in
+                // a 1.5m tube — the crouch is what makes crawlways passable, and a warp does not
+                // crouch you.
+                WarpToCell(cw.CellA, "crawlway mouth");
+                return;
+            }
+
+            Debug.LogWarning($"[Warp] No {(spaceIndex == 0 ? "sewer chamber" : "crawlway")} this seed.");
+        }
+
+        /// <summary>Shared teleport, so every warp target snaps to the floor the same way.</summary>
+        void WarpToCell(Vector3Int fc, string what)
+        {
             Vector3 floorWorld = dungeon.transform.position + new Vector3(fc.x + 0.5f, fc.y, fc.z + 0.5f) * dungeon.cellSize;
             Vector3 dest = floorWorld + Vector3.up * (cc.height * 0.5f + 0.1f);
 
@@ -320,7 +384,7 @@ namespace DungeonGen
             externalVelocity = Vector3.zero;
             verticalVelocity = 0f;
 
-            Debug.Log($"[Warp] Warped to {type} room at {dest}");
+            Debug.Log($"[Warp] Warped to {what} at {dest}");
         }
 
         /// <summary>Which room (by type) the player is standing in right now, for the dev
@@ -353,7 +417,7 @@ namespace DungeonGen
             // dungeon is a pure function of those two, so that pair reproduces it.
             string header = dungeon != null
                 ? $"Seed: {dungeon.seed}\nDepth: {dungeon.config.depth}\nRoom: {CurrentRoomLabel()}\n" +
-                  $"Warp Target: {warpRoomTypes[warpTypeIndex]}\n"
+                  $"Warp Target: {WarpTargetLabel}\n"
                 : "";
             if (health != null)
                 header += $"HP: {health.Current:0}/{health.max:0}\n";
