@@ -44,7 +44,10 @@ namespace DungeonGen
         [Tooltip("Far clip for the overlay pass. The viewmodel is inches away, so this can be small.")]
         public float farClip = 20f;
 
-        [Tooltip("Include the viewmodel in the scene's post-processing — bloom, tonemapping, colour grading, vignette. OFF means the weapon is drawn AFTER the post-processed world and keeps raw, ungraded colours, which reads as a sticker pasted on the screen: it doesn't dim in a dark corridor and its emissives never bloom.\n\nURP applies a stack's post-processing ONCE, at the end. The overlay camera is the last camera in this stack, so enabling it here is what pulls the whole composited image — world plus weapon — through that single pass.\n\nTURN THIS OFF IF YOU USE DEPTH OF FIELD. The overlay CLEARS DEPTH and then writes the weapon's own depth at ~0.5m, so a DoF effect focused across the room will blur the weapon heavily. That is a real conflict with the depth-clear trick, not a bug to fix.")]
+        [Tooltip("Index of the URP Renderer the overlay camera should use — the position in the Renderer List on your Universal Render Pipeline Asset (PC_RPAsset). -1 leaves it on the default, which is the old behaviour.\n\nWHY THIS IS WORTH SETTING: the overlay inherits the world's renderer by default, so a camera drawing two objects onto CLEARED DEPTH runs the whole pipeline anyway — measured in the Frame Debugger as its own additional-lights shadowmap pass, a depth-normals prepass and FOUR SSAO passes, for a sword and a shield. Point it at a stripped renderer (duplicate the main one, delete the SSAO feature) and all of that goes away with no change to the world.\n\nAN INDEX, NOT A REFERENCE, because that is all UniversalAdditionalCameraData.SetRenderer takes — so REORDERING THE RENDERER LIST SILENTLY REPOINTS THIS. Unity falls back to the default renderer on an out-of-range index with only a console warning, and the symptom is the overhead quietly returning. The setup log below prints the index that was applied.")]
+        public int overlayRendererIndex = -1;
+
+        [Tooltip("Include the viewmodel in the scene's post-processing — bloom, tonemapping, colour grading, vignette. OFF means the weapon is drawn AFTER the post-processed world and keeps raw, ungraded colours, which reads as a sticker pasted on the screen: it doesn't dim in a dark corridor and its emissives never bloom.\n\nURP applies a stack's post-processing ONCE, at the end. The overlay camera is the last camera in this stack, so enabling it here is what pulls the whole composited image — world plus weapon — through that single pass.\n\nTURN THIS OFF IF YOU USE DEPTH OF FIELD. The overlay CLEARS DEPTH and then writes the weapon's own depth at ~0.5m, so a DoF effect focused across the room will blur the weapon heavily. That is a real conflict with the depth-clear trick, not a bug to fix.\n\nMEASURED COST, AND IT WAS ACCEPTED DELIBERATELY — do not 'optimise' it away without re-reading this. URP runs the post stack once per camera that has post-processing enabled, so having it on BOTH the base and this overlay runs the whole chain twice (16 bloom mipmap blits and a colour LUT each, in the frame debugger). The single-stack alternatives both cost something real:\n  base OFF / overlay ON  = one stack, but post then evaluates from a DEPTH-CLEARED camera, so every depth-reading effect sees the weapon instead of the world.\n  base ON / overlay OFF  = one stack and a correct world, but the weapon is ungraded again.\nTwo stacks is the only configuration that gets a correct world AND a graded weapon, and at this resolution the duplicate blits measured as a fraction of a millisecond — far cheaper than the 72-draw depth-normals prepass that the SSAO 'After Opaque' setting removed in the same investigation.")]
         public bool postProcessViewmodel = true;
 
         [Tooltip("Log the wiring (layer, renderers moved, camera stack) at Awake. Turn on when the viewmodel doesn't appear.")]
@@ -146,6 +149,12 @@ namespace DungeonGen
             // both cameras looking correctly configured. Deriving from the base is what makes
             // "the weapon is graded like the world" true by construction rather than by two
             // settings happening to match.
+            // A STRIPPED RENDERER FOR THE OVERLAY. Set before anything else reads the camera, so
+            // the pipeline it runs is decided once at construction rather than on the first
+            // frame. Left alone at -1, which keeps the pre-existing behaviour for any rig that
+            // has not been given one.
+            if (overlayRendererIndex >= 0) overlayData.SetRenderer(overlayRendererIndex);
+
             overlayData.volumeLayerMask = baseData.volumeLayerMask;
             overlayData.volumeTrigger = baseData.volumeTrigger;
             overlayData.antialiasing = baseData.antialiasing;
@@ -228,6 +237,9 @@ namespace DungeonGen
                               $"inStack={baseData.cameraStack.Contains(overlayCamera)}");
                 sb.AppendLine($"  post-processing: overlay={overlayData.renderPostProcessing} base={baseData.renderPostProcessing} " +
                               $"volumeMask=0x{overlayData.volumeLayerMask.value:X} (base 0x{baseData.volumeLayerMask.value:X})");
+                sb.AppendLine($"  overlay renderer index: {(overlayRendererIndex >= 0 ? overlayRendererIndex.ToString() : "default (unset)")}" +
+                              " — reordering the Renderer List on the URP asset silently repoints this, " +
+                              "and an out-of-range index falls back to the default with only a console warning.");
 
                 // Both halves of "why is the weapon ungraded?" stated outright, because neither
                 // is visible from the inspector: a code-built camera has no serialized row to

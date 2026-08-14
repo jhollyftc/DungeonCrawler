@@ -600,6 +600,34 @@ whether it takes the room's HUE are different questions; when not tinting, the b
 is now read back off the graph so an untinted flame still flickers around the artist's
 colour.
 
+**ONLY THE INSTANCED PATH IS DISTANCE-CULLED — EVERY GAMEOBJECT RENDERER IS NOT, and at depth
+20 that is the whole framerate story.** `InstancedDungeonRenderer` culls per frame by
+`renderDistance`; anything rendering as a real GameObject has nothing but Unity's frustum
+culling, so a long sightline submits every door, prop and torch in the dungeon at any distance.
+Measured at depth 20, from ONE SPOT, turning on the spot:
+
+| looking down a corridor | facing a wall |
+|---|---|
+| 21.0ms frame, **GPU 2.8ms** | 3.4ms frame, GPU 2.1ms |
+| 3242 draw calls, 2997 set-pass | 259 draw calls, 184 set-pass |
+| 2314 single-instance SRP draws | 32 |
+| instanced: 246 calls / 3458 instances | 178 / 2787 |
+
+**GPU 2.8ms against a 21ms frame — CPU-bound on draw SUBMISSION**, and the instanced count barely
+moves between the two. Composition by toggling the generated roots: doors ~1200, torches ~600,
+prison props ~600, props ~450, instanced ~300, crawlways ~150.
+**SHADOWS WERE RULED OUT and it is worth knowing they were the wrong suspect** — the frame
+debugger showed `Draw Additional Lights Shadowmap` at **83** of 4087, against
+`DrawOpaqueObjects` 3116 and `DrawTransparentObjects` 827. Cutting `maxShadowCasters` or
+un-ticking Cast Shadows would have cost real visual quality for nothing. §12's
+discriminating-test rule: the statistics panel counts shadow submissions inside "Draw Calls",
+so only the frame debugger separates the two.
+Doors dominate because there are **190 of them at depth 20** (room count and corridor length
+both scale with depth, and every prison adds one) at ~3 materials each — not a generation bug,
+just scale. The fix that addresses all four categories at once is a sliced distance cull for
+GameObject renderers under the generated roots, exactly the shape `TorchCullingManager` already
+uses for lights; atlasing doors 3 materials → 1 compounds with it but only helps doors.
+
 **Torch culling (TorchCullingManager)** — sliced per-frame distance cull of torch
 lights + **disciplined shadows**: only the nearest `maxShadowCasters` (default 3)
 torches cast shadows; the rest are shadowless fill. **Point-light shadows are a
@@ -783,6 +811,19 @@ textures too; we only want to band the *lighting*). Passes: ForwardLit, Outline
   the elements are duplicates of one mesh, because duplicates share UV islands exactly.
   NB ToonLit now reads vertex colour on every mesh in the project for this.
 - Known API gotchas: `TransformObjectToHClip` (NOT `TransformObjectToWorldHClip`).
+
+**SSAO'S `Source` AND `After Opaque` DECIDE WHETHER THE WHOLE DUNGEON IS DRAWN TWICE.** With
+`Source = DepthNormals` and `AfterOpaque = 0`, URP runs a depth-normals PREPASS — measured at
+**72 draws against 140 for the entire opaque pass**, i.e. a full extra geometry submission every
+frame. Ticking **`After Opaque`** removes it outright (the prepass is replaced by a single
+`CopyDepth`) while keeping SSAO working AND keeping ToonWater's foam, which was verified rather
+than assumed. Free win; take it on any new renderer.
+The uncomfortable corollary for the entry below: adding the `DepthNormals` pass to ToonLit was a
+correct fix for a real bug, but the CHEAPER fix was this renderer setting, since SSAO's source
+mode is what redirected depth-texture population in the first place. Keep the shader pass — it
+costs little and its absence fails silently — but reach for the renderer settings first.
+NB the live renderer is **`Assets/PC_Renderer.asset`**; the copy under `SourceFiles/Settings/` is
+the Unity sample and editing it does nothing.
 
 **A SHADER CAN BE COMPLETE FOR EVERYTHING THAT MAKES IT LOOK RIGHT AND STILL BE INVISIBLE
 TO A PIPELINE PASS.** ToonLit rendered, lit, banded, outlined, cast shadows and had a
@@ -2955,8 +2996,15 @@ Cosmetic-first; combat is far off ("get the world together first").
     carrying/throwing with mass-driven encumbrance + ImpactAudio.
 15. ✅ Head bob (footstep-locked; deepens with carry load).
 16. ✅ Torch flame VFX tinted to the per-room torch palette.
+16b. ⏳ **DISTANCE-CULL GAMEOBJECT RENDERERS** — the top perf item, and a real target since
+    depth 20 is a shipping depth. Only the instanced path is culled today, so a long sightline
+    submits every door, prop and torch in the dungeon: 21ms frame against **2.8ms GPU**, i.e.
+    CPU-bound on submission. §5 has the full measurements and why shadows were ruled out.
+    Extend `TorchCullingManager`'s sliced per-frame pattern to renderers under the generated
+    roots — one change covering doors, torches, prison props and room props together.
 17. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material)
-    — mostly Blender/texture work; toon shader packed-mask already ready.
+    — mostly Blender/texture work; toon shader packed-mask already ready. **Doors first**:
+    190 of them at depth 20 at ~3 materials each is the single biggest asset-side contributor.
 18. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit →
     home base → depth increment → sell/replenish). Design chat first.
 19. ✅ **NPC AI phase 1** — runtime NavMesh (`DungeonNavBaker`) + locomotion body
