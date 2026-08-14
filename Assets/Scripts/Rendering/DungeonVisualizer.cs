@@ -222,9 +222,14 @@ namespace DungeonGen
             // suppressing would leave a literal hole in the world. Decided ONCE here, where both
             // halves of the question are visible, and read by the mesher and the kit placer
             // through the generator so they cannot disagree (§5).
+            // EITHER mouth slot counts. Checking only the plain array would leave a kit whose
+            // mouths live entirely in the weighted variants list rendering its grates against an
+            // unsuppressed wall — the feature silently half-on, which is the exact failure this
+            // gate exists to prevent.
             gen.CrawlwayGeometryAvailable =
-                geometryMode != GeometryMode.GeneratedMesh &&
-                kit != null && kit.crawlwayMouthPrefabs != null && kit.crawlwayMouthPrefabs.Length > 0;
+                geometryMode != GeometryMode.GeneratedMesh && kit != null &&
+                ((kit.crawlwayMouthPrefabs != null && kit.crawlwayMouthPrefabs.Length > 0) ||
+                 (kit.crawlwayMouthVariants != null && kit.crawlwayMouthVariants.Length > 0));
 
             InstancedDungeonRenderer sharedInstancer = null;
 

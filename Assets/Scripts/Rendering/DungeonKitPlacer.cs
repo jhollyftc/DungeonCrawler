@@ -14,6 +14,27 @@ namespace DungeonGen
     ///   stair   — pivot at bottom-center of the foot edge; ascends along +Z
     ///   bars    — wall-format piece for prison doorways (optional)
     /// </summary>
+    /// <summary>
+    /// A kit prefab with a relative FREQUENCY.
+    ///
+    /// The plain `GameObject[]` slots everywhere else are picked with `Hash(cell) % length`, so
+    /// every entry is EXACTLY equally likely and the only way to make one rarer is to list
+    /// another twice. `RoomStyle.WallAsset.weight` already exists for the same reason on walls
+    /// (§7); this is the same dial for kit slots that have no WallAsset to hang it on.
+    ///
+    /// NB frequency and DISTRIBUTION are different questions. Weight makes a variant rarer, not
+    /// CLUSTERED — a per-cell hash is white noise, so a weighted pool still scatters evenly.
+    /// Clustering needs a smooth field, which is what `ValueNoise` + `noiseRange` do for walls
+    /// and what these would need too if a crawlway ever wants a "flooded section".
+    /// </summary>
+    [System.Serializable]
+    public struct WeightedPrefab
+    {
+        public GameObject prefab;
+        [Tooltip("Relative frequency within its list. 3 against 1 means three times as often. 0 mutes this entry without deleting it.")]
+        [Min(0f)] public float weight;
+    }
+
     [System.Serializable]
     public class DungeonKit
     {
@@ -74,6 +95,8 @@ namespace DungeonGen
 
         [Tooltip("GRATE / MOUTH piece where a crawlway breaks out of a wall — the framed 1.5m opening plus the masonry filling the rest of that 3m face.\n\nTO MAKE IT BREAKABLE, put a CrawlwayGrate component on the BARS as a child, never on the frame: the frame carries the collision standing in for the suppressed 3m wall quad, and detaching that opens a hole in the rock either side of the opening. The placer detects the component and switches this piece to FullGameObject automatically (an instanced mesh cannot be un-drawn), and tells it which way to fall. Give the bars an ImpactAudio for the landing clang.\n\nTHIS PIECE CARRIES THE WALL'S COLLISION AND THE FEATURE DOES NOT WORK WITHOUT IT. The greybox emits ONE quad per cell face, so opening a crawlway suppresses a whole 3m x 3m collider, not a 1.5m one — without a ring of colliders here (four boxes around the bore is the simple shape) the player walks through the rock either side of the grate. Suppression is GATED on this slot being filled, so leaving it empty is safe: crawlways simply stay sealed behind solid wall.\n\nAuthor facing +Z, rotated to point INTO the open cell you see it from — the same convention as a wall — and floor-aligned, matching the tube. KIT-FRAME: globalVisualOffset IS applied, because this piece has to line up with the walls it interrupts. That differs from the TUBE pieces below, which are base-origin like ladders and bridges; the two halves of one feature genuinely follow different conventions, which is why they are filed in different sections here.")]
         public GameObject[] crawlwayMouthPrefabs; // optional — skipped if empty, and suppression is skipped with it
+        [Tooltip("WEIGHTED variants for the mouth / grate piece. Same rules as the tube variants: weight is relative within the list, 0 mutes an entry, and the plain list above still works with its entries counting as weight 1.")]
+        public WeightedPrefab[] crawlwayMouthVariants;
         [Tooltip("Nudge for the mouth in its OWN frame: Z = further into the room / back into the wall, Y = up, X = along the face. Rotated with the piece, so one value is correct on all four wall directions (the ladderOffset lesson).")]
         public Vector3 crawlwayMouthOffset;
 
@@ -97,6 +120,12 @@ namespace DungeonGen
         public GameObject[] crawlwayCornerPrefabs; // optional — falls back to the straight piece
         [Tooltip("TEE crawlway tube — a straight run with a 1.5m opening in ONE SIDE, where the bore passes a sewer chamber. Author with the run along +Z and the side opening on +X; the placer flips the run end-for-end when the chamber is on the other side, which is invisible because a straight tube is symmetric, so ONE tee asset covers both hands.\n\nSame conventions as the straight: floor-aligned, base-origin, box colliders — and leave the side opening genuinely open, since the chamber's own grate piece frames it. Empty = the tee cell falls back to a closed straight tube, which seals the chamber off entirely (it stays carved but unreachable), so author this alongside the chamber.")]
         public GameObject[] crawlwayTeePrefabs; // optional — falls back to the closed straight piece
+        [Tooltip("WEIGHTED variants for straight tubes. Weight is relative within the list — 3 vs 1 means three times as often — and 0 mutes an entry without deleting it.\n\nThe plain Crawlway Tube Prefabs list above still works and its entries count as WEIGHT 1, so these EXTEND the pool rather than replacing it. Move a prefab here to change how often it appears; the alternative was listing it twice, which is the same trick the wall variants had to abandon.")]
+        public WeightedPrefab[] crawlwayTubeVariants;
+        [Tooltip("WEIGHTED variants for corner tubes. Same rules as the straight variants above.")]
+        public WeightedPrefab[] crawlwayCornerVariants;
+        [Tooltip("WEIGHTED variants for tee tubes (the cell where a bore passes a sewer chamber). Same rules as the straight variants above.")]
+        public WeightedPrefab[] crawlwayTeeVariants;
         [Tooltip("Nudge applied to a crawlway tube in its OWN frame: Z = along the run, X = across it, Y = up. Rotated with the piece, so one value is correct whichever way the bore runs.")]
         public Vector3 crawlwayTubeOffset;
 
@@ -1570,8 +1599,16 @@ namespace DungeonGen
             root.transform.SetParent(parent, false);
             if (gen.Crawlways.Count == 0) return root;
 
-            bool haveTube = kit.crawlwayTubePrefabs != null && kit.crawlwayTubePrefabs.Length > 0;
-            bool haveMouth = kit.crawlwayMouthPrefabs != null && kit.crawlwayMouthPrefabs.Length > 0;
+            // Pools resolved ONCE per build, not per cell — the merge allocates, and a bore is
+            // walked cell by cell.
+            var tubePool = MergePool(kit.crawlwayTubePrefabs, kit.crawlwayTubeVariants);
+            var cornerPool = MergePool(kit.crawlwayCornerPrefabs, kit.crawlwayCornerVariants);
+            var teePool = MergePool(kit.crawlwayTeePrefabs, kit.crawlwayTeeVariants);
+
+            var mouthPool = MergePool(kit.crawlwayMouthPrefabs, kit.crawlwayMouthVariants);
+
+            bool haveTube = tubePool.Count > 0;
+            bool haveMouth = mouthPool.Count > 0;
             if (!haveTube && !haveMouth) return root;
 
             // A tube with no grate is a sealed tunnel nobody can reach, and a grate with no tube
@@ -1580,7 +1617,7 @@ namespace DungeonGen
             // say so, since either alone looks like a bug rather than missing authoring.
             if (haveTube != haveMouth)
                 Debug.LogWarning($"[Crawlways] Only half the kit is authored — " +
-                    $"{(haveTube ? "crawlwayTubePrefabs are set but crawlwayMouthPrefabs are EMPTY, so the bores have no way in (and the wall stays solid, since suppression is gated on the mouth slot)" : "crawlwayMouthPrefabs are set but crawlwayTubePrefabs are EMPTY, so the grates open onto nothing")}.");
+                    $"{(haveTube ? "tubes are set but the MOUTH slots are empty (neither crawlwayMouthPrefabs nor crawlwayMouthVariants), so the bores have no way in — and the wall stays solid, since suppression is gated on the mouth slot" : "mouths are set but the TUBE slots are empty (neither crawlwayTubePrefabs nor crawlwayTubeVariants), so the grates open onto nothing")}.");
 
             int tubes = 0, mouths = 0;
             foreach (var cw in gen.Crawlways)
@@ -1592,15 +1629,12 @@ namespace DungeonGen
                         Vector3Int cell = cw.Cells[i];
                         Vector3Int inDir = cw.DirInto(i), outDir = cw.DirOutOf(i);
                         bool corner = cw.IsCorner(i);
-                        bool tee = i == cw.ChamberBoreIndex &&
-                                   kit.crawlwayTeePrefabs != null && kit.crawlwayTeePrefabs.Length > 0;
+                        bool tee = i == cw.ChamberBoreIndex && teePool.Count > 0;
 
-                        GameObject[] slot =
-                            tee ? kit.crawlwayTeePrefabs
-                          : corner && kit.crawlwayCornerPrefabs != null && kit.crawlwayCornerPrefabs.Length > 0
-                                ? kit.crawlwayCornerPrefabs
-                                : kit.crawlwayTubePrefabs;
-                        GameObject prefab = slot[Hash(cell, 149) % slot.Length];
+                        var pool = tee ? teePool
+                                 : corner && cornerPool.Count > 0 ? cornerPool
+                                 : tubePool;
+                        GameObject prefab = PickWeightedPrefab(pool, cell, 149);
                         if (prefab == null) continue;
 
                         // The tube is FLOOR-ALIGNED, so its origin is the cell's base corner
@@ -1629,7 +1663,7 @@ namespace DungeonGen
 
             int PlaceMouth(Vector3Int openCell, Vector3Int intoRock)
             {
-                GameObject prefab = kit.crawlwayMouthPrefabs[Hash(openCell, 151) % kit.crawlwayMouthPrefabs.Length];
+                GameObject prefab = PickWeightedPrefab(mouthPool, openCell, 151);
                 if (prefab == null) return 0;
 
                 // On the wall face, at floor level, facing back into the open cell — the same
@@ -1720,6 +1754,52 @@ namespace DungeonGen
         }
 
         static bool Approx(Vector3 a, Vector3 b) => (a - b).sqrMagnitude < 0.01f;
+
+        /// <summary>
+        /// Combine a plain prefab array and a weighted list into one pool, the plain entries
+        /// counting as WEIGHT 1.
+        ///
+        /// Merging rather than letting the weighted list REPLACE the array, because the
+        /// replacing version has a nasty failure: adding one weighted variant would silently
+        /// drop the three prefabs already authored in the plain slot, and the symptom is a
+        /// dungeon that suddenly uses one tube everywhere. Same reasoning as RoomStyle's prison
+        /// and alcove pools, where the original single slot survives as a weight-1 entry so
+        /// variants EXTEND rather than supersede.
+        /// </summary>
+        static List<WeightedPrefab> MergePool(GameObject[] plain, WeightedPrefab[] weighted)
+        {
+            var pool = new List<WeightedPrefab>();
+            if (plain != null)
+                foreach (var p in plain)
+                    if (p != null) pool.Add(new WeightedPrefab { prefab = p, weight = 1f });
+            if (weighted != null)
+                foreach (var w in weighted)
+                    if (w.prefab != null) pool.Add(w);
+            return pool;
+        }
+
+        /// <summary>
+        /// Deterministic weighted pick, using the SAME per-cell hash the uniform pick used —
+        /// read as a 0..1 value instead of an index, so variety stays stable per (seed, depth)
+        /// and still varies cell to cell. Identical shape to PickWall's weighting, deliberately:
+        /// two ways of turning a weight into a choice would drift.
+        /// </summary>
+        static GameObject PickWeightedPrefab(List<WeightedPrefab> pool, Vector3Int cell, int salt)
+        {
+            if (pool == null || pool.Count == 0) return null;
+
+            float total = 0f;
+            foreach (var w in pool) total += Mathf.Max(0f, w.weight);
+            if (total <= 0f) return pool[0].prefab;   // every weight muted — still render something
+
+            float roll = Hash(cell, salt) / (float)0x7fffffff * total;
+            foreach (var w in pool)
+            {
+                roll -= Mathf.Max(0f, w.weight);
+                if (roll <= 0f) return w.prefab;
+            }
+            return pool[pool.Count - 1].prefab;       // float drift on the last bucket
+        }
 
         /// <summary>
         /// Bridge decks spanning room pits, at the room's floor level.
