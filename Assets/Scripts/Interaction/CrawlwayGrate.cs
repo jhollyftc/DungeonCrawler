@@ -47,6 +47,19 @@ namespace DungeonGen
         [Tooltip("Seconds before the freed grate is allowed to sleep. Purely so it settles rather than jittering against the frame it just left.")]
         public float settleDelay = 4f;
 
+        [Header("Once loose")]
+        [Tooltip("Make the freed grate a Carryable — pick it up, move it, throw it.\n\nTHE POINT IS THAT WHERE IT LANDS STOPS MATTERING. A 30kg grating tumbling into a tight space sometimes came to rest across the very passage it was covering, and no amount of tuning the shove reliably prevents that: it is a physics roll on every break. Being able to pick it up turns an unrecoverable bad outcome into a two-second inconvenience.\n\nEverything else comes free because a carryable IS just a heavy prop — mass-driven encumbrance, the deepened head bob, the throw heave, and ImpactAudio when it lands.")]
+        public bool makeCarryable = true;
+
+        [Tooltip("Name in the interaction prompt once it is loose.")]
+        public string carryDisplayName = "Grate";
+        [Tooltip("Metres in front of the eye it floats while carried. A grate is WIDE, so it wants more room than a barrel or it clips the near plane — which is exactly why Carryable keeps this per-object.")]
+        public float carryHoldDistance = 1.6f;
+        [Tooltip("Throw speed (m/s). Lower than a barrel's: this is an awkward slab of iron, not something you hurl.")]
+        public float carryThrowSpeed = 6.5f;
+        [Tooltip("Spin (rad/s) on release. A grate tumbling flat reads as thrown rather than slid.")]
+        public float carryThrowSpin = 3.5f;
+
         [Header("Noise")]
         [Tooltip("How loud breaking it is to NPCs, 0-1. Wrenching an iron grate out of stone is one of the loudest things the player can deliberately do, and it SHOULD carry — a secret route you open by making a racket is a real trade, not a free one.")]
         [Range(0f, 1f)] public float breakLoudness = 0.85f;
@@ -59,12 +72,28 @@ namespace DungeonGen
 
         public bool IsOpen { get; private set; }
 
-        public string Prompt => IsOpen ? null : prompt;
+        // The Carryable this becomes once loose. Cached so the forwarding below costs nothing.
+        Carryable loose;
+
+        /// <summary>
+        /// ONE INTERACTABLE PER OBJECT, WHICH IS WHY THIS FORWARDS. Once broken, the grate
+        /// carries both this component and a `Carryable`, and both implement `IInteractable` —
+        /// but `PlayerInteractor` resolves with `GetComponentInParent<IInteractable>()`, which
+        /// returns the FIRST match. This one is authored on the prefab and the Carryable is
+        /// added at runtime, so this would win forever and the freed grate could never be picked
+        /// up: the prompt would simply go blank and E would do nothing, with both components
+        /// perfectly configured.
+        ///
+        /// Delegating rather than destroying this component keeps `IsOpen` readable, which
+        /// DungeonNavBaker needs to tell an intact grate (exclude from the bake) from a loose one
+        /// lying on the floor (bake it, like any other prop).
+        /// </summary>
+        public string Prompt => IsOpen ? loose?.Prompt : prompt;
 
         public void Interact(Transform interactor)
         {
-            if (IsOpen) return;
-            Break();
+            if (!IsOpen) { Break(); return; }
+            if (loose != null) loose.Interact(interactor);
         }
 
         /// <summary>
@@ -78,9 +107,16 @@ namespace DungeonGen
 
             Transform part = grate != null ? grate : transform;
 
-            // Off the frame first, so the physics body isn't fighting a parent transform that
-            // the kit placed and never moves.
-            part.SetParent(part.parent != null ? part.parent.parent : null, true);
+            // DELIBERATELY NOT REPARENTED. The instinct is to detach the grate from its frame,
+            // and it is both unnecessary and harmful here. Unnecessary because a Rigidbody moves
+            // its transform in WORLD space and the mouth frame never moves or scales, so the
+            // parent constrains nothing — a carried grate can be walked across the dungeon while
+            // still nominally parented to the wall it came from.
+            //
+            // Harmful because the mouth instance is a direct child of the DungeonCrawlways root,
+            // so "detach to my parent's parent" walks straight PAST that root and out of
+            // ClearGenerated's reach — leaking one grate per regenerate, which is §5's
+            // GeneratedRoots rule arriving from the opposite direction.
 
             // COLLIDER SWAP BEFORE THE RIGIDBODY, and the order is not cosmetic: PhysX rejects a
             // concave MeshCollider on a non-kinematic body, so adding the Rigidbody while the
@@ -107,6 +143,8 @@ namespace DungeonGen
             CancelInvoke(nameof(AllowSleep));
             Invoke(nameof(AllowSleep), settleDelay);
 
+            if (makeCarryable) MakeCarryable(part);
+
             // A grate coming out of stone is loud, and this is the ONE place the crawlway system
             // touches the AI: opening a secret route announces you. Emitted through NoiseBus so
             // nothing here has to know NPCs exist (§10's mutually-ignorant emitters).
@@ -114,6 +152,33 @@ namespace DungeonGen
 
             // ImpactAudio on the grate then handles the landing clang for free — it is speed
             // driven, so a grate that drops a foot ticks and one that is shoved clatters.
+        }
+
+        /// <summary>
+        /// Turn the freed grate into an ordinary carryable prop.
+        ///
+        /// ADDED AT RUNTIME RATHER THAN AUTHORED ON THE PREFAB, and the reason is the intact
+        /// state. `Carryable` requires a Rigidbody, so authoring it would put a Rigidbody on a
+        /// grate that is still part of the wall — which either falls out of the masonry on the
+        /// first frame, or has to be kinematic and then hands PhysX a concave MeshCollider it
+        /// will reject the moment we wake it. Worse, `IInteractable` would be live, so the
+        /// player could pick the grate up WITHOUT ever breaking it.
+        ///
+        /// The cost of adding it here is that its tuning cannot be authored on the Carryable
+        /// itself, which is why the four fields are mirrored onto this component instead. That
+        /// keeps all the grate's authoring in one inspector rather than split across a component
+        /// that does not exist yet.
+        /// </summary>
+        void MakeCarryable(Transform part)
+        {
+            loose = part.GetComponent<Carryable>();
+            if (loose != null) return;
+
+            loose = part.gameObject.AddComponent<Carryable>();
+            loose.displayName = carryDisplayName;
+            loose.holdDistance = carryHoldDistance;
+            loose.throwSpeed = carryThrowSpeed;
+            loose.throwSpin = carryThrowSpin;
         }
 
         /// <summary>
