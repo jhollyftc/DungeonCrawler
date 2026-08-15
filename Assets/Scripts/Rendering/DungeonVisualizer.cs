@@ -392,6 +392,11 @@ namespace DungeonGen
             // must already exist. Optional component — no baker, no NPCs.
             GetComponent<DungeonNavBaker>()?.Rebuild(gen);
 
+            // AFTER every placer, because it collects what they produced. Rebuilt per generate
+            // rather than kept across one: ClearGenerated destroys the old roots, so a list held
+            // over would be full of nulls and missing everything new.
+            GetComponent<DungeonRendererCulling>()?.Rebuild();
+
             // Keep the edit-mode preview out of the saved scene.
             MarkNotPersisted();
         }
