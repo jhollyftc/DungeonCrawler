@@ -1185,6 +1185,38 @@ One RoomStyle asset defines a room type's whole look. What it holds:
   WITHIN a list, which is the case the restrictive reading was written for.
   **The general shape: reusing one asset across contexts means its METADATA is
   context-scoped too, even when the asset isn't.**
+- **`WallAsset.rockDepth` — A WALL'S OUTWARD NEIGHBOUR IS NO LONGER ALWAYS SOLID.** That
+  neighbour being solid is what MADE it a wall, so a recessed niche, a barred window's reveal
+  or a shrine cut into the masonry could occupy that cell as deeply as it liked and nobody
+  ever wrote the assumption down. A sewer bore is the first thing that ever takes it, and a
+  tube piece runs its arms all the way to the cell FACE so it can meet its neighbours — so a
+  **cross or a tee parked behind a recess pushes visibly through it**. §12's category rule
+  again: a subset of "solid rock" gained the property "might not be solid", and the single
+  consumer that assumed otherwise failed visually rather than loudly.
+  `rockDepth` (metres behind the wall plane, 0 = flat = every existing asset) is checked
+  against `RockClearance`, which is `kit.crawlwayWallClearance` behind a bore cell and
+  infinity everywhere else. **Ordering was NOT the problem** — the tempting reading is "walls
+  are placed before pipes so the wall cannot know", but `crawlCells` is fully populated during
+  generation, long before any placement pass, and `gen.IsCrawlwayCell` is a direct query.
+  Three things that would each fail quietly:
+  - **The RESERVATION pre-pass needs the filter too.** A capped asset never goes through
+    `PickWall` — it is dealt onto a face in `DealCappedAssets` and emitted through
+    `EmitReserved` — so filtering only the general pick leaves a capped recess clipping while
+    the uncapped ones behave. Exactly the shape that made `maxPerRoom` look ignored once.
+  - **The depth filter is NOT relaxable, unlike the noise one.** `PickWall` deliberately falls
+    back to the whole pool when an over-narrow `noiseRange` excludes everything, because an
+    over-narrow range should look wrong rather than missing. A wall pushing through a pipe is
+    a visible clip regardless, so it stays excluded inside that fallback.
+  - **A null pick means "nothing in this set fits", not "no set".** All five call sites now
+    leave `emitted` false so the face drops to the kit generic. Setting it unconditionally —
+    which is what the code did before — would skip the wall entirely and open a HOLE into the
+    bore, which is worse than the clip being fixed.
+  Deliberately CONSERVATIVE: any adjacent bore cell disqualifies, not only one whose piece
+  points an arm that way. Which piece lands there is decided later by `TubePieceFor`, and
+  having the wall emitter predict piece selection would couple two passes that share nothing
+  but the cell registry. The cost is that a flagged asset appears somewhat less often than its
+  weight implies near a sewer — surfaced as `recess 0.4m` on the collapsed inspector entry, so
+  "why is this variant rarer than I asked" is answerable without opening every element.
 - **Wall variant FREQUENCY vs DISTRIBUTION — two dials answering different questions,
   and only one of them existed.** The pick was `Hash(cell) % pool.Length`: every
   UNCAPPED variant exactly equally likely, fakeable only by listing a prefab twice

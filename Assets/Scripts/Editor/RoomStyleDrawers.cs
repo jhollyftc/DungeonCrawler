@@ -175,6 +175,12 @@ namespace DungeonGen
 
             if (!p.FindPropertyRelative("allowPropsInFront").boolValue) s += " !props";
             if (!p.FindPropertyRelative("allowTorch").boolValue) s += " !torch";
+
+            // Surfaced because it silently REMOVES the asset from faces backing onto a sewer
+            // bore, so "why is this variant rarer than its weight says" is answerable from the
+            // collapsed list rather than by opening every entry.
+            float rd = p.FindPropertyRelative("rockDepth").floatValue;
+            if (rd > 0f) s += $" recess {rd:0.##}m";
             return s;
         }
 

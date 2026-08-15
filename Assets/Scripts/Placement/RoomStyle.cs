@@ -195,6 +195,8 @@ namespace DungeonGen
             public bool allowPropsInFront = true;
             [Tooltip("Torches may mount on this wall. Turn OFF for walls with their own light sources or busy relief where a sconce reads wrong.")]
             public bool allowTorch = true;
+            [Tooltip("How far this asset protrudes BEHIND the wall plane, in metres — the depth of a recessed niche, a barred window's reveal, a shrine cut into the masonry. 0 = flat, which is every ordinary wall and the default.\n\nWHAT IT IS FOR: a wall's outward neighbour used to be solid rock WITHOUT EXCEPTION — that is what made it a wall — so a recess could cut as deep as it liked and nobody ever had to say so. A sewer bore is the first thing that ever occupies that cell, and a tube piece runs its arms all the way to the cell FACE so it can meet its neighbours, so a cross or a tee parked behind a recessed window pushes straight through it.\n\nAn asset deeper than the clearance behind a face is simply not offered there and the face takes a flat wall instead. Only ever consulted where something IS behind the wall; against ordinary rock every asset fits.")]
+            public float rockDepth = 0f;
             [Tooltip("Name this a feature wall so NearWallAsset props can target it (a fireplace tagged 'Fireplace' → firewood with Host Label 'Fireplace' places beside it). Empty = not a NearWallAsset host. Usually paired with a per-room cap.")]
             public string featureLabel = "";
 
@@ -208,6 +210,11 @@ namespace DungeonGen
             /// range — the default — is always true, which is what keeps noise opt-in.</summary>
             public bool AllowsNoise(float n) =>
                 (noiseRange.x <= 0f && noiseRange.y >= 1f) || (n >= noiseRange.x && n <= noiseRange.y);
+
+            /// <summary>Does this asset fit in `clearance` metres of rock behind the face?
+            /// Ordinary rock passes infinity, so an unauthored depth of 0 stays eligible
+            /// everywhere and this is inert until a recess is actually flagged.</summary>
+            public bool FitsBehind(float clearance) => rockDepth <= clearance;
 
             public bool Allows(WallBand b) =>
                 (b == WallBand.Bottom && bottom) ||

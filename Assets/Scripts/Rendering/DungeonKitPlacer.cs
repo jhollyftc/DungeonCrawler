@@ -138,6 +138,8 @@ namespace DungeonGen
         public GameObject[] crawlwayBlankPrefabs;
         [Tooltip("WEIGHTED variants for blank plates. Same rules as the straight variants.")]
         public WeightedPrefab[] crawlwayBlankVariants;
+        [Tooltip("Metres of rock a crawlway tube leaves CLEAR at a cell face. A wall asset whose Rock Depth exceeds this is not offered on a face backing onto a bore, and that face takes a flat wall instead.\n\n0 IS CORRECT FOR THIS KIT and is why the setting exists: a cross and a tee run their arms all the way to the cell face so they can meet the neighbouring piece, so there is no clearance at all and a recess of any depth clips. Raise it only if the tube pieces are re-authored to stop short of the face.")]
+        public float crawlwayWallClearance = 0f;
         [Tooltip("Nudge for a blank plate in its OWN frame: Z = further into the tube / back into the rock, Y = up, X = along the face. Rotated with the piece, so one value is correct on all four faces (the ladderOffset lesson).")]
         public Vector3 crawlwayBlankOffset;
         [Tooltip("WEIGHTED variants for cross tubes. Same rules as the straight variants.")]
@@ -377,10 +379,22 @@ namespace DungeonGen
                     var a = setAssets[ai];
                     if (a.prefab == null || a.maxPerRoom <= 0) continue;
 
+                    // THE ROCK-DEPTH FILTER HAS TO BE HERE TOO, and this is the half that is
+                    // easy to miss. A capped asset never goes through PickWall — it is DEALT
+                    // onto a face here and emitted straight through EmitReserved — so
+                    // filtering only the general pick would leave a capped recess reserved
+                    // onto a face backing a bore and clipping exactly as before, while the
+                    // uncapped ones behaved. Same shape as the maxPerRoom cap looking ignored
+                    // once because capped assets sat in both the reservation and the general
+                    // pool (§7).
                     var eligible = new List<(Vector3Int cell, int dirIdx)>();
                     foreach (var kv in facesByBand)
-                        if (a.Allows(kv.Key))
-                            eligible.AddRange(kv.Value);
+                    {
+                        if (!a.Allows(kv.Key)) continue;
+                        foreach (var f in kv.Value)
+                            if (a.FitsBehind(RockClearance(f.cell, HDirs[f.dirIdx])))
+                                eligible.Add(f);
+                    }
                     if (eligible.Count == 0) continue;
 
                     int salt = 977 + ai * 7919;
@@ -428,21 +442,56 @@ namespace DungeonGen
             /// Falls back to the full pool if the noise range excludes everything, because a
             /// face with no eligible asset would otherwise drop to the kit generic and punch a
             /// hole in a themed room. An over-narrow range should look wrong, not missing.
-            GameObject PickWall(List<RoomStyle.WallAsset> pool, Vector3Int cell, Vector3 posCells)
+            /// How deep a wall asset may cut into the rock behind this face.
+            ///
+            /// UNTIL CRAWLWAYS THE ANSWER WAS ALWAYS "AS DEEP AS YOU LIKE". A wall's outward
+            /// neighbour was solid by definition — that is what made it a wall — so a recessed
+            /// niche or a barred window's reveal could occupy that cell freely and nobody had
+            /// to write the assumption down. A bore is the first thing that ever takes it, and
+            /// a tube piece runs its arms to the cell FACE so it can meet its neighbours, so a
+            /// cross or a tee behind a recess pushes visibly through it. §12's category rule:
+            /// a subset of "solid rock" gained the property "might not be solid", and the one
+            /// consumer that assumed otherwise failed visually rather than loudly.
+            ///
+            /// CONSERVATIVE ON PURPOSE — any adjacent bore cell, not only one whose piece
+            /// happens to point an arm this way. Which piece lands there is decided later by
+            /// `TubePieceFor`, and asking the wall emitter to predict piece selection would
+            /// couple two passes that currently share nothing but the cell registry. The cost
+            /// is that a corridor running alongside a sewer gets plainer walls than one that
+            /// is not — invisible to the player, though it does mean a flagged asset appears
+            /// slightly less often than its weight implies.
+            float RockClearance(Vector3Int cell, Vector3Int d) =>
+                gen.IsCrawlwayCell(cell + d) ? kit.crawlwayWallClearance : float.PositiveInfinity;
+
+            GameObject PickWall(List<RoomStyle.WallAsset> pool, Vector3Int cell, Vector3Int d, Vector3 posCells)
             {
                 if (pool == null || pool.Count == 0) return null;
 
+                // THE DEPTH FILTER IS NOT RELAXABLE; THE NOISE ONE IS. An over-narrow noise
+                // range should look wrong rather than missing, so it falls back to the whole
+                // pool — but a wall protruding into a tube is a visible clip whatever else is
+                // true of the face, so it stays excluded even in the fallback. If that leaves
+                // nothing, returning null drops the face to the kit generic, which the caller
+                // handles: a flat wall is the right answer, an absent one is a hole into the
+                // bore.
+                float clear = RockClearance(cell, d);
                 float n = ValueNoise.ForCell(cell, kit.wallNoiseScale, kit.wallNoiseSalt);
 
                 float total = 0f;
                 foreach (var a in pool)
-                    if (a.AllowsNoise(n)) total += Mathf.Max(0f, a.weight);
+                    if (a.FitsBehind(clear) && a.AllowsNoise(n)) total += Mathf.Max(0f, a.weight);
 
                 bool useNoise = total > 0f;
                 if (!useNoise)
                 {
-                    foreach (var a in pool) total += Mathf.Max(0f, a.weight);
-                    if (total <= 0f) return pool[0].prefab;   // every weight muted
+                    foreach (var a in pool)
+                        if (a.FitsBehind(clear)) total += Mathf.Max(0f, a.weight);
+                    if (total <= 0f)
+                    {
+                        foreach (var a in pool)                   // every weight muted
+                            if (a.FitsBehind(clear)) return a.prefab;
+                        return null;                              // nothing in the set fits here
+                    }
                 }
 
                 // Same per-face hash the uniform pick used, read as a 0..1 value instead of an
@@ -451,13 +500,15 @@ namespace DungeonGen
                 float roll = Hash(Vector3Int.RoundToInt(posCells * 4f), 11) / (float)0x7fffffff * total;
                 foreach (var a in pool)
                 {
+                    if (!a.FitsBehind(clear)) continue;
                     if (useNoise && !a.AllowsNoise(n)) continue;
                     roll -= Mathf.Max(0f, a.weight);
                     if (roll <= 0f) return a.prefab;
                 }
                 for (int i = pool.Count - 1; i >= 0; i--)      // float drift on the last bucket
-                    if (!useNoise || pool[i].AllowsNoise(n)) return pool[i].prefab;
-                return pool[0].prefab;
+                    if (pool[i].FitsBehind(clear) && (!useNoise || pool[i].AllowsNoise(n)))
+                        return pool[i].prefab;
+                return null;
             }
 
             // A RESERVED capped wall asset. Calls `place` DIRECTLY rather than going through
@@ -688,17 +739,30 @@ namespace DungeonGen
                             var chamberWalls = pitWalls == null && gen.IsChamberCell(c) && style != null
                                 ? style.ChamberWalls() : null;
 
+                            // A NULL PICK IS "NOTHING IN THIS SET FITS HERE", NOT "NO SET" —
+                            // leaving `emitted` false so the face drops to the kit generic
+                            // below. Setting it unconditionally would skip the wall entirely
+                            // and open a hole into the bore, which is worse than the clip
+                            // this exists to prevent.
                             if (pitWalls != null)
                             {
-                                placedWall = EmitPrefab(PickWall(pitWalls, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
-                                wallCtx = RoomStyle.WallContext.Pit;
-                                emitted = true;
+                                var pick = PickWall(pitWalls, c, d, facePos);
+                                if (pick != null)
+                                {
+                                    placedWall = EmitPrefab(pick, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                    wallCtx = RoomStyle.WallContext.Pit;
+                                    emitted = true;
+                                }
                             }
                             else if (chamberWalls != null)
                             {
-                                placedWall = EmitPrefab(PickWall(chamberWalls, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
-                                wallCtx = RoomStyle.WallContext.Chamber;
-                                emitted = true;
+                                var pick = PickWall(chamberWalls, c, d, facePos);
+                                if (pick != null)
+                                {
+                                    placedWall = EmitPrefab(pick, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                    wallCtx = RoomStyle.WallContext.Chamber;
+                                    emitted = true;
+                                }
                             }
                             else if (room != null)
                             {
@@ -716,8 +780,12 @@ namespace DungeonGen
                                     var unlimited = UnlimitedWalls(room.Type, BandOf(room, c));
                                     if (unlimited != null)
                                     {
-                                        placedWall = EmitPrefab(PickWall(unlimited, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
-                                        emitted = true;
+                                        var pick = PickWall(unlimited, c, d, facePos);
+                                        if (pick != null)
+                                        {
+                                            placedWall = EmitPrefab(pick, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                            emitted = true;
+                                        }
                                     }
                                 }
                             }
@@ -727,8 +795,12 @@ namespace DungeonGen
                                 var styled = style.HallwayWalls();
                                 if (styled != null)
                                 {
-                                    placedWall = EmitPrefab(PickWall(styled, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
-                                    emitted = true;
+                                    var pick = PickWall(styled, c, d, facePos);
+                                    if (pick != null)
+                                    {
+                                        placedWall = EmitPrefab(pick, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                        emitted = true;
+                                    }
                                 }
                             }
                             else if (t == CellType.Prison)
@@ -747,8 +819,12 @@ namespace DungeonGen
                                     var styled = style.PrisonWalls();
                                     if (styled != null)
                                     {
-                                        placedWall = EmitPrefab(PickWall(styled, c, facePos), "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
-                                        emitted = true;
+                                        var pick = PickWall(styled, c, d, facePos);
+                                        if (pick != null)
+                                        {
+                                            placedWall = EmitPrefab(pick, "wall", facePos, Quaternion.LookRotation(-(Vector3)d), kit.wallOffset, c);
+                                            emitted = true;
+                                        }
                                     }
                                 }
                             }
