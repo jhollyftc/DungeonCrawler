@@ -30,6 +30,16 @@ namespace DungeonGen
         [Header("Rig")]
         [Tooltip("Animator on the bow viewmodel. Left empty, searched in children of bowRoot.")]
         public Animator animator;
+        [Header("Aim convergence")]
+        [Tooltip("How far out the crosshair is resolved when it is pointing at open air. The arrow is aimed from the MUZZLE at whatever the camera ray hits, so with nothing to hit it aims at a virtual point this far away — which is what keeps a shot into the sky parallel-ish to the crosshair instead of swinging wildly.")]
+        public float aimConvergeDistance = 150f;
+
+        [Tooltip("Closest the convergence point may be. Below this the muzzle-to-target angle gets extreme and can even invert — walking into a wall would otherwise fire the arrow sideways or backwards.")]
+        public float minConvergeDistance = 2.5f;
+
+        [Tooltip("What the aim ray can hit when resolving the crosshair. MUST exclude the Viewmodel layer — the bow and the nocked arrow sit centimetres in front of the camera and would otherwise be 'what you are aiming at' on every shot — and the Player's own layer. Awake strips Viewmodel automatically, the same guard PlayerInteractor carries.")]
+        public LayerMask aimMask = ~0;
+
         [Tooltip("Bow viewmodel root — used to find the Animator and the muzzle if they're unset.")]
         public Transform bowRoot;
         [Tooltip("Where arrows spawn. Ideally the arrow rest on the bow. Left empty, the aim camera is used, which shoots from the eye — accurate, but the arrow appears from nowhere.")]
@@ -110,6 +120,15 @@ namespace DungeonGen
             if (animator == null && bowRoot != null) animator = bowRoot.GetComponentInChildren<Animator>(true);
             if (aimSource == null && controller != null && controller.cam != null) aimSource = controller.cam;
             if (muzzle == null) muzzle = aimSource;
+
+            // ALWAYS strip the Viewmodel layer from the aim ray, however the mask was authored.
+            // The bow and its nocked arrow sit centimetres in front of the camera, so without
+            // this the crosshair resolves to the BOW on every single shot — convergence would
+            // then aim the arrow at the player's own weapon and it would fire almost straight
+            // down. Same unconditional guard PlayerInteractor applies to its interaction cast,
+            // and the same house rule that world queries exclude that layer.
+            int viewmodel = LayerMask.NameToLayer("Viewmodel");
+            if (viewmodel >= 0) aimMask &= ~(1 << viewmodel);
 
             // Same resolution order PlayerMelee uses for its bash FOV kick, so both find the
             // same WORLD camera and can't end up driving different ones.
@@ -251,12 +270,17 @@ namespace DungeonGen
 
             if (arrowPrefab == null) return;
 
-            // AIM from the camera, SPAWN at the bow. Aiming from the muzzle would send
-            // arrows wherever the bow model happens to point, which drifts from the
-            // crosshair as the viewmodel sways.
+            // AIM AT A POINT, NOT ALONG A DIRECTION. Spawning at the bow and firing along
+            // eye.forward gives two PARALLEL lines — the camera's and the arrow's — which by
+            // definition never converge, so the shot missed the crosshair by the full
+            // camera-to-muzzle offset at EVERY range. It reads as the bow being badly
+            // calibrated; it is actually just parallax with nothing correcting it.
+            //
+            // So: find what the crosshair is on, then aim the arrow from the muzzle AT that
+            // point. The arrow still visibly leaves the bow, and it lands on the reticle.
             Transform eye = aimSource != null ? aimSource : transform;
-            Vector3 dir = eye.forward;
-            Vector3 spawn = muzzle != null ? muzzle.position : eye.position + dir * 0.4f;
+            Vector3 spawn = muzzle != null ? muzzle.position : eye.position + eye.forward * 0.4f;
+            Vector3 dir = AimDirectionFrom(spawn, eye);
 
             GameObject go = Instantiate(arrowPrefab, spawn, Quaternion.LookRotation(dir));
             var arrow = go.GetComponent<Arrow>();
@@ -266,6 +290,50 @@ namespace DungeonGen
             else if (go.TryGetComponent(out Rigidbody rb)) rb.linearVelocity = dir * speed;
 
             if (debugBow) Debug.Log($"[PlayerBow] shot at draw {d:0.00} ({speed:0.#} m/s).", this);
+        }
+
+        /// <summary>
+        /// Direction from the muzzle to whatever the crosshair is on.
+        ///
+        /// PARALLAX IS REAL AND THIS ONLY HIDES IT AT THE TARGET. The camera and the bow are
+        /// genuinely in different places, so they have genuinely different lines of sight: this
+        /// makes the arrow ARRIVE where the reticle is, but the path it takes to get there is
+        /// the bow's, not the eye's. Shooting through a grate is where that shows — a gap the
+        /// camera sees clean can still have a bar in the bow's way, and no aiming maths fixes
+        /// that because it is not a maths problem. `debugBow` reports it rather than silently
+        /// nudging the shot, the same choice MeleeReticle makes about explaining a refused swing
+        /// instead of quietly widening the sweep.
+        /// </summary>
+        Vector3 AimDirectionFrom(Vector3 spawn, Transform eye)
+        {
+            float far = Mathf.Max(minConvergeDistance, aimConvergeDistance);
+            Vector3 target = eye.position + eye.forward * far;
+
+            if (Physics.Raycast(eye.position, eye.forward, out RaycastHit hit, far,
+                                aimMask, QueryTriggerInteraction.Ignore))
+            {
+                // Clamp how near the convergence point may be. A hit right against the camera
+                // (pressed into a wall, or a prop in your face) gives a muzzle-to-target vector
+                // that is near-perpendicular to where you are looking, and past the muzzle it
+                // inverts outright — the arrow would leave sideways.
+                float dist = Mathf.Max(hit.distance, minConvergeDistance);
+                target = eye.position + eye.forward * dist;
+            }
+
+            Vector3 dir = target - spawn;
+            if (dir.sqrMagnitude < 0.0001f) return eye.forward;   // degenerate; fall back
+            dir.Normalize();
+
+            if (debugBow &&
+                Physics.Raycast(spawn, dir, out RaycastHit blocked, (target - spawn).magnitude,
+                                aimMask, QueryTriggerInteraction.Ignore) &&
+                blocked.distance < Vector3.Distance(spawn, target) - 0.05f)
+                Debug.Log($"[PlayerBow] the CAMERA's line is clear but the BOW's is not — " +
+                          $"'{blocked.collider.name}' at {blocked.distance:0.00}m. That is parallax, " +
+                          "not aim: the muzzle sits below and to the side of your eye, so it can be " +
+                          "looking at a bar while you are looking through the gap beside it.", this);
+
+            return dir;
         }
 
         /// <summary>
