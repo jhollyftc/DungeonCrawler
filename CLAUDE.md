@@ -366,6 +366,31 @@ GEOMETRY rather than by a rule anyone maintains** — an escape route they canno
   sealed-island property is why the open-network BFS cache stays valid across a carve, and why a
   later bore must be explicitly refused a chamber cell as a far end rather than left to the
   BFS rejecting it by accident.
+- **MANHOLES ARE ONE-WAY, AND THAT IS A GENERATION CONSTRAINT RATHER THAN FLAVOUR.** A drain in
+  a prison floor drops a storey, and with `maxStepHeight` 0.5 and no mantle there is no climbing
+  back — so a network reachable ONLY by manhole is one the player falls into and cannot leave,
+  and the run ends there. `ChooseManholes` therefore runs AFTER `ChooseMouths` and returns
+  unless the network already has a wall grate, which makes that state unrepresentable rather
+  than unlikely. Prisons only, deliberately: a drain in a cell reads as somewhere waste went,
+  the same hole in a throne room reads as a hazard nobody built. It needs no new validation —
+  `RecessFits` already demands solid above AND below every prison cell, so the rock underneath
+  is network-eligible by construction. The floor suppression is one line in `NeedsSlabBetween`,
+  but it must be the FIRST line: a bore cell reads as `Empty`, so the `lower is Empty` early
+  return would floor the drain shut before anything else looked. Kept out of the prison's
+  doorway tile, which on a wide prison is the entire width of the entrance — you would fall in
+  walking past rather than choosing to go down.
+- **`NeighbourMask` COUNTS TUNNELS, NOT OPENINGS — this blind spot has now bitten three times.**
+  Piece selection reads a 4-bit mask of adjacent BORE CELLS, and every opening that is not
+  another length of tube is invisible to it: a **chamber** (walled off behind a straight), a
+  **grate** (a bore cell with a mouth and one tunnel reads as popcount 1 and takes a DEAD-END
+  CAP, sealing the entrance while the network visibly continues), and the **manhole's lid**
+  (which is not horizontal at all, so the manhole overrides piece selection outright). Every
+  non-tunnel opening must be added to `want` by hand. More than four openings falls back to a
+  cross rather than refusing to place — slightly wrong beats a literal hole in the tunnel.
+- **`RecessFits` CANNOT SEE TUNNELS.** It tests `Grid[pos] != CellType.Empty`, and a bore cell
+  IS Empty — the grid-invisible design again — so a chamber footprint will swallow the tunnel it
+  hangs off and pipes render straight through the room. Filtered at the CALLER: teaching
+  `RecessFits` about sewers would mean teaching prisons and alcoves about them too.
 - Stairs and prisons are excluded as mouths (sealed envelope; the one-opening rule a prison's
   validation rests on). Pit openings too — §12's category rule, and it gets its OWN reject reason
   rather than being folded into another, since a tally that reports the wrong rule is worse than
@@ -1607,6 +1632,15 @@ Formula-driven with authored override points (the user's explicit choice).
   mixed in with movement), with `overlayFontSize` (12, was a hardcoded 18) and the box
   sized from `style.CalcSize` rather than a fixed rect, so adding a line can no longer
   push the list outside its own background.
+- **Gizmo layers (`DungeonVisualizer.gizmoLayers`)** — a `[Flags]` mask over what the scene view
+  draws, because with rooms, corridors, alcoves, prisons, pits, bridges, stairs, sewer networks,
+  chambers, manholes, three kinds of graph edge and a label on most of them, everything at once
+  is unreadable. One multi-select dropdown rather than a row of bools, so "show me only sewers"
+  is a single click. **LABELS is its own layer** — the floating text is the noisiest part and
+  killing just that recovers most of the readability. Two layers cannot follow `CellType`, for
+  the reason that keeps recurring: PITS are `CellType.Room` (so the pit test happens inside the
+  Room case, or turning Rooms off takes chasms with it) and CHAMBERS are `CellType.Hallway` like
+  alcoves (so corridors/alcoves/chambers are three registry lookups in one case).
 - **FlyCamera**, **PlayerInteractor** (SphereCast, E key, `IInteractable`; stands
   down while PlayerCarry holds something so E is unambiguous).
 - **HingedDoor** — the ORIGINAL scripted door (E to open, world-up swing axis;
@@ -3287,6 +3321,13 @@ Cosmetic-first; combat is far off ("get the world together first").
     `CRAWLWAY_PLAN.md`). Phase 1 sites them (cells stay `Empty`, so the stage is provably inert);
     phase 2 places the tube and the grate and suppresses the wall behind it, gated so an
     unauthored kit leaves them sealed rather than holed.
+    ✅ **SEWER NETWORKS (v2)** — grown from the rock rather than bored between two chosen mouths,
+    which made the "pointless shortcut between two hallways" inexpressible instead of merely
+    rejected. Branching trees with chambers, a small budget of wall grates, and **one-way
+    MANHOLES** down from prison floors. §4 has the design and the four bugs testing it found.
+    ⏳ open: the manhole COVER as a liftable grate (CrawlwayGrate only knows about a wall grate
+    that falls into the open cell; a cover lifts up out of a floor and "which way it falls" means
+    nothing for it).
     ⏳ open: **phase 3** — the grate as an interactable (NOT a `PhysicsDoor`: a hinged door
     swinging into a 1.5m bore fills it, and the standoff jam is worse where there is no room to
     step back — swing it outward or lift it away, `HingedDoor` is the precedent); an `AudioSpace`
@@ -3363,6 +3404,29 @@ Cosmetic-first; combat is far off ("get the world together first").
   "room cell that isn't quite a room cell". Note the pillar classifier already carried an
   unconditional prison-entrance exclusion for the identical reason — when a system already has
   one special case of this shape, that is where the next one belongs.)
+- **`gen.Doors` MEANS GRAPH-EDGE ENTRANCES, NOT EVERY OPENING — and a "doorway" is TWO cells.**
+  Both halves of that cost a debugging round on sewer mouths. `RecordDoor` is called only from
+  `CarveHallways`, so PRISON entrances are absent entirely (they are carved by `RecessFits` and
+  never record one), as are alcove mouths and sewer grates — each lives in its own registry. And
+  a door occupies `HallwayCell` AND `HallwayCell + Direction`, so collecting only the first
+  measures a room-side position from across the threshold and it lands a cell nearer than it
+  looks. The symptom was a grate beside a prison archway **however high the clearance was set** —
+  raising it to 10 only "worked" because a Chebyshev box that size around an UNRELATED door
+  happened to cover the spot, which is the tell for measuring against the wrong set rather than
+  measuring too little. NB `HasDoor` is only a flag ON a recorded entrance (physical door vs
+  open arch), so archways ARE in `Doors` and always were. `RoomPropPlacer` gathers thresholds
+  from five separate sources by hand — that accumulation is the pattern, not an oversight.
+- **DECIDE VIABILITY BEFORE MUTATING SHARED STATE; DO NOT BUILD A LONGER UNDO.** Sewer networks
+  carved their chambers before the "can anyone get in" test, and a discarded network's undo
+  reverted the grid and the cell registry but NOT the `crawlMouths` entries that chamber carving
+  also adds. Sixty-four abandoned networks left ~200 phantom mouths in the world-spacing set,
+  which then rejected real mouths on the networks that SURVIVED — every one ended up with
+  exactly one mouth against a budget of four. **The tell was two numbers that should have
+  matched and didn't**: 253 chambers reported carved while the finished networks held 14.
+  Reordering so the survival test runs before anything carves left nothing to undo but the cell
+  registry; extending the undo would have worked and stayed one forgotten line away from
+  breaking again. Whenever a pass can ABANDON its work, count what it produced against what it
+  kept — that comparison is what makes this class of leak visible at all.
 - **A PASS THAT WRITES THE CELLTYPE IT READS WILL FEED ON ITSELF.** Both new corridor
   features hit this, one stage apart, and it is a property of the shape rather than a slip.
   **Alcoves** are typed `Hallway` (that's what gets them free walls and floors), so an
