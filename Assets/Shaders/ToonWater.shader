@@ -33,10 +33,30 @@ Shader "Dungeon/ToonWater"
         _DepthStrength ("Depth Influence", Range(0, 1)) = 1
 
         [Header(Surface Motion)]
+        // WORLD SPACE IS THE DEFAULT, AND IT IS WHAT LETS SEVERAL PLANES READ AS ONE BODY
+        // OF WATER. Driven by mesh UV (and object space, for the swell) every plane runs an
+        // identical copy of the pattern starting from its own origin, so a run of pipe
+        // sections shows a hard phase discontinuity at every join — the pattern RESTARTS
+        // rather than continuing. Sampled in world XZ instead, a plane's ripples depend only
+        // on where it sits in the dungeon, so identical planes laid end to end tile
+        // seamlessly however they are placed. Same reason GroundFog samples its noise in
+        // world XZ (§6).
+        //
+        // TURN IT OFF for water that MOVES — a carried or animated surface would otherwise
+        // swim through a static pattern instead of taking it along. Also for a single small
+        // curved mesh (a fountain bowl), where authored UVs follow the shape and world XZ
+        // projects badly on the near-vertical parts.
+        //
+        // RETUNE THE SCALES WHEN SWITCHING. Mesh UV runs 0..1 across a whole plane; world XZ
+        // is in METRES, so on a 3m cell the same number tiles roughly 3x as often. Expect to
+        // divide the ripple scales rather than nudge them — hence the range reaching well
+        // below 1. In world mode the _BumpMap tiling/offset is bypassed and the ripple
+        // scales are the only tiling dial.
+        [Toggle] _WorldSpaceMotion ("Ripples in World Space (seamless across planes)", Float) = 1
         _BumpMap ("Ripple Normal Map", 2D) = "bump" {}
         _BumpScale ("Ripple Strength", Range(0, 2)) = 0.55
-        _RippleScaleA ("Ripple Scale A", Range(0.1, 20)) = 3
-        _RippleScaleB ("Ripple Scale B", Range(0.1, 20)) = 5.5
+        _RippleScaleA ("Ripple Scale A", Range(0.01, 20)) = 3
+        _RippleScaleB ("Ripple Scale B", Range(0.01, 20)) = 5.5
         _RippleSpeedA ("Ripple Speed A", Vector) = (0.03, 0.02, 0, 0)
         _RippleSpeedB ("Ripple Speed B", Vector) = (-0.02, 0.035, 0, 0)
 
@@ -142,6 +162,7 @@ Shader "Dungeon/ToonWater"
                 half   _FresnelAmount;
                 half   _FresnelPower;
                 half   _WaveAmplitude;
+                half   _WorldSpaceMotion;
                 half   _WaveFrequency;
                 half   _WaveSpeed;
             CBUFFER_END
@@ -187,7 +208,8 @@ Shader "Dungeon/ToonWater"
             half BandValue(half x, half bands)
             {
                 if (bands < 0.5h) return x;
-                return floor(saturate(x) * bands) / max(bands - 1.0h, 1.0h);
+                half idx = min(floor(saturate(x) * bands), bands - 1.0h);
+                return idx / max(bands - 1.0h, 1.0h);
             }
 
             void ShadeLight(Light light, half3 normalWS, half3 viewDir,
@@ -219,11 +241,18 @@ Shader "Dungeon/ToonWater"
                 // Vertex swell, along the surface normal so it works on a basin
                 // that isn't axis-aligned. Two incommensurate sines again, so a
                 // fountain never pulses in an obvious rhythm.
+                //
+                // THE PHASE MUST COME FROM THE SAME SPACE THE RIPPLES DO, or the seam only
+                // half closes: world-space ripples over an object-space swell leaves the
+                // GEOMETRY disagreeing about height at a shared edge even while the normals
+                // line up. Sampled UNDISPLACED, so the wave cannot feed on its own output.
                 if (_WaveAmplitude > 0.0001h)
                 {
                     float t = _Time.y * _WaveSpeed;
-                    float w = sin(positionOS.x * _WaveFrequency + t)
-                            * cos(positionOS.z * _WaveFrequency * 0.83 + t * 1.31);
+                    float3 restWS = TransformObjectToWorld(positionOS);
+                    float2 p = _WorldSpaceMotion > 0.5h ? restWS.xz : positionOS.xz;
+                    float w = sin(p.x * _WaveFrequency + t)
+                            * cos(p.y * _WaveFrequency * 0.83 + t * 1.31);
                     positionOS += input.normalOS * (w * _WaveAmplitude);
                 }
 
@@ -244,8 +273,16 @@ Shader "Dungeon/ToonWater"
 
                 // --- Ripples: one map, two scrolls. Averaging two tangent-space
                 // normals is cheap and the beat between them hides the tiling.
-                float2 uvA = input.uv * _RippleScaleA + _Time.y * _RippleSpeedA.xy;
-                float2 uvB = input.uv * _RippleScaleB + _Time.y * _RippleSpeedB.xy;
+                //
+                // WORLD XZ SO SEPARATE PLANES READ AS ONE BODY OF WATER. Mesh UV is an
+                // island per plane, so every section runs an identical copy of the pattern
+                // from the same phase and it RESTARTS at each join — which reads as a seam
+                // in the geometry rather than as a shader setting. In world mode the
+                // _BumpMap tiling/offset is deliberately bypassed, so the ripple scales are
+                // the only tiling dial rather than two numbers that multiply.
+                float2 motionUV = _WorldSpaceMotion > 0.5h ? input.positionWS.xz : input.uv;
+                float2 uvA = motionUV * _RippleScaleA + _Time.y * _RippleSpeedA.xy;
+                float2 uvB = motionUV * _RippleScaleB + _Time.y * _RippleSpeedB.xy;
                 half3 nA = UnpackNormalScale(SAMPLE_TEXTURE2D(_BumpMap, sampler_BumpMap, uvA), _BumpScale);
                 half3 nB = UnpackNormalScale(SAMPLE_TEXTURE2D(_BumpMap, sampler_BumpMap, uvB), _BumpScale);
                 half3 normalTS = normalize(half3(nA.xy + nB.xy, nA.z * nB.z));

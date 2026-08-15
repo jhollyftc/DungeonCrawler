@@ -1035,6 +1035,30 @@ or they don't look like they belong to the same world:
   well along the waterline and no bevel is needed. **A plausible mechanism that explains the
   symptom is not evidence**, and it is worth noticing when one is being reached for in place
   of a test (§12).
+  **SURFACE MOTION IS SAMPLED IN WORLD XZ (`_WorldSpaceMotion`, default ON) SO SEPARATE PLANES
+  READ AS ONE BODY OF WATER.** Crawlways are watered one plane per pipe section, and driven
+  from mesh UV every plane runs an identical copy of the ripple pattern from its own origin —
+  so the pattern RESTARTS at each join. **The symptom reads as a geometry seam, not as a
+  shader setting**, which is what makes it hard to place: the planes are lined up correctly
+  and the discontinuity is in the PHASE. Same reasoning as `GroundFog` sampling its noise in
+  world XZ below.
+  **BOTH the fragment ripple UVs AND the vertex swell must use the same space**, or the fix
+  half-lands: world ripples over an object-space swell leaves the geometry disagreeing about
+  height at a shared edge while the normals line up, which is a subtler version of the same
+  seam and looks like a mesh problem. The swell samples the UNDISPLACED world position so the
+  wave cannot feed on its own output.
+  **Switching spaces means RETUNING the ripple scales by a large factor, not nudging them** —
+  mesh UV runs 0..1 across a whole plane, world XZ is in metres, so at a 3m section the same
+  number tiles roughly 3x as often (hence the range now reaching to 0.01). In world mode the
+  `_BumpMap` tiling/offset is deliberately bypassed so the ripple scales are the only tiling
+  dial rather than two numbers that multiply. Turn the toggle OFF for water that MOVES (a
+  static world pattern would swim past it) and for a single curved mesh whose authored UVs
+  follow the shape. A `[Toggle]` uniform branch rather than a `shader_feature`, for the
+  variant-count reason `_OutlineEnabled` carries above.
+  The depth side needed no change and is worth knowing: `waterDepth`, the shallow/deep blend
+  and the foam band all come from `screenPos` + `SampleSceneDepth`, so they were already
+  scene-global and continuous. **If a seam is a FOAM break rather than a ripple
+  discontinuity, this is not the cause** and the planes really are misaligned.
 - **`Dungeon/GroundFog`** — ankle-height drifting mist, driven by an editor-authored
   `ParticleSystem` (see `GroundFog.cs` in §10). **BILLBOARDS, and the reason is
   structural, so don't "simplify" it back to planes:** floor-parallel planes read well
