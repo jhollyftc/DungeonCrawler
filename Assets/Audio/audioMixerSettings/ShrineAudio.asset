@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8e27e0b293a2d5346930bbb573a59285, type: 3}
   m_Name: ShrineAudio
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.AudioProfile
-  ambientBaseLayer: {fileID: 8300000, guid: 67a83247ccda9cb4d9c58d39379f4cee, type: 3}
-  ambientRoomLayer: {fileID: 8300000, guid: 4783e211394c29941b0a704c2e28dd7a, type: 3}
+  ambientBaseLayer: {fileID: 8300000, guid: 4783e211394c29941b0a704c2e28dd7a, type: 3}
+  ambientRoomLayer: {fileID: 0}
   oneShotPool:
   - {fileID: 8300000, guid: a6fa60769fab64443bf94db93fa98484, type: 3}
   - {fileID: 8300000, guid: 5ae6696e4aa1cfc469e114ad6b61662d, type: 3}
@@ -25,7 +25,16 @@ MonoBehaviour:
     minDistance: 0.5
     maxDistance: 15
     rolloff: 0
+    customRolloff: 0
+    rolloffCurve:
+      serializedVersion: 2
+      m_Curve: []
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
     spread: 30
+  oneShotHeightRange: {x: 0.05, y: 0.85}
+  floorSurface: 0
   overrideReverb: 0
   reverb:
     decayTime: 1.2

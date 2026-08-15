@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e27e0b293a2d5346930bbb573a59285, type: 3}
+  m_Name: libraryAudio
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.AudioProfile
+  ambientBaseLayer: {fileID: 8300000, guid: 67a83247ccda9cb4d9c58d39379f4cee, type: 3}
+  ambientRoomLayer: {fileID: 0}
+  oneShotPool:
+  - {fileID: 8300000, guid: bf08020546eb13e4ca672a13b4a275f7, type: 3}
+  - {fileID: 8300000, guid: 779071525b7be92458fc209123477706, type: 3}
+  - {fileID: 8300000, guid: 852c52b80c27ba549a44f060a799edbd, type: 3}
+  oneShotIntervalRange: {x: 3, y: 10}
+  oneShotSpatial:
+    spatialBlend: 1
+    minDistance: 0.5
+    maxDistance: 15
+    rolloff: 0
+    spread: 30
+  floorSurface: 0
+  overrideReverb: 0
+  reverb:
+    decayTime: 1.1
+    room: -1400
+    roomHF: -1400
+  musicTensionBaseline: 0
+  voicePriority: 64

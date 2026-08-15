@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 8883365186652778164}
   - component: {fileID: 6596756770625997386}
   - component: {fileID: 6183282446743997852}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: Torch Flame
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -27,7 +27,7 @@ Transform:
   m_GameObject: {fileID: 6599778238374898468}
   serializedVersion: 2
   m_LocalRotation: {x: 0.5, y: -0.5, z: -0.5, w: 0.5}
-  m_LocalPosition: {x: -0.00603, y: 0, z: 0.0027}
+  m_LocalPosition: {x: -0.00603, y: 0, z: 0.0037}
   m_LocalScale: {x: 0.02, y: 0.02, z: 0.02}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -41,7 +41,7 @@ VisualEffect:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6599778238374898468}
   m_Enabled: 1
-  m_Asset: {fileID: 8926484042661614526, guid: b115c9772b222b54f9c45632f4e3739e, type: 3}
+  m_Asset: {fileID: 8926484042661614526, guid: ebd5a981454a5ee469020b769db4f3c9, type: 3}
   m_InitialEventName: OnPlay
   m_InitialEventNameOverriden: 0
   m_StartSeed: 0
@@ -130,7 +130,7 @@ GameObject:
   - component: {fileID: 3462035639828221848}
   - component: {fileID: 6252908791327904537}
   - component: {fileID: 8402516255351547328}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: Point Light
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -314,6 +314,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Torch_Wall_Prefab
       objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: cc74a13b3bcf96546bc5d4ee496c6e68, type: 3}
+      propertyPath: m_Layer
+      value: 10
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects:
@@ -323,8 +327,74 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: cc74a13b3bcf96546bc5d4ee496c6e68, type: 3}
       insertIndex: -1
       addedObject: {fileID: 8883365186652778164}
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: cc74a13b3bcf96546bc5d4ee496c6e68, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7630479157994776584}
   m_SourcePrefab: {fileID: 100100000, guid: cc74a13b3bcf96546bc5d4ee496c6e68, type: 3}
+--- !u!1 &264709319484758466 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: cc74a13b3bcf96546bc5d4ee496c6e68, type: 3}
+  m_PrefabInstance: {fileID: 1111551730410251411}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &7630479157994776584
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 264709319484758466}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88f8197edb5f08641b13ec9813b5c284, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.TorchAudioPool
+  settings:
+    loopClips:
+    - {fileID: 8300000, guid: d7fb08120a2870e42a301a05f6972981, type: 3}
+    mixerGroup: {fileID: 6269421025260503202, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
+    voices: 5
+    maxDistance: 6
+    minDistance: 0.5
+    customRolloff: 1
+    rolloff:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.30718714
+        value: 0.23305836
+        inSlope: -0.6681759
+        outSlope: -0.6681759
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.5845028
+        outWeight: 0.12579513
+      - serializedVersion: 3
+        time: 1
+        value: 0
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    volume: 0.2
+    spread: 35
+    pitchRange: {x: 0.92, y: 1.08}
+    reassignInterval: 0.25
+    stealMargin: 2
 --- !u!4 &641691571626935160 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: cc74a13b3bcf96546bc5d4ee496c6e68, type: 3}

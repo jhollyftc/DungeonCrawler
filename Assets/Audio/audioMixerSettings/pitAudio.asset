@@ -25,7 +25,15 @@ MonoBehaviour:
     minDistance: 0.5
     maxDistance: 10
     rolloff: 0
+    customRolloff: 0
+    rolloffCurve:
+      serializedVersion: 2
+      m_Curve: []
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
     spread: 30
+  oneShotHeightRange: {x: 0.05, y: 0.05}
   floorSurface: 7
   overrideReverb: 1
   reverb:

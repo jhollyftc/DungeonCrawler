@@ -22,13 +22,26 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 96a0c1453bf1a164e893c09cc5bae0dc, type: 3}
   - {fileID: 8300000, guid: 034d0b42a2dd8db448015a790ad0cecb, type: 3}
   - {fileID: 8300000, guid: 49eba15f23470cc4282845b44507a87c, type: 3}
-  oneShotIntervalRange: {x: 5, y: 10}
+  - {fileID: 8300000, guid: ff3171be87961e742b13eee97c0c87a8, type: 3}
+  - {fileID: 8300000, guid: 8f1b274ce2ab08049a5a7118149b952e, type: 3}
+  - {fileID: 8300000, guid: 3d20543202311ea4e83aba6c4545e78d, type: 3}
+  - {fileID: 8300000, guid: 535b067b08afa1a459191897e99e6b4c, type: 3}
+  oneShotIntervalRange: {x: 5, y: 8}
   oneShotSpatial:
     spatialBlend: 1
     minDistance: 0.5
     maxDistance: 15
     rolloff: 0
+    customRolloff: 0
+    rolloffCurve:
+      serializedVersion: 2
+      m_Curve: []
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
     spread: 30
+  oneShotHeightRange: {x: 0.05, y: 0.85}
+  floorSurface: 0
   overrideReverb: 1
   reverb:
     decayTime: 1.1
