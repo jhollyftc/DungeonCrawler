@@ -631,6 +631,10 @@ PrefabInstance:
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
+      propertyPath: m_Materials.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7073330825225213918, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 52094619f683e854f8abe4c4f904ccf2, type: 2}
@@ -684,7 +688,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Name
-      value: MagicalDoor_Prefab_PhysicsBased 1
+      value: MagicalDoor_Prefab_PhysicsBased
       objectReference: {fileID: 0}
     - target: {fileID: 8730641950739346955, guid: 06f9535e98c6c684e974704ecfb27972, type: 3}
       propertyPath: m_Layer
