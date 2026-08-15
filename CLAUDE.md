@@ -360,6 +360,23 @@ GEOMETRY rather than by a rule anyone maintains** — an escape route they canno
   host cell is the BORE cell, i.e. solid rock, so the one-opening rule ("touch no open cell but
   h") yields a fully sealed pocket for free. A prison, an alcove and a sewer chamber are the same
   primitive with different hosts.
+- **CHAMBER THROUGH-ROUTES ARE COMMON, AND THE REASON IS `RecessFits`' BLIND SPOT.** A chamber may
+  gain extra grates onto any OTHER tunnel its footprint already touches (`AddChamberThroughRoutes`,
+  `sewerChamberThroughChance`), turning a detour you back out of into a route you pass through —
+  the same rule the bore itself follows. They are frequent rather than rare because the one-opening
+  rule forbids a footprint touching any OPEN cell but its host, and **bore cells are
+  `CellType.Empty`**, so nothing ever stopped a chamber being carved hard against two or three
+  other tunnels. Small ones in particular end up wedged between passages. The opportunity was
+  already there; the feature only stopped throwing it away.
+  **`CrawlwayChamber.Openings` is a LIST, primary first**, and `Dir`/`MouthCell` deliberately stay
+  the ORIGINAL entrance so `RecessPropPlacer` keeps a stable frame to orient its hero prop by once
+  a chamber has several ways in.
+- **`crawlMouthFaces` IS A SET OF (cell, direction) FACES, NOT OF CELLS.** `crawlMouths` answers
+  "does this cell have a grate" for spacing; the face set answers "is THIS WALL the grate", which
+  is what the mesher and kit placer need — a chamber cell with two openings is one cell and two
+  suppressed faces, and a cell-keyed test would blank a wall that should be masonry. Two registries
+  for one feature looks redundant until a cell has more than one opening, which through-routes made
+  the normal case.
 - **A chamber is a DISCONNECTED NAVMESH ISLAND, by construction** — 1.5m of tube bakes nothing
   walkable, so a mob inside can never leave. Free mob-pen behaviour, but NPC spawning (roadmap
   26) must know, or it will place roamers somewhere they can only stand still. The same
@@ -379,14 +396,55 @@ GEOMETRY rather than by a rule anyone maintains** — an escape route they canno
   return would floor the drain shut before anything else looked. Kept out of the prison's
   doorway tile, which on a wide prison is the entire width of the entrance — you would fall in
   walking past rather than choosing to go down.
-- **`NeighbourMask` COUNTS TUNNELS, NOT OPENINGS — this blind spot has now bitten three times.**
+- **MANHOLE SPACING IS ONE PER PRISON, AND THE RANKING IS WHY IT WAS NEEDED.** Two drains
+  generated side by side in one cell, which reads as a fault rather than as two ways down. The
+  per-network budget was never protection: candidates are sorted by TUNNEL NEIGHBOUR COUNT, so a
+  junction under a wide prison offers several ADJACENT bore cells scoring identically well and
+  the greedy fill takes both — the ranking was actively steering the two picks to the same spot.
+  Worth remembering as a shape: **a quality ranking with no diversity term clusters by
+  construction**, and rarity then only makes the clustering rare rather than impossible, which
+  is why it presents as a freak seed. `PrisonAt` identity is the primary rule;
+  `sewerManholeSpacing` (Chebyshev) backs it up for what identity cannot see — two NEIGHBOURING
+  prisons each placing one against their shared wall, and two different NETWORKS doing the same,
+  since `crawlManholes` spans networks exactly as the mouth spacing sets do.
+- **`NeighbourMask` COUNTS TUNNELS, NOT OPENINGS — this blind spot has now bitten FOUR times.**
   Piece selection reads a 4-bit mask of adjacent BORE CELLS, and every opening that is not
   another length of tube is invisible to it: a **chamber** (walled off behind a straight), a
   **grate** (a bore cell with a mouth and one tunnel reads as popcount 1 and takes a DEAD-END
   CAP, sealing the entrance while the network visibly continues), and the **manhole's lid**
-  (which is not horizontal at all, so the manhole overrides piece selection outright). Every
-  non-tunnel opening must be added to `want` by hand. More than four openings falls back to a
-  cross rather than refusing to place — slightly wrong beats a literal hole in the tunnel.
+  (which is not horizontal at all, so the manhole overrides piece selection outright), and now
+  the manhole's **BLANK PLATES**, which needed the same list read the other way round — see
+  below. Every non-tunnel opening must be added to `want` by hand. More than four openings falls
+  back to a cross rather than refusing to place — slightly wrong beats a literal hole in the
+  tunnel.
+  **`CrawlwaySpec.NonTunnelOpenings` IS THE SINGLE DECLARATION POINT, and that is the fix for
+  the recurrence.** The first three instances were each found and patched SEPARATELY at the call
+  site, which is exactly why there was a third and a fourth. Collected in one method, a fifth
+  kind of opening becomes correct everywhere at once — so add it THERE rather than at whichever
+  consumer noticed.
+- **BLANK PLATES SEAL THE FACES THE MANHOLE HAS AND THE CELL DOES NOT USE**
+  (`kit.crawlwayBlankPrefabs`). The manhole is forced to a 4-way whatever the cell connects to,
+  which is deliberate — it lets the generator leave in any direction — but a manhole in a dead
+  end then has up to three openings staring into rock.
+  **It is the ONE consumer that reads `NonTunnelOpenings` to keep a face OPEN rather than to open
+  one**, and getting that backwards would brick up the very grate the network needs. Only the
+  manhole is eligible, and the reason generalises: every other piece is CHOSEN from the openings,
+  so its geometry and the cell's connections agree by construction and there is nothing to seal.
+  A future forced piece joins here.
+- **A CHAMBER OPENING ROLLS FOR ITS GRATE (`sewerChamberGrateChance`); NETWORK WALL MOUTHS NEVER
+  DO.** Once chambers gained through-routes the grate count per run multiplied and wrenching each
+  one stopped being a moment and became a toll — the dead-end crawlway failure arriving from the
+  other side, and the same lesson: **a decision about a SLOW interaction is really a decision
+  about whether players will do it twice.** An opening you simply crawl through costs nothing and
+  is what makes the barred one worth noticing. Wall mouths are the entrance to the whole system
+  and stay barred, which is the one place the wrench is the point.
+  `crawlwayOpenMouthPrefabs` takes a purpose-built bar-less frame; with none authored the grated
+  piece is placed and `CrawlwayGrate.RemoveGrate()` strips the bars, so the feature degrades
+  gracefully like every other kit slot. **RemoveGrate DESTROYS the component rather than
+  disabling it** — `PlayerInteractor` resolves with `GetComponentInParent<IInteractable>()`, which
+  finds DISABLED components, so a merely-disabled grate still offers its prompt on an opening
+  with no bars left to pull. Worth knowing for anything else being "turned off" that an
+  interactor might still resolve.
 - **`RecessFits` CANNOT SEE TUNNELS.** It tests `Grid[pos] != CellType.Empty`, and a bore cell
   IS Empty — the grid-invisible design again — so a chamber footprint will swallow the tunnel it
   hangs off and pipes render straight through the room. Filtered at the CALLER: teaching
@@ -574,6 +632,22 @@ colliders/lights/logic). Four **PropTier**s:
 **Tier assignment rule:** "is this mesh one of many identical *static* copies?"
 decides instanced-vs-GameObject, independent of what it does. High-count static →
 instanced; movers/interactives → GameObject.
+
+**A PIECE WITH A MOVING PART CANNOT BE INSTANCED — this has now bitten FOUR times and the
+symptom is identical every time.** `InstancedDungeonRenderer.Commit()` is additive with **no
+removal path**, and the instanced tiers harvest the MESH into a static matrix while
+`PropInstancer` keeps custom components on the COLLIDER GameObject. So everything works except
+the pixels: the collider detaches and moves, the script runs, the audio plays, the interaction
+completes — and the visible mesh stays welded exactly where it was placed. Field-reported as
+**"I can turn the collider gizmo on and see it moving around, but the rendered mesh doesn't"**,
+which is the phrase to recognise. Carryables, destructibles, wall grates and the manhole cover
+each hit it independently.
+**The detection is now a runtime check, not a rule to remember**: the crawlway placer tests
+`prefab.GetComponentInChildren<CrawlwayGrate>(true)` and promotes that piece to
+`FullGameObject`, keeping the instanced path for the purely decorative variants. Prefer that
+shape — a piece declares its own tier by what it CARRIES — over documenting a rule the next
+author has to know. Note the check must be per-PREFAB, not per-slot: within one weighted pool a
+grated and an ungrated variant legitimately want different tiers.
 
 **A VFX GRAPH PROPERTY CONSUMED IN *INITIALIZE* IS READ ONCE PER PARTICLE, AT BIRTH — TO
 ANIMATE LIVE PARTICLES IT MUST BE IN *UPDATE* (or Output).** Cost a real debugging round
@@ -3325,16 +3399,27 @@ Cosmetic-first; combat is far off ("get the world together first").
     which made the "pointless shortcut between two hallways" inexpressible instead of merely
     rejected. Branching trees with chambers, a small budget of wall grates, and **one-way
     MANHOLES** down from prison floors. §4 has the design and the four bugs testing it found.
-    ⏳ open: the manhole COVER as a liftable grate (CrawlwayGrate only knows about a wall grate
-    that falls into the open cell; a cover lifts up out of a floor and "which way it falls" means
-    nothing for it).
-    ⏳ open: **phase 3** — the grate as an interactable (NOT a `PhysicsDoor`: a hinged door
-    swinging into a 1.5m bore fills it, and the standoff jam is worse where there is no room to
-    step back — swing it outward or lift it away, `HingedDoor` is the precedent); an `AudioSpace`
-    resolution for a bore (the one space with no room to measure, so tight and dry);
-    `FootstepSurface` for the tube; dead-end crawlways holding a cache, which turns the
-    rejection path into content; claiming the mouth face before `RecessPropPlacer` so an alcove
-    grate and its hero prop stop competing for the same wall.
+    ✅ **phase 3 — `CrawlwayGrate`**, the grate as an interactable. NOT a `PhysicsDoor` (a hinged
+    door swinging into a 1.5m bore fills it, and the standoff jam is worse where there is no room
+    to step back): you GRIP it and build strain until it gives, then it becomes a `Carryable`.
+    `GrateMode` splits the two shapes — a **WallGrate** falls into the open cell, a **FloorCover**
+    is hauled straight up, where "which way it falls" means nothing. The cover is resisted by a
+    **camera PITCH TETHER**: you look up against it and the effort itself is the input, which is
+    what made lifting read as lifting rather than as holding a button. `SetPitchTether` and
+    `LookPitchDelta` join the frame-stamped family (`CameraKick.SetSustained`,
+    `PlayerFov.AddOffset`, `SetSustainedVelocity`) — stop calling and it eases home, so an
+    interrupted lift cannot leave the camera leashed, which is exactly how `SetAttackPose`'s LATCH
+    once stuck a sword mid-pose. `LookPitchDelta` is also another INTENT reading (§10's
+    `IMoveIntent`): it measures effort against something you are pressed against, where achieved
+    pitch collapses to zero at the tether's limit.
+    ✅ mouth faces recorded as DENIED and CLAIMED before `RecessPropPlacer`, so an alcove grate and
+    its hero prop stop competing for the same wall; chamber openings roll for a grate; blank plates
+    cap a manhole's unused faces; manholes no longer cluster in one prison.
+    ⏳ open: an `AudioSpace` resolution for a bore (the one space with no room to measure, so tight
+    and dry); `FootstepSurface` for the tube; dead-end crawlways holding a cache, which turns the
+    rejection path into content; NPCs breaking grates (`CrawlwayGrate.Break()` is public for it,
+    nothing calls it); the ONE-WAY VALVE idea in `CRAWLWAY_PLAN.md` — a chamber you drop into whose
+    exit grate only opens from the inside.
     ⏳ open: the same clustering applied to FLOORS and ceilings — `ValueNoise` is already
     generic and the floor pick is the same uniform `Hash % length`; per-kind kit walls and
     floors for alcoves; an arch on the alcove mouth (pay the `BuildArchways` + `FrameFace`
