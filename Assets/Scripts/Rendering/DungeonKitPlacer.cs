@@ -134,6 +134,12 @@ namespace DungeonGen
         public GameObject[] crawlwayManholePrefabs;
         [Tooltip("WEIGHTED variants for manholes. Same rules as the straight variants.")]
         public WeightedPrefab[] crawlwayManholeVariants;
+        [Tooltip("BLANK PLATE sealing ONE unused face of a tube piece — a bricked-up end, a rusted plate, a rubble fill.\n\nWHY IT IS NEEDED: the manhole is forced to a 4-WAY whatever the cell actually connects to, because its defining opening is in the LID and the neighbour mask only describes horizontal faces. That is deliberate — a 4-way lets the generator leave in any direction — but it means a manhole in a dead end has three openings staring into solid rock. A blank closes the ones nothing uses.\n\nAuthor facing +Z, rotated to point INTO the tube — the same convention as a wall facing the space it is seen from. Base-origin and floor-aligned like the tubes. Empty = unused faces simply stay open, which is what you have now.")]
+        public GameObject[] crawlwayBlankPrefabs;
+        [Tooltip("WEIGHTED variants for blank plates. Same rules as the straight variants.")]
+        public WeightedPrefab[] crawlwayBlankVariants;
+        [Tooltip("Nudge for a blank plate in its OWN frame: Z = further into the tube / back into the rock, Y = up, X = along the face. Rotated with the piece, so one value is correct on all four faces (the ladderOffset lesson).")]
+        public Vector3 crawlwayBlankOffset;
         [Tooltip("WEIGHTED variants for cross tubes. Same rules as the straight variants.")]
         public WeightedPrefab[] crawlwayCrossVariants;
         [Tooltip("WEIGHTED variants for dead-end caps. Same rules as the straight variants.")]
@@ -1645,6 +1651,7 @@ namespace DungeonGen
             var crossPool = MergePool(kit.crawlwayCrossPrefabs, kit.crawlwayCrossVariants);
             var capPool = MergePool(kit.crawlwayCapPrefabs, kit.crawlwayCapVariants);
             var manholePool = MergePool(kit.crawlwayManholePrefabs, kit.crawlwayManholeVariants);
+            var blankPool = MergePool(kit.crawlwayBlankPrefabs, kit.crawlwayBlankVariants);
 
             var mouthPool = MergePool(kit.crawlwayMouthPrefabs, kit.crawlwayMouthVariants);
             var openMouthPool = MergePool(kit.crawlwayOpenMouthPrefabs, kit.crawlwayOpenMouthVariants);
@@ -1661,7 +1668,7 @@ namespace DungeonGen
                 Debug.LogWarning($"[Crawlways] Only half the kit is authored — " +
                     $"{(haveTube ? "tubes are set but the MOUTH slots are empty (neither crawlwayMouthPrefabs nor crawlwayMouthVariants), so the bores have no way in — and the wall stays solid, since suppression is gated on the mouth slot" : "mouths are set but the TUBE slots are empty (neither crawlwayTubePrefabs nor crawlwayTubeVariants), so the grates open onto nothing")}.");
 
-            int tubes = 0, mouths = 0;
+            int tubes = 0, mouths = 0, blanks = 0;
             var extraOpenings = new List<Vector3Int>();   // reused per cell, not per frame
             foreach (var cw in gen.Crawlways)
             {
@@ -1693,6 +1700,7 @@ namespace DungeonGen
 
                         List<WeightedPrefab> pool = null;
                         Quaternion rot = Quaternion.identity;
+                        bool isManhole = false;
 
                         // A MANHOLE OVERRIDES THE MASK ENTIRELY, because its defining opening is
                         // in the LID and the mask only describes the four horizontal faces. Left
@@ -1703,6 +1711,7 @@ namespace DungeonGen
                         {
                             pool = manholePool;
                             rot = Quaternion.Euler(0f, 90f * (Hash(cell, 157) % 4), 0f);
+                            isManhole = true;
                         }
                         else if (!TubePieceFor(mask, extraOpenings,
                                                tubePool, cornerPool, teePool, crossPool, capPool,
@@ -1739,6 +1748,44 @@ namespace DungeonGen
                             if (mh != null) mh.OutwardDirection = Vector3.up;
                         }
                         tubes++;
+
+                        // BLANK THE FACES THE PIECE HAS AND THE CELL DOES NOT USE.
+                        //
+                        // Only the manhole can be in this state, and it is by design: the piece
+                        // is authored 4-WAY so the generator may leave in any direction, but the
+                        // cell it lands in usually connects in one or two. Every other piece is
+                        // CHOSEN from the openings, so its geometry and the cell's connections
+                        // agree by construction and there is nothing to seal. If a future piece
+                        // is ever forced the same way, this is where it joins.
+                        //
+                        // `extraOpenings` is still the cell's non-tunnel list from above, so a
+                        // chamber grate or wall grate on a manhole cell correctly counts as USED
+                        // and keeps its face open — the mask's blind spot would otherwise have
+                        // us bricking up the very opening the network needs.
+                        if (isManhole && blankPool.Count > 0)
+                        {
+                            for (int bit = 0; bit < 4; bit++)
+                            {
+                                if ((mask & (1 << bit)) != 0) continue;
+                                Vector3Int d = CrawlwaySpec.DirOfBit(bit);
+                                if (extraOpenings.Contains(d)) continue;
+
+                                GameObject bp = PickWeightedPrefab(blankPool, cell * 4 + d, 167);
+                                if (bp == null) continue;
+
+                                // Base-origin and floor-aligned like the tube, sat on the face
+                                // and facing back INTO the bore — the wall convention, so the
+                                // nudge rotates with the piece and one value is right on all
+                                // four faces (the ladderOffset lesson, §5).
+                                Quaternion brot = Quaternion.LookRotation(-(Vector3)d);
+                                Vector3 bpos = new Vector3(cell.x + 0.5f + d.x * 0.5f,
+                                                           cell.y,
+                                                           cell.z + 0.5f + d.z * 0.5f) * cellSize
+                                             + brot * kit.crawlwayBlankOffset + parent.position;
+                                PlaceOne(bp, bpos, brot, PropTier.StaticCollider);
+                                blanks++;
+                            }
+                        }
                     }
                 }
 
@@ -1811,7 +1858,8 @@ namespace DungeonGen
             }
 
             if (tubes > 0 || mouths > 0)
-                Debug.Log($"[Dungeon] {gen.Crawlways.Count} crawlway(s): {tubes} tube piece(s), {mouths} mouth(s).");
+                Debug.Log($"[Dungeon] {gen.Crawlways.Count} crawlway(s): {tubes} tube piece(s), {mouths} mouth(s)" +
+                          (blanks > 0 ? $", {blanks} blanked face(s)." : "."));
             return root;
         }
 
