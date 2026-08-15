@@ -51,6 +51,12 @@ namespace DungeonGen
         [Tooltip("No prison may be placed within this many cells (XZ) of a staircase.")]
         public int prisonStairClearance = 2;
 
+        [Header("Satellite closets")]
+        [Tooltip("Satellite width in tiles, ACROSS the door.\n\nA width above 1 gets a 1x1 VESTIBULE and widens behind it, exactly as a wide prison does — and for the same hard reason, not for looks: SatelliteFits requires the footprint to touch the host on EXACTLY ONE cell, so a wide slab laid flat against the host wall touches it several times over and is always rejected. Set back by one tile, the wide part's near neighbours are the solid rock either side of the doorway.")]
+        public Vector2Int satelliteWidthRange = new Vector2Int(1, 2);
+        [Tooltip("Satellite depth in tiles, away from the host wall. For a WIDE closet this is the depth BEHIND the vestibule, so total depth is this + 1; for a width-1 closet it is the whole depth. Kept meaning 'how deep is the room you stand in' rather than 'how far from the host', so the number reads the same either way — the same convention prisonDepthRange uses.")]
+        public Vector2Int satelliteDepthRange = new Vector2Int(2, 3);
+
         [Header("Room pits")]
         [Tooltip("Cut chasms across room floors, carve the space below, span them with a bridge and mount a climb-out ladder. Rooms only — a corridor cell must have solid rock above AND below it, so open-under-open cannot exist in a hallway.")]
         public bool placePits = true;
@@ -1440,29 +1446,50 @@ namespace DungeonGen
 
         void TryAttachSatellite(Room host, RoomType satType)
         {
-            // Satellite is 1 cell wide on the shared-wall axis (so exactly one
-            // cell touches the host — a clean single doorway with no side gaps)
-            // and 2 deep away from the host. A little closet.
             var dirs = new[] { Vector3Int.right, Vector3Int.left,
                                new Vector3Int(0,0,1), new Vector3Int(0,0,-1) };
             int rot = rng.Next(0, 4);
 
-            for (int di = 0; di < 4; di++)
-            {
-                Vector3Int d = dirs[(di + rot) % 4];
-                if (TryAttachOnSide(host, satType, d)) return;
-            }
+            // THREE DRAWS, ALWAYS, BEFORE ANY REJECTION — the discipline PlacePrisons
+            // documents. Every loop below retries at a smaller size, and re-rolling per
+            // attempt would make the number of rng draws depend on how many attempts a host
+            // happened to need, which shifts the stream for every later stage and breaks
+            // (seed, depth) determinism (golden rule 4).
+            int wRoll = rng.Next(cfg.satelliteWidthRange.x, cfg.satelliteWidthRange.y + 1);
+            int depthRoll = rng.Next(cfg.satelliteDepthRange.x, cfg.satelliteDepthRange.y + 1);
+            double offsetRoll = rng.NextDouble();
+
+            int wMin = Mathf.Max(1, Mathf.Min(cfg.satelliteWidthRange.x, wRoll));
+            int depthMin = Mathf.Max(1, Mathf.Min(cfg.satelliteDepthRange.x, depthRoll));
+
+            // SHRINK TO FIT, like prisons, alcoves and sewer chambers: an authored size is a
+            // WISH, not a requirement, so thin rock gives a smaller closet rather than none.
+            // Width is surrendered before depth (the inner loop), matching prisons — a narrow
+            // deep closet still reads as a room you step into, where a wide shallow one reads
+            // as a slot cut in the wall.
+            for (int depth = Mathf.Max(1, depthRoll); depth >= depthMin; depth--)
+                for (int w = Mathf.Max(1, wRoll); w >= wMin; w--)
+                {
+                    int offset = Mathf.Clamp((int)(offsetRoll * w), 0, w - 1);
+                    for (int di = 0; di < 4; di++)
+                    {
+                        Vector3Int d = dirs[(di + rot) % 4];
+                        if (TryAttachOnSide(host, satType, d, w, depth, offset)) return;
+                    }
+                }
         }
 
-        bool TryAttachOnSide(Room host, RoomType satType, Vector3Int d)
+        bool TryAttachOnSide(Room host, RoomType satType, Vector3Int d, int w, int depth, int offset)
         {
             BoundsInt hb = host.Bounds;
             int y0 = hb.yMin;
-            int depth2 = 2; // depth away from host wall
 
             bool alongX = d.z != 0; // wall runs along X when facing +/-Z
             int runMin = alongX ? hb.xMin : hb.zMin;
             int runMax = alongX ? hb.xMax : hb.zMax;
+
+            // Width axis: perpendicular to d, in the horizontal plane.
+            Vector3Int perp = alongX ? Vector3Int.right : new Vector3Int(0, 0, 1);
 
             for (int along = runMin; along < runMax; along++)
             {
@@ -1474,20 +1501,41 @@ namespace DungeonGen
                     : new Vector3Int(d.x > 0 ? hb.xMax - 1 : hb.xMin, y0, along);
                 if (!host.Contains(doorHostCell)) continue;
 
-                // Satellite footprint: 1 wide (aligned to the door cell), depth2 deep.
-                Vector3Int satOrigin = alongX
-                    ? new Vector3Int(along, y0, d.z > 0 ? hb.zMax : hb.zMin - depth2)
-                    : new Vector3Int(d.x > 0 ? hb.xMax : hb.xMin - depth2, y0, along);
-                Vector3Int satSize = alongX
-                    ? new Vector3Int(1, 1, depth2)
-                    : new Vector3Int(depth2, 1, 1);
+                // THE VESTIBULE IS WHAT MAKES A WIDE CLOSET EXPRESSIBLE AT ALL, and the reason
+                // is the same one that shaped wide prisons rather than a matter of taste. The
+                // one-shared-cell rule below is what guarantees a satellite is reached ONLY
+                // through its host — that is what makes it a closet instead of a second route
+                // — so a w-wide slab laid flat against the host wall touches the host w times
+                // and is rejected for every w > 1. Set back one tile, the wide part's near
+                // neighbours are the solid rock either side of the doorway.
+                //
+                // Width 1 keeps the old plain rectangle exactly: no vestibule, nothing about
+                // narrow satellites changes.
+                Vector3Int vestibule = doorHostCell + d;
+                bool wide = w > 1;
+                Vector3Int slabFront = wide ? vestibule + d : vestibule;
 
-                var satBounds = new BoundsInt(satOrigin, satSize);
-                if (!SatelliteFits(satBounds)) continue;
+                var cells = new List<Vector3Int>();
+                if (wide) cells.Add(vestibule);
+                for (int i = 0; i < depth; i++)
+                    for (int j = 0; j < w; j++)
+                        cells.Add(slabFront + d * i + perp * (j - offset));
 
-                Fill(satBounds, CellType.Room);
-                var satCells = new HashSet<Vector3Int>();
-                foreach (var p in satBounds.allPositionsWithin) satCells.Add(p);
+                if (!SatelliteFits(cells, doorHostCell)) continue;
+
+                Vector3Int bbMin = cells[0], bbMax = cells[0];
+                foreach (var p in cells)
+                {
+                    bbMin = Vector3Int.Min(bbMin, p);
+                    bbMax = Vector3Int.Max(bbMax, p);
+                }
+                var satBounds = new BoundsInt(bbMin, bbMax - bbMin + Vector3Int.one);
+
+                // Filled from the CELL LIST, never the bbox: a wide closet's bbox also covers
+                // the two solid corners beside the vestibule, and filling those would carve
+                // rock that the one-shared-cell check never validated.
+                var satCells = new HashSet<Vector3Int>(cells);
+                foreach (var p in cells) Grid[p] = CellType.Room;
                 Rooms.Add(new Room { Bounds = satBounds, Type = satType, Cells = satCells });
 
                 Doors.Add(new DungeonDoor
@@ -1506,10 +1554,26 @@ namespace DungeonGen
             return false;
         }
 
-        bool SatelliteFits(BoundsInt b)
+        /// <summary>
+        /// May this footprint be carved as a closet off <paramref name="doorHostCell"/>?
+        ///
+        /// TAKES A CELL LIST, NOT A BOX, since a wide satellite is a vestibule plus a slab set
+        /// back behind it — an L/T shape whose bounding box also spans the two solid corners
+        /// beside the doorway. Testing the bbox would validate rock that is never carved and
+        /// reject sites that are perfectly good.
+        ///
+        /// Deliberately NOT `RecessFits`, even though a satellite looks like a fourth caller
+        /// after prisons, alcoves and sewer chambers. That predicate requires solid ABOVE and
+        /// BELOW every cell, which a satellite genuinely does not need: it is a Room, so a
+        /// closet stacked over a corridor gets its floor from `NeedsSlabBetween`'s room-identity
+        /// rule. Reusing it would quietly reject valid sites in exchange for tidiness.
+        /// </summary>
+        bool SatelliteFits(List<Vector3Int> cells, Vector3Int doorHostCell)
         {
+            var footprint = new HashSet<Vector3Int>(cells);
+
             // Every footprint cell must be in-bounds and Empty.
-            foreach (var p in b.allPositionsWithin)
+            foreach (var p in cells)
                 if (!Grid.InBounds(p) || Grid[p] != CellType.Empty)
                     return false;
 
@@ -1519,11 +1583,11 @@ namespace DungeonGen
             int roomAdjacencies = 0;
             var dirs = new[] { Vector3Int.right, Vector3Int.left,
                                new Vector3Int(0,0,1), new Vector3Int(0,0,-1) };
-            foreach (var p in b.allPositionsWithin)
+            foreach (var p in cells)
                 foreach (var d in dirs)
                 {
                     Vector3Int nb = p + d;
-                    if (b.Contains(nb)) continue;
+                    if (footprint.Contains(nb)) continue;
                     if (!Grid.InBounds(nb)) continue;
                     CellType t = Grid[nb];
                     if (t == CellType.Room)
@@ -1552,11 +1616,20 @@ namespace DungeonGen
                                               && nb.y <= lad.BaseCell.y + lad.HeightCells;
                             if (inClimbColumn && nb + lad.WallDir == p) return false;
                         }
+
+                        // AND IT MUST BE THE HOST'S OWN DOOR CELL. Counting bare Room
+                        // adjacencies was sufficient while the footprint always started at the
+                        // host boundary and was one cell wide, so the single touch could only
+                        // ever be the host. A vestibule plus a set-back slab reaches further
+                        // into the rock and can graze a DIFFERENT room exactly once — which
+                        // would pass a bare count while the door recorded below points at a
+                        // host the closet does not actually touch.
+                        if (nb != doorHostCell) return false;
                         roomAdjacencies++;
                     }
                     else if (t != CellType.Empty) return false; // touches hallway/stair/prison -> reject
                 }
-            // Exactly one shared cell with the host (our 1-wide door edge).
+            // Exactly one shared cell with the host — the doorway, always one tile wide.
             return roomAdjacencies == 1;
         }
 
