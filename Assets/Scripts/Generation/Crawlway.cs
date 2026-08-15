@@ -34,16 +34,39 @@ namespace DungeonGen
     /// <summary>
     /// A sewer chamber: a full-height room carved off one bore cell, sealed but for its grate.
     /// </summary>
+    /// <summary>One grate between a chamber cell and a bore cell.</summary>
+    public struct ChamberOpening
+    {
+        /// <summary>The chamber cell (typed Hallway) the grate is seen from.</summary>
+        public Vector3Int ChamberCell;
+        /// <summary>Chamber → bore. The face the grate replaces.</summary>
+        public Vector3Int IntoBore;
+        public Vector3Int BoreCell => ChamberCell + IntoBore;
+    }
+
     public class CrawlwayChamber
     {
         public HashSet<Vector3Int> Cells = new HashSet<Vector3Int>();
         public BoundsInt Bounds;
-        /// <summary>The bore cell it opens off.</summary>
+        /// <summary>The bore cell it was carved off. Its PRIMARY entrance.</summary>
         public Vector3Int BoreCell;
-        /// <summary>Bore → chamber. The tube's side opening faces this way.</summary>
+        /// <summary>Bore → chamber. The frame RecessPropPlacer orients its hero prop by, so it
+        /// stays the ORIGINAL entrance even once the chamber has several.</summary>
         public Vector3Int Dir;
         /// <summary>Entry tile, <c>BoreCell + Dir</c>. On a wide chamber this is the vestibule.</summary>
         public Vector3Int MouthCell;
+
+        /// <summary>
+        /// Every grate into this chamber, primary first.
+        ///
+        /// A CHAMBER CAN TOUCH SEVERAL TUNNELS WITHOUT KNOWING IT. `RecessFits`' one-opening rule
+        /// forbids a footprint touching any OPEN cell but its host — and bore cells are
+        /// `CellType.Empty`, so nothing stops a chamber being carved hard against two or three
+        /// other tunnels. Small ones in particular end up wedged between passages with a single
+        /// way in, which makes them a detour you back out of rather than something you pass
+        /// through. Extra grates turn that into a route.
+        /// </summary>
+        public List<ChamberOpening> Openings = new List<ChamberOpening>();
     }
 
     /// <summary>
@@ -133,15 +156,6 @@ namespace DungeonGen
             return mask;
         }
 
-        /// <summary>Does a chamber open off this bore cell, and in which direction?</summary>
-        public bool ChamberAt(Vector3Int c, out Vector3Int dir)
-        {
-            foreach (var ch in Chambers)
-                if (ch.BoreCell == c) { dir = ch.Dir; return true; }
-            dir = Vector3Int.zero;
-            return false;
-        }
-
         /// <summary>Is this cell an access point, and which way does its grate face out?</summary>
         public bool MouthAt(Vector3Int boreCell, out Vector3Int outward)
         {
@@ -149,6 +163,29 @@ namespace DungeonGen
                 if (m.BoreCell == boreCell) { outward = -m.IntoRock; return true; }
             outward = Vector3Int.zero;
             return false;
+        }
+
+        /// <summary>
+        /// Every opening a bore cell has that is NOT another length of tube, as world directions
+        /// out of the cell — chamber grates and wall grates alike.
+        ///
+        /// ONE LIST, BECAUSE THE MASK'S BLIND SPOT IS ONE PROBLEM. `NeighbourMask` counts tunnel
+        /// adjacency, so anything else is invisible to piece selection: a chamber gets walled off
+        /// behind a straight, a grate gets a dead-end cap over the entrance. Three separate
+        /// things were sealed shut before this was collected in one place, each fixed
+        /// individually — so a fourth kind of opening should be added HERE and become correct
+        /// everywhere at once.
+        /// </summary>
+        public void NonTunnelOpenings(Vector3Int boreCell, List<Vector3Int> into)
+        {
+            into.Clear();
+            foreach (var ch in Chambers)
+                foreach (var op in ch.Openings)
+                    if (op.BoreCell == boreCell && !into.Contains(-op.IntoBore))
+                        into.Add(-op.IntoBore);          // bore -> chamber
+            foreach (var m in Mouths)
+                if (m.BoreCell == boreCell && !into.Contains(-m.IntoRock))
+                    into.Add(-m.IntoRock);               // bore -> open cell
         }
 
         /// <summary>World-space centre of the bore, for gizmos and distance tests.</summary>

@@ -1645,6 +1645,7 @@ namespace DungeonGen
                     $"{(haveTube ? "tubes are set but the MOUTH slots are empty (neither crawlwayMouthPrefabs nor crawlwayMouthVariants), so the bores have no way in — and the wall stays solid, since suppression is gated on the mouth slot" : "mouths are set but the TUBE slots are empty (neither crawlwayTubePrefabs nor crawlwayTubeVariants), so the grates open onto nothing")}.");
 
             int tubes = 0, mouths = 0;
+            var extraOpenings = new List<Vector3Int>();   // reused per cell, not per frame
             foreach (var cw in gen.Crawlways)
             {
                 if (haveTube)
@@ -1663,15 +1664,15 @@ namespace DungeonGen
                         // tunnel neighbours AND a chamber it is geometrically a tee already, so
                         // the mask alone would pick a straight and seal the chamber behind it.
                         int mask = cw.NeighbourMask(cell);
-                        bool hasChamber = cw.ChamberAt(cell, out Vector3Int chamberDir);
 
-                        // A GRATE IS AN OPENING THE MASK CANNOT SEE, same blind spot as a
-                        // chamber. The mask counts TUNNEL neighbours, and the cell behind a
-                        // mouth has one fewer of those than it has openings — so a bore cell
-                        // with a grate and one tunnel read as popcount 1 and took a DEAD-END
-                        // CAP, sealing the entrance while the network plainly continued behind
-                        // it. Field-reported as "a mouth with a pipe cap attached".
-                        bool hasMouth = cw.MouthAt(cell, out Vector3Int mouthDir);
+                        // EVERY OPENING THE MASK CANNOT SEE, in one list. The mask counts TUNNEL
+                        // neighbours, so chamber grates and wall grates are both invisible to it
+                        // — a bore cell with a grate and one tunnel reads as popcount 1 and takes
+                        // a DEAD-END CAP, sealing the entrance while the network plainly
+                        // continues behind it. Collected on the spec so a fourth kind of opening
+                        // becomes correct everywhere at once instead of being fixed a fourth
+                        // time here.
+                        cw.NonTunnelOpenings(cell, extraOpenings);
 
                         List<WeightedPrefab> pool = null;
                         Quaternion rot = Quaternion.identity;
@@ -1686,7 +1687,7 @@ namespace DungeonGen
                             pool = manholePool;
                             rot = Quaternion.Euler(0f, 90f * (Hash(cell, 157) % 4), 0f);
                         }
-                        else if (!TubePieceFor(mask, hasChamber, chamberDir, hasMouth, mouthDir,
+                        else if (!TubePieceFor(mask, extraOpenings,
                                                tubePool, cornerPool, teePool, crossPool, capPool,
                                                ref pool, ref rot))
                             continue;
@@ -1707,8 +1708,12 @@ namespace DungeonGen
                 if (haveMouth)
                 {
                     foreach (var m in cw.Mouths) mouths += PlaceMouth(m.OpenCell, m.IntoRock);
-                    // Each chamber's grate, seen from inside the chamber looking back at the tube.
-                    foreach (var ch in cw.Chambers) mouths += PlaceMouth(ch.MouthCell, -ch.Dir);
+                    // EVERY chamber grate, not just the one it was carved off — a chamber wedged
+                    // between tunnels can have several, which is what makes it a route rather
+                    // than a detour.
+                    foreach (var ch in cw.Chambers)
+                        foreach (var op in ch.Openings)
+                            mouths += PlaceMouth(op.ChamberCell, op.IntoBore);
                 }
             }
 
@@ -1806,8 +1811,7 @@ namespace DungeonGen
         /// where a closed form across five piece types is easy to get subtly wrong and hard to
         /// read.
         /// </summary>
-        static bool TubePieceFor(int mask, bool hasChamber, Vector3Int chamberDir,
-                                 bool hasMouth, Vector3Int mouthDir,
+        static bool TubePieceFor(int mask, List<Vector3Int> extraOpenings,
                                  List<WeightedPrefab> straight, List<WeightedPrefab> corner,
                                  List<WeightedPrefab> tee, List<WeightedPrefab> cross,
                                  List<WeightedPrefab> cap,
@@ -1818,12 +1822,11 @@ namespace DungeonGen
             for (int bit = 0; bit < 4; bit++)
                 if ((mask & (1 << bit)) != 0) want.Add(CrawlwaySpec.DirOfBit(bit));
 
-            // A CHAMBER AND A GRATE ARE BOTH OPENINGS THE MASK DOES NOT CARRY — the mask counts
-            // tunnel NEIGHBOURS, and neither of these is another length of tube. Both have to be
-            // added here or the piece seals them: a chamber gets walled off behind a straight,
-            // and a mouth gets a dead-end cap over the entrance.
-            if (hasChamber) want.Add(chamberDir);
-            if (hasMouth && !want.Contains(mouthDir)) want.Add(mouthDir);
+            // Chamber grates and wall grates, neither of which is another length of tube and so
+            // neither of which the mask carries. Without them the piece seals them shut.
+            if (extraOpenings != null)
+                foreach (var d in extraOpenings)
+                    if (!want.Contains(d)) want.Add(d);
 
             List<WeightedPrefab> chosen;
             Vector3[] canonical;

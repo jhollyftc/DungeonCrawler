@@ -120,6 +120,10 @@ namespace DungeonGen
         public int sewerMouthWorldSpacing = 6;
         [Tooltip("Minimum cells ALONG THE NETWORK between two of its own grates.\n\nBoth spacings are needed and they catch different things: world spacing alone permits two grates on opposite sides of one wall, and network spacing alone permits two grates a long crawl apart that open into the same corridor a few metres from each other. Together they are the honest statement of 'do not put two doors in the same place' — which is what the old detour ratio was reaching for from the wrong end.")]
         public int sewerMouthNetworkSpacing = 10;
+        [Tooltip("Chance PER TOUCHING TUNNEL that a chamber gets an extra grate, letting the player pass THROUGH it instead of reversing out.\n\nChambers sit against other passages far more often than it looks: RecessFits forbids a footprint touching any OPEN cell but its host, and bore cells are Empty — so nothing has ever stopped one being carved hard against two or three tunnels. Rolled per candidate rather than per chamber, so a room wedged between three passages is likelier to become a real junction than one merely brushing a single tunnel.")]
+        [Range(0f, 1f)] public float sewerChamberThroughChance = 0.55f;
+        [Tooltip("Most grates one chamber may have, counting the one it was carved off. 3 makes a genuine junction possible without turning a small room into a colander.")]
+        public int sewerChamberMaxOpenings = 3;
         [Tooltip("Chance a network that runs under a PRISON CELL also opens a manhole up into it — a drain you drop through, one-way.\n\nPRISONS ONLY, deliberately. A drain in the floor of a cell reads as somewhere waste went; the same hole in a throne room or a corridor reads as a hazard nobody built. It also keeps the entrance somewhere the player has to have found a prison to find at all.")]
         [Range(0f, 1f)] public float sewerManholeChance = 0.6f;
         [Tooltip("Most manholes one network may have. Small: a manhole is a one-way commitment, so several of them into one system is several ways to strand yourself in the same place.")]
@@ -295,7 +299,12 @@ namespace DungeonGen
         readonly HashSet<Vector3Int> crawlMouths = new HashSet<Vector3Int>();
         // Open cell -> direction into the rock. One entry per mouth; sewerMouthWorldSpacing keeps
         // two mouths off the same cell, so a cell never needs more than one.
-        readonly Dictionary<Vector3Int, Vector3Int> crawlMouthFaces = new Dictionary<Vector3Int, Vector3Int>();
+        // A SET OF FACES, not a cell->direction map. A single chamber cell can carry TWO grates
+        // — a 1x1 chamber wedged between two tunnels is exactly the case extra openings exist for
+        // — and a dictionary keyed by cell silently keeps only the last one, suppressing one wall
+        // quad and leaving the other grate embedded in solid masonry.
+        readonly HashSet<(Vector3Int cell, Vector3Int into)> crawlMouthFaces =
+            new HashSet<(Vector3Int, Vector3Int)>();
         // Sewer chamber cells. These ARE typed Hallway in the grid (unlike the bore), so as with
         // alcoves this registry is the only thing that knows they are not ordinary corridor.
         readonly Dictionary<Vector3Int, CrawlwaySpec> crawlChamberCells = new Dictionary<Vector3Int, CrawlwaySpec>();
@@ -354,7 +363,7 @@ namespace DungeonGen
         /// </summary>
         public bool IsCrawlwayMouthFace(Vector3Int cell, Vector3Int d) =>
             CrawlwayGeometryAvailable &&
-            crawlMouthFaces.TryGetValue(cell, out var into) && into == d;
+            crawlMouthFaces.Contains((cell, d));
 
         readonly DungeonConfig cfg;
         readonly Random rng;
@@ -2799,8 +2808,10 @@ namespace DungeonGen
                             // same trick that makes alcoves free.
                             foreach (var c in cells) { Grid[c] = CellType.Hallway; crawlChamberCells[c] = net; }
 
-                            crawlMouthFaces[ch.MouthCell] = -side;
+                            ch.Openings.Add(new ChamberOpening { ChamberCell = ch.MouthCell, IntoBore = -side });
+                            crawlMouthFaces.Add((ch.MouthCell, -side));
                             crawlMouths.Add(ch.MouthCell);
+                            AddChamberThroughRoutes(net, ch);
                             net.Chambers.Add(ch);
                             chamberRejects[(int)ChamberReject.None]++;
                             placed = true;
@@ -2856,7 +2867,7 @@ namespace DungeonGen
                 var mouth = new CrawlwayMouth { OpenCell = cand.open, IntoRock = cand.into };
                 net.Mouths.Add(mouth);
                 crawlMouths.Add(cand.open);
-                crawlMouthFaces[cand.open] = cand.into;
+                crawlMouthFaces.Add((cand.open, cand.into));
             }
 
             // What the network actually saves, for the gizmo. Informational only now — under v2
@@ -2911,6 +2922,54 @@ namespace DungeonGen
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Give a chamber extra grates wherever it happens to touch another tunnel, so it can be
+        /// walked THROUGH rather than backed out of.
+        ///
+        /// It happens far more often than it looks, and for a reason worth knowing: `RecessFits`
+        /// forbids a footprint touching any OPEN cell but its host, and bore cells are
+        /// `CellType.Empty`. So nothing has ever stopped a chamber being carved hard against two
+        /// or three other passages — small ones especially end up wedged between tunnels with a
+        /// single way in, which makes a room the player finds and then reverses out of.
+        ///
+        /// Same reasoning that put two mouths on every network: an out-and-back through a slow
+        /// crouch tunnel is what teaches players to stop entering them. A chamber you can pass
+        /// through is a route; one you reverse out of is a toll.
+        /// </summary>
+        void AddChamberThroughRoutes(CrawlwaySpec net, CrawlwayChamber ch)
+        {
+            if (cfg.sewerChamberThroughChance <= 0f) return;
+
+            // Deterministic order, so which side gets the extra grate is stable per seed.
+            var candidates = new List<ChamberOpening>();
+            foreach (var c in ch.Cells)
+                foreach (var d in HorizontalDirs)
+                {
+                    Vector3Int nb = c + d;
+                    if (!crawlCells.ContainsKey(nb)) continue;          // not a tunnel
+                    if (nb == ch.BoreCell) continue;                    // that is the way in
+                    if (crawlMouthFaces.Contains((c, d))) continue;     // already has one
+                    candidates.Add(new ChamberOpening { ChamberCell = c, IntoBore = d });
+                }
+            if (candidates.Count == 0) return;
+
+            candidates.Sort((a, b) =>
+                DungeonKitPlacer.Hash(a.ChamberCell, 9203).CompareTo(DungeonKitPlacer.Hash(b.ChamberCell, 9203)));
+
+            foreach (var op in candidates)
+            {
+                // Rolled PER CANDIDATE so a chamber touching three tunnels is likelier to become
+                // a genuine junction than one merely brushing a single passage — the shape of the
+                // opportunity decides, rather than a flat per-chamber coin flip.
+                if (rng.NextDouble() >= cfg.sewerChamberThroughChance) continue;
+                if (ch.Openings.Count >= cfg.sewerChamberMaxOpenings) break;
+
+                ch.Openings.Add(op);
+                crawlMouthFaces.Add((op.ChamberCell, op.IntoBore));
+                crawlMouths.Add(op.ChamberCell);
+            }
         }
 
         /// <summary>

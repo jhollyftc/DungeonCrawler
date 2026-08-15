@@ -614,7 +614,10 @@ namespace DungeonGen
                     if (Show(GizmoLayers.Chambers))
                     foreach (var ch in cw.Chambers)
                     {
-                        Gizmos.DrawLine(Bore(ch.BoreCell), Centre(ch.MouthCell));
+                        // One line per grate — a chamber with two or three is a route through,
+                        // and that is exactly what you want to see at a glance.
+                        foreach (var op in ch.Openings)
+                            Gizmos.DrawLine(Bore(op.BoreCell), Centre(op.ChamberCell));
                         foreach (var c in ch.Cells)
                             Gizmos.DrawWireCube(Centre(c), Vector3.one * cellSize * 0.8f);
                     }
