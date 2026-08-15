@@ -68,6 +68,42 @@ namespace DungeonGen
         public Color bridgeColor = new Color(0.8f, 0.6f, 0.25f, 0.95f);
         [Tooltip("Crawlway bores. These cells are CellType.Empty — SOLID ROCK to every system in the project — so this gizmo is the ONLY way to see one until Phase 2 places its geometry. The label reports the walk it saves.")]
         public Color crawlwayColor = new Color(0.35f, 0.95f, 0.8f, 0.95f);
+        /// <summary>
+        /// What the scene gizmo draws. A [Flags] mask rather than a row of bools so it is ONE
+        /// multi-select dropdown in the inspector — and so "show me only X" is a single click on
+        /// X rather than unticking eleven other things.
+        ///
+        /// Worth having because the gizmo now draws rooms, corridors, alcoves, prisons, pits,
+        /// bridges, stairs, sewer networks, chambers, manholes, three kinds of graph edge and a
+        /// label on most of them. All of it at once is unreadable, and the thing you are hunting
+        /// is usually one layer.
+        /// </summary>
+        [System.Flags]
+        public enum GizmoLayers
+        {
+            None      = 0,
+            Bounds    = 1 << 0,
+            Rooms     = 1 << 1,
+            Hallways  = 1 << 2,
+            Alcoves   = 1 << 3,
+            Prisons   = 1 << 4,
+            Stairs    = 1 << 5,
+            Pits      = 1 << 6,
+            Sewers    = 1 << 7,
+            Chambers  = 1 << 8,
+            Manholes  = 1 << 9,
+            Edges     = 1 << 10,
+            /// <summary>The floating text. Its own layer because it is by far the noisiest part
+            /// and is usually the first thing you want gone.</summary>
+            Labels    = 1 << 11,
+            Everything = ~0,
+        }
+
+        [Tooltip("Which gizmo layers to draw. Everything at once is unreadable once a dungeon has sewers, alcoves, prisons and pits in it — turn off LABELS first, they are the noisiest, then isolate whatever you are actually hunting.")]
+        public GizmoLayers gizmoLayers = GizmoLayers.Everything;
+
+        bool Show(GizmoLayers layer) => (gizmoLayers & layer) != 0;
+
         public Color boundsColor = new Color(1f, 1f, 1f, 0.25f);
         public Color delaunayColor = new Color(1f, 0.85f, 0.2f, 0.8f);
         public Color mstColor = new Color(0.3f, 0.95f, 0.95f, 1f);
@@ -403,10 +439,12 @@ namespace DungeonGen
 
         void OnDrawGizmos()
         {
-            // Grid bounds, always.
-            Gizmos.color = boundsColor;
-            Vector3 size = (Vector3)config.gridSize * cellSize;
-            Gizmos.DrawWireCube(transform.position + size * 0.5f, size);
+            if (Show(GizmoLayers.Bounds))
+            {
+                Gizmos.color = boundsColor;
+                Vector3 size = (Vector3)config.gridSize * cellSize;
+                Gizmos.DrawWireCube(transform.position + size * 0.5f, size);
+            }
 
             if (gen == null) return;
 
@@ -428,13 +466,21 @@ namespace DungeonGen
                 CellType c = grid[i];
                 if (c == CellType.Empty) continue;
 
+                Vector3Int cellPos = grid.Position(i);
+                bool draw = true;
+
                 switch (c)
                 {
                     case CellType.Room:
                     {
-                        Vector3Int cellPos = grid.Position(i);
                         // Pits first: an opening and its interior are both CellType.Room, so the
-                        // registry is the only way to see a chasm at all.
+                        // registry is the only way to see a chasm at all. Which also means the
+                        // PITS layer has to be tested here rather than as its own CellType case.
+                        bool isPit = gen.IsBridgeCell(cellPos) || gen.IsPitOpening(cellPos) ||
+                                     gen.PitAt(cellPos) != null;
+                        draw = isPit ? Show(GizmoLayers.Pits) : Show(GizmoLayers.Rooms);
+                        if (!draw) break;
+
                         if (gen.IsBridgeCell(cellPos)) { Gizmos.color = bridgeColor; break; }
                         if (gen.IsPitOpening(cellPos)) { Gizmos.color = pitColor * 0.6f; break; }
                         if (gen.PitAt(cellPos) != null) { Gizmos.color = pitColor; break; }
@@ -445,28 +491,44 @@ namespace DungeonGen
                         break;
                     }
                     // Alcove cells ARE Hallway cells — the metadata list is the only thing that
-                    // distinguishes them — so this has to be a lookup, not a CellType case.
+                    // distinguishes them — so this has to be a lookup, not a CellType case. Same
+                    // for sewer chambers, which are typed Hallway for exactly the same reason.
                     case CellType.Hallway:
-                        Gizmos.color = gen.IsAlcoveCell(grid.Position(i)) ? alcoveColor : hallwayColor;
+                    {
+                        bool isAlcove = gen.IsAlcoveCell(cellPos);
+                        bool isChamber = gen.IsChamberCell(cellPos);
+                        draw = isChamber ? Show(GizmoLayers.Chambers)
+                             : isAlcove  ? Show(GizmoLayers.Alcoves)
+                                         : Show(GizmoLayers.Hallways);
+                        Gizmos.color = isAlcove ? alcoveColor : isChamber ? crawlwayColor : hallwayColor;
                         break;
+                    }
                     case CellType.StairLower:
-                    case CellType.StairUpper: Gizmos.color = stairColor;   break;
-                    case CellType.Prison:     Gizmos.color = prisonColor;  break;
+                    case CellType.StairUpper:
+                        draw = Show(GizmoLayers.Stairs);
+                        Gizmos.color = stairColor;
+                        break;
+                    case CellType.Prison:
+                        draw = Show(GizmoLayers.Prisons);
+                        Gizmos.color = prisonColor;
+                        break;
                 }
 
-                Vector3 p = transform.position + ((Vector3)grid.Position(i) + Vector3.one * 0.5f) * cellSize;
+                if (!draw) continue;
+
+                Vector3 p = transform.position + ((Vector3)cellPos + Vector3.one * 0.5f) * cellSize;
                 Gizmos.DrawCube(p, Vector3.one * 0.95f * cellSize);
             }
 
-            // Delaunay web only at its own stage — from Graph onward it's just clutter.
-            if (stage == ViewStage.Delaunay && gen.DelaunayEdges != null)
+            // Delaunay web only at its own stage — from Graph onward it is just clutter.
+            if (Show(GizmoLayers.Edges) && stage == ViewStage.Delaunay && gen.DelaunayEdges != null)
             {
                 Gizmos.color = delaunayColor;
                 foreach (var e in gen.DelaunayEdges)
                     DrawEdge(e);
             }
 
-            if (stage >= ViewStage.Graph && gen.MstEdges != null)
+            if (Show(GizmoLayers.Edges) && stage >= ViewStage.Graph && gen.MstEdges != null)
             {
                 Gizmos.color = mstColor;
                 foreach (var e in gen.MstEdges)
@@ -480,7 +542,7 @@ namespace DungeonGen
             // Alcove mouths: a line from the corridor cell you turn off, into the recess, plus
             // the kind as a label. The DIRECTION is worth seeing — it's what orients the hero
             // prop, so a statue facing the wrong way is a direction bug, not a prop bug.
-            if (gen.Alcoves != null && gen.Alcoves.Count > 0)
+            if (Show(GizmoLayers.Alcoves) && gen.Alcoves != null && gen.Alcoves.Count > 0)
             {
                 Gizmos.color = alcoveColor;
                 foreach (var a in gen.Alcoves)
@@ -491,6 +553,7 @@ namespace DungeonGen
                     Gizmos.DrawWireSphere(to, cellSize * 0.18f);
 #if UNITY_EDITOR
                     UnityEditor.Handles.color = alcoveColor;
+                    if (Show(GizmoLayers.Labels))
                     UnityEditor.Handles.Label(to + Vector3.up * cellSize * 0.4f,
                                               $"{a.Kind} {a.Width}x{a.Depth}{(a.IsEnterable ? "" : " (shallow)")}");
 #endif
@@ -519,6 +582,7 @@ namespace DungeonGen
                     // neighbours its mask reports, which is also a live check on the thing piece
                     // selection depends on — a tunnel that looks disconnected here will render
                     // with the wrong tube pieces.
+                    if (Show(GizmoLayers.Sewers))
                     foreach (var c in cw.Cells)
                     {
                         Vector3 p = Bore(c);
@@ -529,14 +593,25 @@ namespace DungeonGen
                                 Gizmos.DrawLine(p, Bore(c + CrawlwaySpec.DirOfBit(bit)));
                     }
 
+                    if (Show(GizmoLayers.Sewers))
                     foreach (var m in cw.Mouths)
                     {
                         Gizmos.DrawWireSphere(Centre(m.OpenCell), cellSize * 0.22f);
                         Gizmos.DrawLine(Centre(m.OpenCell), Bore(m.BoreCell));
                     }
 
+                    // Manholes — drawn as a vertical drop, since that is what distinguishes them
+                    // from a mouth: you go DOWN and cannot come back up the way you came.
+                    if (Show(GizmoLayers.Manholes))
+                    foreach (var mh in cw.Manholes)
+                    {
+                        Gizmos.DrawLine(Centre(mh.OpenCell), Bore(mh.BoreCell));
+                        Gizmos.DrawWireCube(Centre(mh.OpenCell), new Vector3(1f, 0.05f, 1f) * cellSize * 0.7f);
+                    }
+
                     // Sewer chambers. Their cells ARE typed Hallway, so without this they read as
                     // ordinary corridor in the gizmo view — the same reason alcoves need a colour.
+                    if (Show(GizmoLayers.Chambers))
                     foreach (var ch in cw.Chambers)
                     {
                         Gizmos.DrawLine(Bore(ch.BoreCell), Centre(ch.MouthCell));
@@ -550,8 +625,10 @@ namespace DungeonGen
                     Vector3 label = cw.Mouths.Count > 0
                         ? Centre(cw.Mouths[0].OpenCell)
                         : transform.position + (cw.CenterCell + Vector3.one * 0.5f) * cellSize;
+                    if (Show(GizmoLayers.Labels))
                     UnityEditor.Handles.Label(label + Vector3.up * cellSize * 0.4f,
                         $"sewer: {cw.Cells.Count} cells, {cw.Mouths.Count} mouth(s), " +
+                        $"{cw.Manholes.Count} manhole(s), " +
                         $"{cw.Chambers.Count} chamber(s) ({chamberCells} cells)" +
                         $"{(cw.BestDetour > 0 ? $" — longest walk it short-circuits: {cw.BestDetour}" : "")}");
 #endif
