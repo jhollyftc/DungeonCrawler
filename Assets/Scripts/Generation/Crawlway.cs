@@ -15,6 +15,23 @@ namespace DungeonGen
     }
 
     /// <summary>
+    /// A MANHOLE: a drain in a prison cell's floor, dropping into the network below.
+    ///
+    /// ONE-WAY, AND THAT IS THE POINT. The drop is a storey with no mantle mechanic and a 0.5m
+    /// step height, so there is no climbing back out — going down commits you to finding a wall
+    /// grate. Which makes it a HARD CONSTRAINT on generation rather than flavour: a network may
+    /// only take a manhole if it already has at least one ordinary mouth, or the player is
+    /// sealed in a tunnel system with no exit and the run is over.
+    /// </summary>
+    public struct CrawlwayManhole
+    {
+        /// <summary>The network cell directly beneath the floor.</summary>
+        public Vector3Int BoreCell;
+        /// <summary>The prison cell you drop THROUGH — the floor tile that gets suppressed.</summary>
+        public Vector3Int OpenCell => BoreCell + Vector3Int.up;
+    }
+
+    /// <summary>
     /// A sewer chamber: a full-height room carved off one bore cell, sealed but for its grate.
     /// </summary>
     public class CrawlwayChamber
@@ -64,6 +81,17 @@ namespace DungeonGen
 
         /// <summary>Sewer rooms hanging off the network.</summary>
         public List<CrawlwayChamber> Chambers = new List<CrawlwayChamber>();
+
+        /// <summary>One-way drains dropping in from prison floors. Only ever populated on a
+        /// network that already has a <see cref="Mouths"/> entry — see CrawlwayManhole.</summary>
+        public List<CrawlwayManhole> Manholes = new List<CrawlwayManhole>();
+
+        /// <summary>Does a manhole drop into this bore cell?</summary>
+        public bool ManholeAt(Vector3Int c)
+        {
+            foreach (var m in Manholes) if (m.BoreCell == c) return true;
+            return false;
+        }
 
         /// <summary>Longest walk between any two mouths through the OPEN dungeon, in cells —
         /// what the network short-circuits. Informational; used for the gizmo label and for

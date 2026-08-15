@@ -142,8 +142,22 @@ namespace DungeonGen
                 // The mouth is the only cell a hinged prison door can sweep INTO — an outward
                 // swing sweeps the hallway cell, which isn't ours to reserve — so reserving it
                 // covers the bars, the door and the swing arc together.
+                // A MANHOLE TILE IS REMOVED FROM THE FOOTPRINT, not merely refused blocking
+                // props. Its floor slab is suppressed, so anything placed there — a collider
+                // crate or a scatter of straw alike — hangs in mid-air over the drain. §12's
+                // category rule: a prison cell with a hole in it passes every "is this a prison
+                // floor cell" test the placer makes, and fails only the thing nobody wrote down.
+                HashSet<Vector3Int> cells = p.Cells;
+                foreach (var c in p.Cells)
+                    if (gen.IsManholeOpening(c))
+                    {
+                        cells = new HashSet<Vector3Int>(p.Cells);
+                        cells.RemoveWhere(gen.IsManholeOpening);
+                        break;
+                    }
+
                 var noBlocking = new HashSet<Vector3Int> { p.MouthCell };
-                targets.Add(new RecessTarget(p.Cells, p.Direction, p.MouthCell,
+                targets.Add(new RecessTarget(cells, p.Direction, p.MouthCell,
                                              roll => style != null ? style.PrisonProps(roll) : null,
                                              noBlocking));
             }

@@ -120,6 +120,10 @@ namespace DungeonGen
         public int sewerMouthWorldSpacing = 6;
         [Tooltip("Minimum cells ALONG THE NETWORK between two of its own grates.\n\nBoth spacings are needed and they catch different things: world spacing alone permits two grates on opposite sides of one wall, and network spacing alone permits two grates a long crawl apart that open into the same corridor a few metres from each other. Together they are the honest statement of 'do not put two doors in the same place' — which is what the old detour ratio was reaching for from the wrong end.")]
         public int sewerMouthNetworkSpacing = 10;
+        [Tooltip("Chance a network that runs under a PRISON CELL also opens a manhole up into it — a drain you drop through, one-way.\n\nPRISONS ONLY, deliberately. A drain in the floor of a cell reads as somewhere waste went; the same hole in a throne room or a corridor reads as a hazard nobody built. It also keeps the entrance somewhere the player has to have found a prison to find at all.")]
+        [Range(0f, 1f)] public float sewerManholeChance = 0.6f;
+        [Tooltip("Most manholes one network may have. Small: a manhole is a one-way commitment, so several of them into one system is several ways to strand yourself in the same place.")]
+        public int sewerMaxManholesPerNetwork = 2;
         [Tooltip("No sewer mouth within this many cells (XZ) of a staircase — the same guard prisons and alcoves use, since the sealed stair envelope is the most fragile geometry in the dungeon.")]
         public int crawlwayStairClearance = 2;
         [Tooltip("A crawlway mouth must be this many cells from any room DOORWAY — a grate in a threshold fights the reserved-threshold rule and the corner-post classifier. Also a CHEBYSHEV box: at 2 it excludes 25 cells around EVERY door, which measurably ate 45% of all alcove sites. 1 is enough to keep a mouth out of a threshold and its immediate neighbours.")]
@@ -295,6 +299,15 @@ namespace DungeonGen
         // Sewer chamber cells. These ARE typed Hallway in the grid (unlike the bore), so as with
         // alcoves this registry is the only thing that knows they are not ordinary corridor.
         readonly Dictionary<Vector3Int, CrawlwaySpec> crawlChamberCells = new Dictionary<Vector3Int, CrawlwaySpec>();
+        // Prison cells with a drain in the floor, keyed by the OPEN cell — that is what
+        // NeedsSlabBetween is asked about, and it is asked per floor tile every build.
+        readonly HashSet<Vector3Int> crawlManholes = new HashSet<Vector3Int>();
+
+        enum ManholeReject { None, BudgetZero, NoWallGrate, NoPrisonAbove, ChanceRoll }
+        readonly int[] manholeRejects = new int[5];
+        // Bore cells that sat directly under a prison, summed across networks. The number that
+        // separates "the dungeon has no prisons" from "the networks never reached one".
+        int manholeCandidates;
 
         /// <summary>
         /// SET BY DungeonVisualizer FROM THE KIT, and false by default. Gates
@@ -325,6 +338,10 @@ namespace DungeonGen
         public CrawlwaySpec ChamberAt(Vector3Int c) => crawlChamberCells.TryGetValue(c, out var cw) ? cw : null;
         /// <summary>True if this cell is part of a crawlway's sewer chamber.</summary>
         public bool IsChamberCell(Vector3Int c) => crawlChamberCells.ContainsKey(c);
+
+        /// <summary>This OPEN cell has a manhole in its floor — no slab beneath it, and nothing
+        /// may be stood on it.</summary>
+        public bool IsManholeOpening(Vector3Int c) => crawlManholes.Contains(c);
 
         /// <summary>
         /// Does a crawlway grate replace the wall on this face? <paramref name="cell"/> is the
@@ -1374,6 +1391,14 @@ namespace DungeonGen
         /// </summary>
         public bool NeedsSlabBetween(Vector3Int lower, Vector3Int upper)
         {
+            // A MANHOLE IS A HOLE, and this must be the FIRST test rather than sitting beside
+            // the pit rule below. A sewer bore stays CellType.Empty, so `lower` reads as solid
+            // rock and the very next line would return "yes, floor it over" before anything else
+            // got a look — flooring the drain shut. Same one-line mechanism pits use, reaching
+            // the mesher, the kit placer and the automap together because all three route their
+            // floor decision through here.
+            if (IsManholeOpening(upper)) return false;
+
             if (!Grid.InBounds(lower) || Grid[lower] == CellType.Empty) return true;
             if (!Grid.InBounds(upper) || Grid[upper] == CellType.Empty) return true;
 
@@ -2447,6 +2472,9 @@ namespace DungeonGen
             crawlMouths.Clear();
             crawlMouthFaces.Clear();
             crawlChamberCells.Clear();
+            crawlManholes.Clear();
+            System.Array.Clear(manholeRejects, 0, manholeRejects.Length);
+            manholeCandidates = 0;
             System.Array.Clear(chamberRejects, 0, chamberRejects.Length);
             if (!cfg.placeCrawlways) return;
 
@@ -2465,8 +2493,40 @@ namespace DungeonGen
                 return;
             }
 
+            // BOTH SIDES OF EVERY DOORWAY. A door occupies two cells — the corridor cell and
+            // `HallwayCell + Direction` inside the room — and collecting only the first measures
+            // a room-side mouth from the far side of the threshold. It lands one cell further
+            // out than it looks, which reads as a grate right beside the door however high
+            // crawlwayDoorClearance is set: raising the number moves the boundary and keeps the
+            // off-by-one. Field-reported exactly that way.
+            //
+            // The alcove pass gets away with one cell because an alcove ALWAYS hangs off a
+            // corridor; a sewer mouth can open into a room, which is what exposed this.
+            // RoomPropPlacer, the pit pass and the satellite pass all already add both.
             var doorCells = new HashSet<Vector3Int>();
-            foreach (var door in Doors) doorCells.Add(door.HallwayCell);
+            foreach (var door in Doors)
+            {
+                doorCells.Add(door.HallwayCell);
+                doorCells.Add(door.HallwayCell + door.Direction);
+            }
+
+            // PRISON ENTRANCES ARE THRESHOLDS TOO, AND THEY ARE NOT IN `Doors`. RecordDoor is
+            // called only from CarveHallways for graph edges, so a prison's opening — which
+            // carries bars or a hinged prison door, and which the corner-post classifier already
+            // excludes by name — was invisible to this rule entirely. The symptom was a grate
+            // appearing beside a prison archway however high crawlwayDoorClearance went; raising
+            // it to 10 only "worked" because a box that size around some UNRELATED door happened
+            // to cover the spot.
+            //
+            // Both sides again, for the same reason as above: the corridor cell you stand in and
+            // the doorway tile the bars occupy. Alcoves are deliberately NOT added — they have
+            // no door, no bars and no frame, so a grate beside one is merely two openings near
+            // each other rather than two mechanisms fighting over one face.
+            foreach (var p in Prisons)
+            {
+                doorCells.Add(p.HallCell);
+                doorCells.Add(p.MouthCell);
+            }
 
             // Every cell a bore could ever occupy, in a deterministic order. Hash-shuffled rather
             // than scan-ordered so seeds do not all start their networks in the same corner of
@@ -2494,22 +2554,35 @@ namespace DungeonGen
                 var net = GrowNetwork(seed, budget);
                 if (net == null || net.Cells.Count < cfg.sewerMinCells) { abandoned++; continue; }
 
-                CarveChambers(net);
+                // MOUTHS FIRST, THEN THE SURVIVAL TEST, THEN EVERYTHING THAT CARVES. The order
+                // is the fix for a real leak, not a preference.
+                //
+                // Chambers used to be carved before this test, and a discarded network's undo
+                // reverted the grid and crawlCells but NOT the `crawlMouths` entries that
+                // CarveChambers adds for each chamber grate. Sixty-four abandoned networks
+                // therefore left ~200 phantom mouths in the world-spacing set, which then
+                // rejected real mouths on surviving networks: measured as 53 "too near another
+                // mouth in the WORLD" and every network ending up with exactly ONE mouth against
+                // a budget of up to four. The tell was 253 chambers reported carved while the
+                // finished networks held 14.
+                //
+                // Extending the undo would have worked and would have stayed one forgotten line
+                // away from breaking again. Deciding viability BEFORE anything mutates shared
+                // state means there is nothing to undo but the cell registry.
                 ChooseMouths(net, doorCells, mouthRejects);
 
                 // A NETWORK NOBODY CAN ENTER IS NOT CONTENT. Growth is blind to where the rock
                 // touches open space, so a region buried deep in the map can produce a perfectly
-                // good tunnel system with no surfaceable cell anywhere on it. Discard rather
-                // than ship an invisible one — its chambers were carved as Hallway, so leaving
-                // it would also strand a sealed room the player can never reach.
+                // good tunnel system with no surfaceable cell anywhere on it.
                 if (net.Mouths.Count == 0)
                 {
-                    foreach (var ch in net.Chambers)
-                        foreach (var c in ch.Cells) { Grid[c] = CellType.Empty; crawlChamberCells.Remove(c); }
                     foreach (var c in net.Cells) crawlCells.Remove(c);
                     abandoned++;
                     continue;
                 }
+
+                CarveChambers(net);
+                ChooseManholes(net);
 
                 Crawlways.Add(net);
                 grown++;
@@ -2517,10 +2590,16 @@ namespace DungeonGen
 
             if (grown == 0 || cfg.debugCrawlways)
             {
-                int cells = 0, chambers = 0, mouths = 0;
-                foreach (var n in Crawlways) { cells += n.Cells.Count; chambers += n.Chambers.Count; mouths += n.Mouths.Count; }
+                int cells = 0, chambers = 0, mouths = 0, manholes = 0;
+                foreach (var n in Crawlways)
+                {
+                    cells += n.Cells.Count; chambers += n.Chambers.Count;
+                    mouths += n.Mouths.Count; manholes += n.Manholes.Count;
+                }
                 Debug.Log(
-                    $"[Sewers] {grown} network(s), {cells} bore cell(s), {chambers} chamber(s), {mouths} mouth(s). " +
+                    $"[Sewers] {grown} network(s), {cells} bore cell(s), {chambers} chamber(s), " +
+                    $"{mouths} mouth(s), {manholes} manhole(s) " +
+                    $"(prison-only, and only on a network that already has a wall grate — a manhole is one-way). " +
                     $"{candidates.Count} candidate rock cell(s); {abandoned} seed(s) abandoned (too small, or no way in). " +
                     $"Mouths rejected by — too near a doorway: {mouthRejects[(int)MouthReject.DoorClearance]}, " +
                     $"too near a stair: {mouthRejects[(int)MouthReject.StairClearance]}, " +
@@ -2528,6 +2607,7 @@ namespace DungeonGen
                     $"over a pit: {mouthRejects[(int)MouthReject.Floorless]}, " +
                     $"too near another mouth in the WORLD (sewerMouthWorldSpacing {cfg.sewerMouthWorldSpacing}): {mouthRejects[(int)MouthReject.TooClose]}, " +
                     $"too near another mouth ALONG THE NETWORK (sewerMouthNetworkSpacing {cfg.sewerMouthNetworkSpacing}): {mouthRejects[(int)MouthReject.NetworkTooClose]}. " +
+                    $"MANHOLES: {ManholeAdvice(manholes)} " +
                     $"CHAMBERS: {chamberRejects[(int)ChamberReject.None]} carved, " +
                     $"{chamberRejects[(int)ChamberReject.NoRock]} found no clean pocket. " +
                     $"NB few candidate cells means the dungeon is dense and there is little unused rock — " +
@@ -2693,6 +2773,18 @@ namespace DungeonGen
                                             out BoundsInt bbox, out List<Vector3Int> cells))
                                 continue;
 
+                            // RecessFits CANNOT SEE TUNNELS. It tests `Grid[pos] != Empty`, and a
+                            // bore cell IS Empty — that is the whole grid-invisible design — so
+                            // a chamber footprint will happily swallow the tunnel it hangs off,
+                            // and the pieces then render pipes running straight through the room.
+                            // Field-reported exactly that way. Nothing in RecessFits can be
+                            // changed to fix it without teaching prisons and alcoves about
+                            // sewers, so the caller filters.
+                            bool overlapsTunnel = false;
+                            foreach (var c in cells)
+                                if (crawlCells.ContainsKey(c)) { overlapsTunnel = true; break; }
+                            if (overlapsTunnel) continue;
+
                             var ch = new CrawlwayChamber
                             {
                                 BoreCell = bore,
@@ -2819,6 +2911,124 @@ namespace DungeonGen
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Why there are (or are not) manholes, and which dial moves it.
+        ///
+        /// A manhole needs a THREE-WAY COINCIDENCE — a prison exists, a network grew into the
+        /// rock beneath it, and that network already has a wall grate — so a bare count of zero
+        /// says nothing about which of the three failed. Field-reported as "took a lot of random
+        /// seeds at depth 10", which is exactly the state where a tally is worth more than any
+        /// amount of re-reading the code (§12).
+        ///
+        /// The three counts are chosen to SEPARATE the causes rather than describe them:
+        /// prisons in the dungeon at all, prisons with rock underneath (i.e. sites a network
+        /// COULD have reached), and bore cells that actually landed under one.
+        /// </summary>
+        string ManholeAdvice(int placed)
+        {
+            int prisons = 0, prisonsOverRock = 0;
+            for (int i = 0; i < Grid.Length; i++)
+            {
+                if (Grid[i] != CellType.Prison) continue;
+                prisons++;
+                Vector3Int below = Grid.Position(i) - Vector3Int.up;
+                if (!Grid.InBounds(below) || Grid[below] == CellType.Empty) prisonsOverRock++;
+            }
+
+            string why =
+                prisons == 0
+                    ? "NO PRISON CELLS IN THIS DUNGEON AT ALL — manholes are prison-only, so raise prisonChance (or check placePrisonCells)."
+                : prisonsOverRock == 0
+                    ? "prisons exist but NONE has open rock beneath it, which should be impossible (RecessFits demands solid below every prison cell) — worth investigating rather than tuning."
+                : manholeCandidates == 0
+                    ? $"{prisonsOverRock} prison cell(s) sit over reachable rock and NO network grew under any of them. That is the usual reason and it is a COINCIDENCE problem, not a bug: raise sewerCellBudget so networks sprawl further, or sewerNetworkCount / prisonChance so there are more of each to collide."
+                : manholeRejects[(int)ManholeReject.ChanceRoll] > 0
+                    ? $"{manholeCandidates} candidate site(s) found and the CHANCE ROLL refused them — raise sewerManholeChance ({cfg.sewerManholeChance:0.##})."
+                : manholeRejects[(int)ManholeReject.NoWallGrate] > 0
+                    ? "!! a mouthless network reached ChooseManholes, which should now be impossible — mouths are chosen and the network discarded BEFORE this runs. If this fires, that ordering has been changed and the leak it fixed is probably back."
+                    : "placed as expected.";
+
+            return $"{placed} placed from {manholeCandidates} candidate bore cell(s) under " +
+                   $"{prisonsOverRock}/{prisons} eligible prison cell(s). Refused by — " +
+                   $"no wall grate on the network (would trap the player): {manholeRejects[(int)ManholeReject.NoWallGrate]}, " +
+                   $"no prison above any bore cell: {manholeRejects[(int)ManholeReject.NoPrisonAbove]}, " +
+                   $"lost the chance roll: {manholeRejects[(int)ManholeReject.ChanceRoll]}, " +
+                   $"budget is zero: {manholeRejects[(int)ManholeReject.BudgetZero]}. {why}";
+        }
+
+        /// <summary>
+        /// Open a drain in the floor of any PRISON CELL this network happens to run under.
+        ///
+        /// RUNS AFTER ChooseMouths, AND THAT ORDERING IS A SAFETY RULE. A manhole is a ONE-WAY
+        /// drop — a storey down, with a 0.5m step height and no mantle — so a network reachable
+        /// only by manhole is a tunnel system the player falls into and cannot leave. The run
+        /// ends there. Gating on `Mouths.Count > 0` is what makes that unrepresentable, and it
+        /// can only be checked once mouths exist.
+        ///
+        /// PRISONS ONLY, by design rather than by convenience: a drain in the floor of a cell
+        /// reads as somewhere waste went, while the same hole in a throne room reads as a hazard
+        /// nobody built. It also means finding one requires having found a prison.
+        ///
+        /// The rock beneath a prison is network-eligible for free — RecessFits already demands
+        /// solid above AND below every prison cell, so the cell underneath is Empty — which is
+        /// why this needs no new validation, only a lookup.
+        /// </summary>
+        void ChooseManholes(CrawlwaySpec net)
+        {
+            // THE ROLL IS DRAWN UNCONDITIONALLY, before any rejection, so the rng stream never
+            // depends on which networks happened to qualify — the same discipline every other
+            // stage here follows (golden rule 4).
+            double roll = rng.NextDouble();
+
+            if (cfg.sewerMaxManholesPerNetwork <= 0) { manholeRejects[(int)ManholeReject.BudgetZero]++; return; }
+            // THE HARD CONSTRAINT. No wall grate, no drain — see the summary above.
+            if (net.Mouths.Count == 0) { manholeRejects[(int)ManholeReject.NoWallGrate]++; return; }
+
+            var candidates = new List<Vector3Int>();
+            foreach (var bore in net.Cells)
+            {
+                Vector3Int above = bore + Vector3Int.up;
+                if (!Grid.InBounds(above) || Grid[above] != CellType.Prison) continue;
+                if (crawlManholes.Contains(above)) continue;
+
+                // NOT IN THE DOORWAY. A drain in the mouth tile is the one place in a cell you
+                // cannot avoid standing, so you fall in on the way past rather than choosing to
+                // go down — and on a WIDE prison that tile is a 1x1 vestibule, i.e. the entire
+                // width of the entrance. Same instinct as PropSet.avoidEntranceCell keeping
+                // hanging props out of a threshold, and as the prison mouth already being
+                // reserved against blocking props. A manhole reads best deeper in the cell,
+                // where it is something you find rather than something you trip over.
+                var prison = PrisonAt(above);
+                if (prison != null && prison.MouthCell == above) continue;
+
+                candidates.Add(bore);
+            }
+            manholeCandidates += candidates.Count;
+
+            // Counted AFTER the geometry check rather than before it, because "this network had
+            // nowhere to put one" and "this network had somewhere and lost the roll" are
+            // different problems and only the first is worth tuning the dungeon for.
+            if (candidates.Count == 0) { manholeRejects[(int)ManholeReject.NoPrisonAbove]++; return; }
+            if (roll >= cfg.sewerManholeChance) { manholeRejects[(int)ManholeReject.ChanceRoll]++; return; }
+
+            // Prefer the bore cells with the MOST tunnel neighbours. The manhole piece is a
+            // 4-way with a hole in its lid, so dropping it on a dead end leaves three of its
+            // openings staring into solid rock; a junction uses what the asset already shows.
+            candidates.Sort((p, q) =>
+            {
+                int c = CountNetworkNeighbours(net, q).CompareTo(CountNetworkNeighbours(net, p));
+                return c != 0 ? c : DungeonKitPlacer.Hash(p, 9199).CompareTo(DungeonKitPlacer.Hash(q, 9199));
+            });
+
+            foreach (var bore in candidates)
+            {
+                if (net.Manholes.Count >= cfg.sewerMaxManholesPerNetwork) break;
+                var m = new CrawlwayManhole { BoreCell = bore };
+                net.Manholes.Add(m);
+                crawlManholes.Add(m.OpenCell);
+            }
         }
 
         /// <summary>Cells along the bore between two network cells, or -1 beyond

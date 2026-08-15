@@ -93,6 +93,7 @@ namespace DungeonGen
         [Tooltip("Nudge for the lintel in its OWN frame: Z = further into the shaft / back into the wall, Y = up or down from the ceiling line, X = along the run. Rotated with the piece, so one value is correct on all four wall directions.")]
         public Vector3 lintelOffset;
 
+        [Header("Crawlway MOUTHS — kit-frame; the TUBES live in the BASE-ORIGIN section below")]
         [Tooltip("GRATE / MOUTH piece where a crawlway breaks out of a wall — the framed 1.5m opening plus the masonry filling the rest of that 3m face.\n\nTO MAKE IT BREAKABLE, put a CrawlwayGrate component on the BARS as a child, never on the frame: the frame carries the collision standing in for the suppressed 3m wall quad, and detaching that opens a hole in the rock either side of the opening. The placer detects the component and switches this piece to FullGameObject automatically (an instanced mesh cannot be un-drawn), and tells it which way to fall. Give the bars an ImpactAudio for the landing clang.\n\nTHIS PIECE CARRIES THE WALL'S COLLISION AND THE FEATURE DOES NOT WORK WITHOUT IT. The greybox emits ONE quad per cell face, so opening a crawlway suppresses a whole 3m x 3m collider, not a 1.5m one — without a ring of colliders here (four boxes around the bore is the simple shape) the player walks through the rock either side of the grate. Suppression is GATED on this slot being filled, so leaving it empty is safe: crawlways simply stay sealed behind solid wall.\n\nAuthor facing +Z, rotated to point INTO the open cell you see it from — the same convention as a wall — and floor-aligned, matching the tube. KIT-FRAME: globalVisualOffset IS applied, because this piece has to line up with the walls it interrupts. That differs from the TUBE pieces below, which are base-origin like ladders and bridges; the two halves of one feature genuinely follow different conventions, which is why they are filed in different sections here.")]
         public GameObject[] crawlwayMouthPrefabs; // optional — skipped if empty, and suppression is skipped with it
         [Tooltip("WEIGHTED variants for the mouth / grate piece. Same rules as the tube variants: weight is relative within the list, 0 mutes an entry, and the plain list above still works with its entries counting as weight 1.")]
@@ -114,6 +115,7 @@ namespace DungeonGen
         [Tooltip("Nudge for the rim piece in its OWN frame: Z = further over the hole / back onto the floor, Y = up, X = along the edge. Rotated like the piece, so one value is correct on all four edge directions (the ladderOffset lesson).")]
         public Vector3 pitRimOffset;
 
+        [Header("Crawlway TUBES — base-origin; the MOUTH/grate is up in the Trim section")]
         [Tooltip("STRAIGHT crawlway tube — a 1.5m x 1.5m bore, 3.0m LONG, one piece per grid cell. NOT a 1.5m cube: the cross-section is 1.5m but the piece spans a whole cell along its run.\n\nOne CLOSED tube asset, not separate floor/wall/ceiling pieces — a crawlway is not a room and the kit's 3m faces do not apply to it. Author it FLOOR-ALIGNED (the bore's floor at the piece's base, not centred: a centred bore puts the sill 0.75m up, past the controller's 0.5m step height with no mantle mechanic, and the player could not enter their own crawlway) with the run along +Z, and BASE-ORIGIN — globalVisualOffset does NOT apply, same as ladders and bridges.\n\nCOLLISION: give it BOX colliders — floor, ceiling and two sides. Nothing exists inside solid rock, so this piece is the only collision in the bore. Boxes rather than a MeshCollider on purpose: a hollow tube is non-convex, and a non-readable MeshCollider is silently dropped from the navmesh bake in a PLAYER BUILD only (the trap that once removed stairs from builds). Put the colliders on a layer INCLUDED IN FirstPersonController.ceilingMask, or the stand-up block never fires and the player stands up through the rock.")]
         public GameObject[] crawlwayTubePrefabs; // optional — skipped if empty
         [Tooltip("CORNER crawlway tube — the same 1.5m bore turning 90 degrees within one cell. Author with its two openings on the -Z and +X faces; the placer tries all four yaw steps to match a turn, and those four rotations cover every perpendicular pair, so ONE corner asset is all that is ever needed (a tube is symmetric end to end — there is no left-hand and right-hand version).\n\nSame conventions as the straight: floor-aligned, base-origin, box colliders. Empty = corners fall back to the straight piece, which will visibly not turn — author this before raising sewerCellBudget, since turns are most of what makes a network read as winding rather than as a long pipe.")]
@@ -124,6 +126,10 @@ namespace DungeonGen
         public GameObject[] crawlwayCrossPrefabs;
         [Tooltip("DEAD-END CAP — a tube closed at one end, for the tips of a network's branches. Author with its single opening on -Z.\n\nSewer networks are grown as branching trees, so dead ends are normal and numerous rather than a failure: most branch tips are one. Empty = a dead end falls back to the straight piece, leaving a tunnel that visibly opens into solid rock.")]
         public GameObject[] crawlwayCapPrefabs;
+        [Tooltip("MANHOLE — the sewer's floor entrance, a full-cell piece with a drain opening in its LID and tube openings on the sides. Placed in the bore cell directly BENEATH a prison floor; the generator suppresses that floor tile, so this piece supplies both the rim you see from the cell above and the shaft you drop into.\n\nAuthor it as a 4-WAY: the generator prefers junction cells for exactly this reason, but it takes what the rock offers, so a side opening may occasionally face solid rock. Base-origin and box colliders like the other tubes, and the LID's collision must leave the drain open while still carrying the floor around it — the same ring-of-collision job the wall mouth does for a suppressed wall quad.\n\nEmpty = manholes are still generated but render as a straight tube under an open hole, which reads as a floor that simply failed.")]
+        public GameObject[] crawlwayManholePrefabs;
+        [Tooltip("WEIGHTED variants for manholes. Same rules as the straight variants.")]
+        public WeightedPrefab[] crawlwayManholeVariants;
         [Tooltip("WEIGHTED variants for cross tubes. Same rules as the straight variants.")]
         public WeightedPrefab[] crawlwayCrossVariants;
         [Tooltip("WEIGHTED variants for dead-end caps. Same rules as the straight variants.")]
@@ -1622,6 +1628,7 @@ namespace DungeonGen
             var teePool = MergePool(kit.crawlwayTeePrefabs, kit.crawlwayTeeVariants);
             var crossPool = MergePool(kit.crawlwayCrossPrefabs, kit.crawlwayCrossVariants);
             var capPool = MergePool(kit.crawlwayCapPrefabs, kit.crawlwayCapVariants);
+            var manholePool = MergePool(kit.crawlwayManholePrefabs, kit.crawlwayManholeVariants);
 
             var mouthPool = MergePool(kit.crawlwayMouthPrefabs, kit.crawlwayMouthVariants);
 
@@ -1658,11 +1665,30 @@ namespace DungeonGen
                         int mask = cw.NeighbourMask(cell);
                         bool hasChamber = cw.ChamberAt(cell, out Vector3Int chamberDir);
 
+                        // A GRATE IS AN OPENING THE MASK CANNOT SEE, same blind spot as a
+                        // chamber. The mask counts TUNNEL neighbours, and the cell behind a
+                        // mouth has one fewer of those than it has openings — so a bore cell
+                        // with a grate and one tunnel read as popcount 1 and took a DEAD-END
+                        // CAP, sealing the entrance while the network plainly continued behind
+                        // it. Field-reported as "a mouth with a pipe cap attached".
+                        bool hasMouth = cw.MouthAt(cell, out Vector3Int mouthDir);
+
                         List<WeightedPrefab> pool = null;
                         Quaternion rot = Quaternion.identity;
-                        if (!TubePieceFor(mask, hasChamber, chamberDir,
-                                          tubePool, cornerPool, teePool, crossPool, capPool,
-                                          ref pool, ref rot))
+
+                        // A MANHOLE OVERRIDES THE MASK ENTIRELY, because its defining opening is
+                        // in the LID and the mask only describes the four horizontal faces. Left
+                        // to the mask this cell would take a straight or a cross and seal the
+                        // drain — the same reason a chamber forces a tee. Yaw is the ordinary
+                        // hash pick: the piece is authored 4-way, so no orientation is wrong.
+                        if (cw.ManholeAt(cell) && manholePool.Count > 0)
+                        {
+                            pool = manholePool;
+                            rot = Quaternion.Euler(0f, 90f * (Hash(cell, 157) % 4), 0f);
+                        }
+                        else if (!TubePieceFor(mask, hasChamber, chamberDir, hasMouth, mouthDir,
+                                               tubePool, cornerPool, teePool, crossPool, capPool,
+                                               ref pool, ref rot))
                             continue;
 
                         GameObject prefab = PickWeightedPrefab(pool, cell, 149);
@@ -1781,6 +1807,7 @@ namespace DungeonGen
         /// read.
         /// </summary>
         static bool TubePieceFor(int mask, bool hasChamber, Vector3Int chamberDir,
+                                 bool hasMouth, Vector3Int mouthDir,
                                  List<WeightedPrefab> straight, List<WeightedPrefab> corner,
                                  List<WeightedPrefab> tee, List<WeightedPrefab> cross,
                                  List<WeightedPrefab> cap,
@@ -1791,8 +1818,12 @@ namespace DungeonGen
             for (int bit = 0; bit < 4; bit++)
                 if ((mask & (1 << bit)) != 0) want.Add(CrawlwaySpec.DirOfBit(bit));
 
-            // A chamber adds a SIDE opening for fitting purposes without being a tunnel link.
+            // A CHAMBER AND A GRATE ARE BOTH OPENINGS THE MASK DOES NOT CARRY — the mask counts
+            // tunnel NEIGHBOURS, and neither of these is another length of tube. Both have to be
+            // added here or the piece seals them: a chamber gets walled off behind a straight,
+            // and a mouth gets a dead-end cap over the entrance.
             if (hasChamber) want.Add(chamberDir);
+            if (hasMouth && !want.Contains(mouthDir)) want.Add(mouthDir);
 
             List<WeightedPrefab> chosen;
             Vector3[] canonical;
@@ -1807,8 +1838,12 @@ namespace DungeonGen
                         : new[] { Vector3.back, Vector3.right };
                     break;
                 case 3: chosen = tee;      canonical = new[] { Vector3.back, Vector3.forward, Vector3.right }; break;
-                case 4: chosen = cross;    canonical = new[] { Vector3.back, Vector3.forward, Vector3.right, Vector3.left }; break;
-                default: return false;     // isolated cell — nothing sensible to place
+                // A cross covers 4 AND anything above it: a cell carrying four tunnels plus a
+                // chamber or a grate has more openings than any authored piece, and the cross is
+                // the only one that leaves none of them walled shut. Rare, and better slightly
+                // wrong than sealed.
+                default: chosen = cross;   canonical = new[] { Vector3.back, Vector3.forward, Vector3.right, Vector3.left }; break;
+                case 0: return false;      // isolated cell — nothing sensible to place
             }
 
             // Fall back to the straight piece rather than dropping the cell: a hole in the tunnel
