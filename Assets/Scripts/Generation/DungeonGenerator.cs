@@ -130,6 +130,8 @@ namespace DungeonGen
         [Range(0f, 1f)] public float sewerManholeChance = 0.6f;
         [Tooltip("Most manholes one network may have. Small: a manhole is a one-way commitment, so several of them into one system is several ways to strand yourself in the same place.")]
         public int sewerMaxManholesPerNetwork = 2;
+        [Tooltip("No manhole within this many cells (XZ) of another, counting manholes from EVERY network.\n\nThe per-network budget alone does not stop clustering: candidates are ranked by tunnel neighbours, and a junction under a wide prison offers several adjacent bore cells that all score identically well, so the greedy fill takes two side by side. Two drains a metre apart read as a mistake rather than as two ways down.\n\nA manhole is also refused outright if its PRISON already has one, which is the rule this backs up — spacing catches the case where two neighbouring prisons, or two different networks, each place one at the shared wall.")]
+        public int sewerManholeSpacing = 6;
         [Tooltip("No sewer mouth within this many cells (XZ) of a staircase — the same guard prisons and alcoves use, since the sealed stair envelope is the most fragile geometry in the dungeon.")]
         public int crawlwayStairClearance = 2;
         [Tooltip("A crawlway mouth must be this many cells from any room DOORWAY — a grate in a threshold fights the reserved-threshold rule and the corner-post classifier. Also a CHEBYSHEV box: at 2 it excludes 25 cells around EVERY door, which measurably ate 45% of all alcove sites. 1 is enough to keep a mouth out of a threshold and its immediate neighbours.")]
@@ -314,8 +316,8 @@ namespace DungeonGen
         // NeedsSlabBetween is asked about, and it is asked per floor tile every build.
         readonly HashSet<Vector3Int> crawlManholes = new HashSet<Vector3Int>();
 
-        enum ManholeReject { None, BudgetZero, NoWallGrate, NoPrisonAbove, ChanceRoll }
-        readonly int[] manholeRejects = new int[5];
+        enum ManholeReject { None, BudgetZero, NoWallGrate, NoPrisonAbove, ChanceRoll, Crowded }
+        readonly int[] manholeRejects = new int[6];
         // Bore cells that sat directly under a prison, summed across networks. The number that
         // separates "the dungeon has no prisons" from "the networks never reached one".
         int manholeCandidates;
@@ -3013,6 +3015,8 @@ namespace DungeonGen
                     ? $"{prisonsOverRock} prison cell(s) sit over reachable rock and NO network grew under any of them. That is the usual reason and it is a COINCIDENCE problem, not a bug: raise sewerCellBudget so networks sprawl further, or sewerNetworkCount / prisonChance so there are more of each to collide."
                 : manholeRejects[(int)ManholeReject.ChanceRoll] > 0
                     ? $"{manholeCandidates} candidate site(s) found and the CHANCE ROLL refused them — raise sewerManholeChance ({cfg.sewerManholeChance:0.##})."
+                : manholeRejects[(int)ManholeReject.Crowded] > 0 && placed == 0
+                    ? $"every candidate was refused for CROWDING — its prison already had a drain, or another sat within sewerManholeSpacing ({cfg.sewerManholeSpacing}). Lower that if manholes have become too rare."
                 : manholeRejects[(int)ManholeReject.NoWallGrate] > 0
                     ? "!! a mouthless network reached ChooseManholes, which should now be impossible — mouths are chosen and the network discarded BEFORE this runs. If this fires, that ordering has been changed and the leak it fixed is probably back."
                     : "placed as expected.";
@@ -3022,6 +3026,7 @@ namespace DungeonGen
                    $"no wall grate on the network (would trap the player): {manholeRejects[(int)ManholeReject.NoWallGrate]}, " +
                    $"no prison above any bore cell: {manholeRejects[(int)ManholeReject.NoPrisonAbove]}, " +
                    $"lost the chance roll: {manholeRejects[(int)ManholeReject.ChanceRoll]}, " +
+                   $"too close to another manhole (sewerManholeSpacing {cfg.sewerManholeSpacing}, or same prison): {manholeRejects[(int)ManholeReject.Crowded]}, " +
                    $"budget is zero: {manholeRejects[(int)ManholeReject.BudgetZero]}. {why}";
         }
 
@@ -3092,6 +3097,30 @@ namespace DungeonGen
             foreach (var bore in candidates)
             {
                 if (net.Manholes.Count >= cfg.sewerMaxManholesPerNetwork) break;
+                Vector3Int open = bore + Vector3Int.up;
+
+                // ONE PER PRISON, AND A SPACING BEHIND IT. The per-network budget does not stop
+                // clustering on its own: candidates are ranked by tunnel neighbours, so a
+                // junction under a wide prison offers several ADJACENT bore cells that all score
+                // identically well and the greedy fill takes the top two side by side. Two drains
+                // a metre apart in one cell read as a generation fault rather than as two ways
+                // down.
+                //
+                // The prison identity is the rule the complaint is actually about; the Chebyshev
+                // spacing backs it up for the cases identity cannot see — two NEIGHBOURING
+                // prisons each placing one against their shared wall, and two different networks
+                // doing the same, since `crawlManholes` is global across networks exactly as the
+                // mouth spacing sets are.
+                var prison = PrisonAt(open);
+                bool crowded = false;
+                if (prison != null)
+                    foreach (var cell in prison.Cells)
+                        if (crawlManholes.Contains(cell)) { crowded = true; break; }
+                if (!crowded && cfg.sewerManholeSpacing > 0)
+                    foreach (var other in crawlManholes)
+                        if (Chebyshev(open, other) < cfg.sewerManholeSpacing) { crowded = true; break; }
+                if (crowded) { manholeRejects[(int)ManholeReject.Crowded]++; continue; }
+
                 var m = new CrawlwayManhole { BoreCell = bore };
                 net.Manholes.Add(m);
                 crawlManholes.Add(m.OpenCell);
