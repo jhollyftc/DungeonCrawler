@@ -1,0 +1,104 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &6905880773794416865
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -0.7390284
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: -0.00000006632433
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.7085197
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7071067
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      propertyPath: m_Name
+      value: Dresser_04
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6885289754289346461}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 9039462481794934545}
+  m_SourcePrefab: {fileID: 100100000, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+--- !u!1 &5987522684047226288 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+  m_PrefabInstance: {fileID: 6905880773794416865}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &6885289754289346461
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5987522684047226288}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8ea6e79a15e84b4a84f7b400d7b5ed8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.Surface
+  type: 3
+--- !u!65 &9039462481794934545
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5987522684047226288}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.0209639, y: 0.008870544, z: 0.010927428}
+  m_Center: {x: 0.00022210926, y: -0.00047458187, z: 0.00545503}
