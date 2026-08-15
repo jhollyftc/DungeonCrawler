@@ -65,6 +65,11 @@ namespace DungeonGen
         [Tooltip("Prompt while gripped FROM INSIDE THE BORE, where it goes away from you.\n\nA separate string because the required input is genuinely the opposite instruction: the world direction is the same on both sides (+outward), but told to 'pull' while crouched in a tunnel a player backs away from the grate, which is the one input that does nothing there.")]
         public string strainPromptInside = "Push it open!";
 
+        [Tooltip("Prompt on an unopened FLOOR COVER.")]
+        public string coverPrompt = "Grab the cover";
+        [Tooltip("Prompt while heaving a FLOOR COVER. Says LOOK UP because that is literally the input: gripping drags your gaze down onto the cover and you win by hauling your head back against it.")]
+        public string strainPromptCover = "Look up — heave it!";
+
         [Tooltip("Log grip state every frame while hauling, and say why a grip ended. 'Nothing happens when I interact' has several causes that all look identical — the grip never started, it ended on the frame it began, or it is working and you are simply not moving.")]
         public bool debugGrip = false;
 
@@ -78,7 +83,12 @@ namespace DungeonGen
         /// <summary>Being hauled on right now.</summary>
         public bool IsGripped { get; private set; }
         /// <summary>Progress toward breaking free, 0-1. The hook an audio layer follows.</summary>
-        public float Strain01 => strainToBreak > 0f ? Mathf.Clamp01(strain / strainToBreak) : 0f;
+        /// <summary>The threshold for THIS mode. Degrees of look for a cover, metres of haul for
+        /// a wall grate — different quantities on different axes, so they cannot share a field.</summary>
+        float BreakThreshold => mode == GrateMode.FloorCover ? coverStrainToBreak : strainToBreak;
+        float DecayPerSecond => mode == GrateMode.FloorCover ? coverStrainDecay : strainDecayPerSecond;
+
+        public float Strain01 => BreakThreshold > 0f ? Mathf.Clamp01(strain / BreakThreshold) : 0f;
 
         float strain;
         Transform gripper;
@@ -90,6 +100,9 @@ namespace DungeonGen
         float lastAxial;   // displacement fallback only, when no controller is found
         bool gripFromOutside;
         Vector3 gripAnchor;
+        // FloorCover only: the smoothed direction the player has been dragging, which decides
+        // where the cover ends up. Smoothed so a moment of strafing does not throw it sideways.
+        Vector3 dragDir;
         Vector3 restLocalPos;
         bool restCaptured;
 
@@ -123,6 +136,33 @@ namespace DungeonGen
         [Tooltip("Prompt shown by PlayerInteractor.")]
         public string prompt = "Wrench off the grate";
 
+        /// <summary>Which kind of opening this covers. See <see cref="mode"/>.</summary>
+        public enum GrateMode
+        {
+            /// <summary>A grate in a wall. Comes free toward the room it faces.</summary>
+            WallGrate,
+            /// <summary>A manhole cover in a floor. Heaved ASIDE across the floor it sits in.</summary>
+            FloorCover,
+        }
+
+        [Header("Kind")]
+        [Tooltip("WALL GRATE comes off toward the room it faces. FLOOR COVER is heaved aside across the floor.\n\nONE COMPONENT RATHER THAN TWO because everything that makes this feel like anything — the grip, the strain, the leash, the audio, the noise event, becoming carryable — is identical. Only three things differ: which way effort is measured, where the piece ends up, and the fact that a cover must never end up back over its own hole.")]
+        public GrateMode mode = GrateMode.WallGrate;
+
+        [Tooltip("Pitch the camera is dragged toward while heaving a floor cover, in degrees down from level. This is what you are FIGHTING — grip the cover and the game pulls your gaze down onto it, and you get it open by hauling your head back up.\n\nWHY LOOK RATHER THAN WALK: IntendedVelocity is horizontal BY CONSTRUCTION (the controller zeroes Y), so there is no vertical movement input to measure at all — the strain has to come from an axis the player actually has. Look pitch is that axis, and heaving upward against a weight that keeps pulling your head down is a far better read of lifting something heavy than shuffling sideways was.")]
+        public float coverLookPitch = 62f;
+        [Tooltip("How hard the camera is dragged back down, degrees per second. Size it so a steady upward pull BARELY wins — too low and the tether is decorative, too high and no amount of looking up makes progress.")]
+        public float coverTetherPull = 95f;
+        [Tooltip("Degrees of accumulated UPWARD look needed to pop a floor cover free.\n\nDEGREES, not the metres strainToBreak uses for a wall grate — the two mechanics measure different quantities on different axes, so they cannot share a number however similar they look.")]
+        public float coverStrainToBreak = 260f;
+        [Tooltip("Degrees of strain bled off per second while the player is NOT pulling up. Same rule as the wall grate's decay: it punishes letting go, and is not applied while they are working.")]
+        public float coverStrainDecay = 150f;
+        [Tooltip("How fast a freed cover pops upward, m/s. The lift is the payoff for the fight — it should visibly jump rather than slide.")]
+        public float coverPopSpeed = 3.2f;
+
+        [Tooltip("How far a floor cover slides off the hole when it comes free, in metres.\n\nIT IS MOVED RATHER THAN THROWN, and that is the one invariant a cover has: the shaft is directly beneath it, so a cover that tumbles freely will sometimes drop straight down the hole it was covering — blocking the passage and looking like a bug. Placing it clear of the opening first and only then handing it to physics makes that unrepresentable. Same reasoning as a wall grate never falling into the bore, one axis over.")]
+        public float coverSlideDistance = 1.35f;
+
         /// <summary>Set by DungeonKitPlacer: world direction from the mouth into the OPEN cell.</summary>
         public Vector3 OutwardDirection { get; set; } = Vector3.forward;
 
@@ -145,8 +185,9 @@ namespace DungeonGen
         /// lying on the floor (bake it, like any other prop).
         /// </summary>
         public string Prompt => IsOpen ? loose?.Prompt
-                              : IsGripped ? (gripFromOutside ? strainPrompt : strainPromptInside)
-                              : prompt;
+                              : IsGripped ? (mode == GrateMode.FloorCover ? strainPromptCover
+                                                                          : gripFromOutside ? strainPrompt : strainPromptInside)
+                              : (mode == GrateMode.FloorCover ? coverPrompt : prompt);
 
         public void Interact(Transform interactor)
         {
@@ -310,8 +351,26 @@ namespace DungeonGen
             float axialEffort;
             if (controller != null)
             {
-                axialEffort = Mathf.Max(0f, Vector3.Dot(controller.IntendedVelocity, outwardDir))
-                            * Time.deltaTime;
+                Vector3 intent = controller.IntendedVelocity;
+                if (mode == GrateMode.FloorCover)
+                {
+                    // A TUG OF WAR WITH THE CAMERA. Gripping drags your gaze down onto the
+                    // cover; you get it open by hauling your head back up against that pull.
+                    // The strain is the UPWARD look input, in degrees — measured as intent, so
+                    // a player straining against a tether that is winning still makes progress.
+                    controller.SetPitchTether(coverLookPitch, coverTetherPull);
+                    axialEffort = Mathf.Max(0f, -controller.LookPitchDelta);
+
+                    // Which way it ends up is now the way the player is FACING, since they are
+                    // no longer dragging it anywhere. Flattened, because they are looking down.
+                    Vector3 facing = gripper.forward;
+                    facing.y = 0f;
+                    if (facing.sqrMagnitude > 0.0001f) dragDir = facing.normalized;
+                }
+                else
+                {
+                    axialEffort = Mathf.Max(0f, Vector3.Dot(intent, outwardDir)) * Time.deltaTime;
+                }
             }
             else
             {
@@ -332,7 +391,7 @@ namespace DungeonGen
             // from either end. Gating on effort removes the coupling entirely: any genuine push
             // counts, and stopping still costs you.
             if (axialEffort <= 0f)
-                strain = Mathf.Max(0f, strain - strainDecayPerSecond * Time.deltaTime);
+                strain = Mathf.Max(0f, strain - DecayPerSecond * Time.deltaTime);
 
             // THE LEASH. Holding the key means holding ON: past the slack you are hauled back
             // toward the grate, so walking away is a struggle rather than a stroll and letting
@@ -345,7 +404,14 @@ namespace DungeonGen
             //
             // Only from OUTSIDE: from inside the bore you are shoving against the grate itself
             // and the geometry already resists you. A leash there would fight the tube.
-            if (gripFromOutside && controller != null)
+            // WALL GRATES ONLY. A cover is tethered by the CAMERA, not by the body — you are
+            // standing over it heaving upward, not hanging off it and leaning away, so dragging
+            // the player back to a spot fights their footing for no reason and makes lining up
+            // the shot at the drain worse. The two mechanics tether different things because
+            // they are different actions; only the wall grate is a tug-of-war you can walk out
+            // of. The gripBreakDistance check above still applies to both — walk far enough and
+            // you have simply let go.
+            if (mode == GrateMode.WallGrate && gripFromOutside && controller != null)
             {
                 Vector3 toAnchor = gripAnchor - gripper.position;
                 float over = toAnchor.magnitude - tetherSlack;
@@ -373,7 +439,12 @@ namespace DungeonGen
             // baselined `feel`: it starts almost still and builds as the thing works loose,
             // which is also the honest direction — a grate nearly out of its seating rattles far
             // more than one that has not shifted yet.
-            Vector3 shift = outwardDir * (feel * strainVisualShift);
+            // A COVER STRAINS UPWARD, matching the input: you are heaving your gaze up against a
+            // weight, so the weight should visibly rise and rock in its seating as you win. A
+            // wall grate still comes toward the room it faces. (`dragDir` on a cover is the
+            // player's facing and only decides where it lands — it is not the strain axis.)
+            Vector3 shiftAxis = mode == GrateMode.FloorCover ? Vector3.up : outwardDir;
+            Vector3 shift = shiftAxis * (feel * strainVisualShift);
             if (strainRattle > 0f && axialEffort > 0f)
                 shift += Random.insideUnitSphere * (strainRattle * t);
             // localPosition is in PARENT space, so the world-space shift has to be converted
@@ -412,7 +483,7 @@ namespace DungeonGen
                           $"dist={dist:0.00} leash={Mathf.Max(0f, dist - tetherSlack):0.00}m past slack. {verdict}", this);
             }
 
-            if (strain >= strainToBreak)
+            if (strain >= BreakThreshold)
             {
                 // BREAK BEFORE ENDING THE GRIP, because Break() needs gripperCarry to hand the
                 // grate over and EndGrip clears it. Safe in this order: EndGrip only restores
@@ -462,6 +533,13 @@ namespace DungeonGen
             // left.
             SwapToDynamicCollider(part);
 
+            // A COVER IS NOT TELEPORTED ASIDE — it POPS. An earlier version placed it clear
+            // before waking physics, which made "never falls down its own shaft" airtight but
+            // also meant the piece jumped a metre sideways at the exact moment the player was
+            // meant to see it burst free. The fight earns the pop, so the pop is what plays; the
+            // rare bad bounce is caught afterwards by RescueFromShaft once it has settled.
+            if (mode == GrateMode.FloorCover) openingY = part.position.y;
+
             var body = part.GetComponent<Rigidbody>();
             if (body == null) body = part.gameObject.AddComponent<Rigidbody>();
             body.mass = mass;
@@ -471,9 +549,20 @@ namespace DungeonGen
             // Straight out into the open cell, plus a tumble. Velocity rather than a force so
             // the result does not depend on mass — a heavier grate should land harder, not
             // travel less far.
-            Vector3 outward = OutwardDirection.sqrMagnitude > 0.001f
-                ? OutwardDirection.normalized : part.forward;
-            body.linearVelocity = outward * outwardSpeed;
+            //
+            // A COVER GETS A FRACTION OF THAT, because it has already been PLACED where it
+            // belongs. Its impulse only needs to settle it against the floor and let it rock;
+            // a full shove would send a heavy disc skating across the cell and, worse, give it
+            // a real chance of sliding back over the opening.
+            Vector3 outward = mode == GrateMode.FloorCover
+                ? (dragDir.sqrMagnitude > 0.0001f ? dragDir.normalized : SlideFallback(part))
+                : (OutwardDirection.sqrMagnitude > 0.001f ? OutwardDirection.normalized : part.forward);
+            float launch = mode == GrateMode.FloorCover ? outwardSpeed * 0.25f : outwardSpeed;
+            body.linearVelocity = outward * launch;
+            // THE POP IS THE PAYOFF. You fought a weight that kept dragging your head down, so
+            // the cover jumping clear is the release that fight earned — sliding quietly aside
+            // reads as nothing having happened.
+            if (mode == GrateMode.FloorCover) body.linearVelocity += Vector3.up * coverPopSpeed;
             body.angularVelocity = Vector3.Cross(Vector3.up, outward) * tumble;
             body.sleepThreshold = 0f;
             CancelInvoke(nameof(AllowSleep));
@@ -486,7 +575,13 @@ namespace DungeonGen
             // you have to live with. Only from the room side — from inside the bore there is
             // nowhere to put it and PlayerCarry would jam it against the tube and drop it back
             // in the passage.
-            if (handToPlayer && makeCarryable && loose != null && gripperCarry != null)
+            // A COVER IS NEVER HANDED OVER, however it was opened. Its hole is right there, and
+            // a carried prop that gets dropped or knocked loose lands wherever the carry rig
+            // last had it — which for a cover means a fair chance of straight back down the
+            // shaft. It stays carryable, so it can still be picked up deliberately once it is
+            // lying safely on the floor; it just is not put in your hands over an open drain.
+            if (handToPlayer && mode != GrateMode.FloorCover &&
+                makeCarryable && loose != null && gripperCarry != null)
                 gripperCarry.TryPickUp(loose);
 
             // A grate coming out of stone is loud, and this is the ONE place the crawlway system
@@ -574,6 +669,30 @@ namespace DungeonGen
         static bool warnedAutoBox;
 
         /// <summary>
+        /// Where a floor cover goes when the player never actually dragged — a break from damage,
+        /// from an NPC, or from a grip that reached the threshold on jitter alone.
+        ///
+        /// Casts the four compass directions and takes the first with room, rather than using an
+        /// authored default: a manhole sits in a prison CELL, so at least two of its sides are
+        /// wall, and a fixed direction would bury the cover in masonry half the time.
+        /// </summary>
+        Vector3 SlideFallback(Transform part)
+        {
+            Vector3 origin = part.position + Vector3.up * 0.2f;
+            Vector3[] dirs = { part.forward, part.right, -part.forward, -part.right };
+            foreach (var raw in dirs)
+            {
+                Vector3 d = new Vector3(raw.x, 0f, raw.z);
+                if (d.sqrMagnitude < 0.0001f) continue;
+                d.Normalize();
+                if (!Physics.Raycast(origin, d, coverSlideDistance + 0.5f,
+                                     ~0, QueryTriggerInteraction.Ignore))
+                    return d;
+            }
+            return Vector3.forward;   // boxed in on all four sides; physics will settle it
+        }
+
+        /// <summary>
         /// A grip that ends because this component went away must still put the weapon back.
         /// The dungeon regenerating, the player dying, or the grate being destroyed mid-haul all
         /// take this object out without anyone calling EndGrip — and a stowed viewmodel has no
@@ -586,11 +705,36 @@ namespace DungeonGen
             if (IsGripped) EndGrip("component disabled");
         }
 
+        /// <summary>
+        /// If a popped cover ended up down its own shaft, put it back on the floor.
+        ///
+        /// THE ONE INVARIANT A COVER HAS, and a pop cannot guarantee it the way a placement
+        /// could: the opening is directly underneath, so a bad bounce genuinely can drop it in —
+        /// where it blocks the passage and reads as a bug rather than as physics. Checked once,
+        /// after it has settled, rather than constrained during flight; the pop is the payoff for
+        /// the fight and should not be fenced in to make this cheap.
+        /// </summary>
+        void RescueFromShaft(Transform part, Rigidbody body)
+        {
+            if (mode != GrateMode.FloorCover || part == null || body == null) return;
+            if (part.position.y > openingY - 0.6f) return;      // still at floor level: fine
+
+            Vector3 aside = dragDir.sqrMagnitude > 0.0001f ? dragDir.normalized : SlideFallback(part);
+            body.linearVelocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+            part.position = new Vector3(part.position.x, openingY, part.position.z)
+                          + aside * coverSlideDistance + Vector3.up * 0.15f;
+        }
+
+        float openingY;
+
         void AllowSleep()
         {
             Transform part = grate != null ? grate : transform;
             var body = part != null ? part.GetComponent<Rigidbody>() : null;
-            if (body != null) body.sleepThreshold = 0.005f;
+            if (body == null) return;
+            RescueFromShaft(part, body);
+            body.sleepThreshold = 0.005f;
         }
     }
 }

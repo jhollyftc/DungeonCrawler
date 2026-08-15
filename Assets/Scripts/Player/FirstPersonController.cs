@@ -145,6 +145,39 @@ namespace DungeonGen
         /// </summary>
         public Vector3 IntendedVelocity { get; private set; }
 
+        /// <summary>
+        /// Degrees of pitch the player's LOOK INPUT applied this frame. Negative = looked up.
+        ///
+        /// The vertical counterpart to IntendedVelocity, and it exists for the same reason: a
+        /// system measuring how hard the player is fighting something needs their INTENT, and a
+        /// tether that drags the camera back means the achieved pitch says nothing about how
+        /// hard they resisted.
+        /// </summary>
+        public float LookPitchDelta { get; private set; }
+
+        /// <summary>
+        /// Drag the camera's pitch toward <paramref name="targetPitch"/> at
+        /// <paramref name="degreesPerSecond"/>, re-asserted every frame by whoever owns it.
+        ///
+        /// FRAME-STAMPED, NOT LATCHED — stop calling and the camera is the player's again. Same
+        /// contract as CameraKick.SetSustained, SetSustainedVelocity and PlayerFov.AddOffset,
+        /// and for the same reason: a driver that dies mid-effect (let go, died, the dungeon
+        /// regenerated) must not be able to strand the player staring at the floor.
+        ///
+        /// PITCH ONLY, deliberately. Yaw is left entirely free: pinning both axes is
+        /// disorienting to the point of nausea, and having to hold your gaze DOWN while heaving
+        /// is the whole feel — where you face while doing it does not matter.
+        /// </summary>
+        public void SetPitchTether(float targetPitch, float degreesPerSecond)
+        {
+            pitchTetherTarget = targetPitch;
+            pitchTetherPull = degreesPerSecond;
+            pitchTetherFrame = Time.frameCount;
+        }
+
+        float pitchTetherTarget, pitchTetherPull;
+        int pitchTetherFrame = -1;
+
         CharacterController cc;
         Vector3 externalVelocity;   // decaying dash/knockback velocity (horizontal), driven by AddImpulse
         float pitch;
@@ -163,7 +196,7 @@ namespace DungeonGen
         /// and crawlways are registry entries rather than RoomTypes (§4), and they are also the
         /// two spaces you cannot reach without breaking a grate and crawling — so they are worth
         /// far more on this list than most of the rooms are.</summary>
-        static readonly string[] warpSpaces = { "Sewer Chamber", "Crawlway Mouth" };
+        static readonly string[] warpSpaces = { "Sewer Chamber", "Crawlway Mouth", "Manhole" };
 
         int warpTypeIndex;
 
@@ -248,11 +281,24 @@ namespace DungeonGen
                 float look = lookSensitivity;
                 if (carry != null) look *= carry.CarryTurnMultiplier;
                 transform.Rotate(0f, Input.GetAxis("Mouse X") * look, 0f);
+                float pitchBefore = pitch;
                 pitch -= Input.GetAxis("Mouse Y") * look;
                 pitch = Mathf.Clamp(pitch, -89f, 89f);
-                if (cam != null)
-                    cam.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+                // Measured BEFORE the tether below, so it reports how hard the player pushed
+                // rather than how far the camera actually got — intent, not achievement.
+                LookPitchDelta = pitch - pitchBefore;
             }
+            else LookPitchDelta = 0f;
+
+            // The tether drags pitch back after input has been applied, so a player holding
+            // their gaze up is in a genuine tug of war rather than simply winning.
+            if (pitchTetherFrame >= Time.frameCount - 1)
+            {
+                pitch = Mathf.MoveTowards(pitch, pitchTetherTarget, pitchTetherPull * Time.deltaTime);
+                pitch = Mathf.Clamp(pitch, -89f, 89f);
+            }
+            if (cam != null)
+                cam.localRotation = Quaternion.Euler(pitch, 0f, 0f);
 
             UpdateCrouch();
 
@@ -374,34 +420,78 @@ namespace DungeonGen
             var gen = dungeon != null ? dungeon.Generator : null;
             if (gen == null) return;
 
+            // NEAREST, NOT FIRST. These are debug jumps taken while testing one thing, and a
+            // dungeon can hold several of each — landing at whichever the list happened to
+            // return first means walking back to the one you were actually looking at.
+            bool found = false;
+            Vector3Int best = default;
+            float bestSq = float.MaxValue;
+            string label = spaceIndex == 0 ? "sewer chamber"
+                         : spaceIndex == 1 ? "sewer mouth" : "manhole";
+
+            void Consider(Vector3Int cell)
+            {
+                Vector3 world = dungeon.transform.position +
+                                ((Vector3)cell + Vector3.one * 0.5f) * dungeon.cellSize;
+                float sq = (world - transform.position).sqrMagnitude;
+                if (sq >= bestSq) return;
+                bestSq = sq; best = cell; found = true;
+            }
+
             foreach (var cw in gen.Crawlways)
             {
                 if (spaceIndex == 0)
                 {
-                    if (cw.Chambers.Count == 0) continue;
-                    var ch = cw.Chambers[0];
-
-                    // Prefer a cell that ISN'T the entry tile — on a wide chamber that tile is a
-                    // 1x1 vestibule, and landing in it puts you nose-first against the grate you
-                    // came to look past.
-                    Vector3Int target = ch.MouthCell;
-                    foreach (var c in ch.Cells)
-                        if (c != ch.MouthCell) { target = c; break; }
-
-                    WarpToCell(target, "sewer chamber");
-                    return;
+                    foreach (var ch in cw.Chambers)
+                    {
+                        // Prefer a cell that ISN'T the entry tile — on a wide chamber that tile
+                        // is a 1x1 vestibule, and landing in it puts you nose-first against the
+                        // grate you came to look past.
+                        Vector3Int target = ch.MouthCell;
+                        foreach (var c in ch.Cells)
+                            if (c != ch.MouthCell) { target = c; break; }
+                        Consider(target);
+                    }
                 }
-
-                // A mouth's OPEN cell, not a bore cell: it puts you in the room facing the grate,
-                // which is what you want to inspect. Standing IN a bore would wedge a 1.8m
-                // capsule in a 1.5m tube — the crouch is what makes bores passable, and a warp
-                // does not crouch you.
-                if (cw.Mouths.Count == 0) continue;
-                WarpToCell(cw.Mouths[0].OpenCell, "sewer mouth");
-                return;
+                else if (spaceIndex == 1)
+                {
+                    // A mouth's OPEN cell, not a bore cell: it puts you in the room facing the
+                    // grate. Standing IN a bore would wedge a 1.8m capsule in a 1.5m tube — the
+                    // crouch is what makes bores passable, and a warp does not crouch you.
+                    foreach (var m in cw.Mouths) Consider(m.OpenCell);
+                }
+                else
+                {
+                    // NOT THE MANHOLE CELL ITSELF — its floor slab is suppressed, so warping onto
+                    // it drops you straight down the shaft before you have seen the cover. Land
+                    // on a neighbouring cell of the same prison and look at it instead.
+                    foreach (var mh in cw.Manholes) Consider(BesideManhole(gen, mh.OpenCell));
+                }
             }
 
-            Debug.LogWarning($"[Warp] No {(spaceIndex == 0 ? "sewer chamber" : "crawlway")} this seed.");
+            if (!found) { Debug.LogWarning($"[Warp] No {label} this seed."); return; }
+            WarpToCell(best, label);
+        }
+
+        /// <summary>
+        /// A cell to stand on to LOOK AT a manhole, rather than the hole itself.
+        ///
+        /// Falls back outward through the prison: a neighbouring cell of the same cell block, then
+        /// its doorway tile, then the corridor outside. A 1x1 prison whose only tile IS the drain
+        /// has nowhere inside to stand, and warping into the opening would drop the player down
+        /// the shaft — which is a fine thing to do on purpose and a terrible way to arrive.
+        /// </summary>
+        static Vector3Int BesideManhole(DungeonGenerator gen, Vector3Int openCell)
+        {
+            var prison = gen.PrisonAt(openCell);
+            if (prison != null)
+            {
+                foreach (var c in prison.Cells)
+                    if (c != openCell && !gen.IsManholeOpening(c)) return c;
+                if (prison.MouthCell != openCell) return prison.MouthCell;
+                return prison.HallCell;
+            }
+            return openCell;
         }
 
         /// <summary>Shared teleport, so every warp target snaps to the floor the same way.</summary>

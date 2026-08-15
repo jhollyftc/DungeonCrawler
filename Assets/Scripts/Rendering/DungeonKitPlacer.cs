@@ -1700,7 +1700,27 @@ namespace DungeonGen
                         Vector3 pos = new Vector3(cell.x + 0.5f, cell.y, cell.z + 0.5f) * cellSize
                                     + rot * kit.crawlwayTubeOffset + parent.position;
 
-                        PlaceOne(prefab, pos, rot, PropTier.StaticCollider);
+                        // ANY TUBE PIECE CARRYING A MOVING PART MUST BE FullGameObject — which in
+                        // practice means the MANHOLE, whose cover is hauled off. The instanced
+                        // tiers bake the mesh into a static matrix and InstancedDungeonRenderer
+                        // has NO REMOVAL PATH, so the cover's collider detaches and moves while
+                        // its VISIBLE MESH stays welded over the hole. It presents as "the
+                        // collider gizmo moves but nothing renders moving", and every part of the
+                        // interaction works, because PropInstancer keeps custom components on the
+                        // collider object. Same detection the mouth already uses; I applied the
+                        // rule there and not here.
+                        bool moves = prefab.GetComponentInChildren<CrawlwayGrate>(true) != null;
+                        GameObject placedTube = PlaceOne(prefab, pos, rot,
+                            moves ? PropTier.FullGameObject : PropTier.StaticCollider);
+
+                        // A cover has no meaningful "outward" — it comes straight up — but the
+                        // field still seeds SlideFallback's first cast, so point it somewhere
+                        // sane rather than at world +Z.
+                        if (placedTube != null)
+                        {
+                            var mh = placedTube.GetComponentInChildren<CrawlwayGrate>(true);
+                            if (mh != null) mh.OutwardDirection = Vector3.up;
+                        }
                         tubes++;
                     }
                 }
