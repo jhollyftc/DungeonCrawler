@@ -271,6 +271,8 @@ namespace DungeonGen
         public List<WallAsset> prisonWalls = new List<WallAsset>();
         [Tooltip("Floor tiles for prison closets.")]
         public GameObject[] prisonFloorPrefabs;
+        [Tooltip("WEIGHTED prison floor tiles. Weight is relative within the list — 3 against 1 means three times as often — and 0 mutes an entry without deleting it.\n\nThe plain list above still works and its entries count as WEIGHT 1, so these EXTEND the pool rather than replacing it. Floors are otherwise picked with `Hash(cell) % length`, i.e. every tile exactly equally likely, and the only way to make one rarer is to list another twice — the same limitation the wall variants had before WallAsset.weight.\n\nNB weight is FREQUENCY, not distribution: a per-cell hash is white noise, so a weighted pool still scatters evenly. Making a tile CLUSTER into patches needs the smooth-field treatment walls get from ValueNoise.")]
+        public WeightedPrefab[] prisonFloorVariants;
         [Tooltip("Ceiling tiles for prison closets.")]
         public GameObject[] prisonCeilingPrefabs;
         [Tooltip("Contents for prison closets, chosen PER CELL by a weighted roll — so one cell holds a bunk and a bucket, the next a skeleton in chains, the next nothing but straw. A prison is the same generator primitive as an alcove (both come out of RecessFits), so the same anchors work: Direction gives the back/left/right frame, WallSide.Back is the far wall, FeatureFacing.Outward looks out through the bars.\n\nEmpty = bare cells, which is what shipped before this existed.\n\nBLOCKING PROPS ARE SAFE HERE (a dead end severs nothing) EXCEPT in the doorway — the placer reserves the mouth cell and the door's swing arc automatically, so you don't have to author around them.")]
@@ -462,6 +464,16 @@ namespace DungeonGen
             return prisonWallCache.Count > 0 ? prisonWallCache : null;
         }
 
+        /// <summary>Prison floor tiles as a WEIGHTED pool, or null if nothing is authored.
+        /// Cached: the kit placer asks once per prison floor cell.</summary>
+        public List<WeightedPrefab> PrisonFloorPool()
+        {
+            if (prisonFloorPool != null) return prisonFloorPool.Count > 0 ? prisonFloorPool : null;
+            prisonFloorPool = DungeonKitPlacer.MergePool(prisonFloorPrefabs, prisonFloorVariants);
+            return prisonFloorPool.Count > 0 ? prisonFloorPool : null;
+        }
+        List<WeightedPrefab> prisonFloorPool;
+
         /// <summary>Sewer-chamber wall prefabs, or null to inherit the hallway's walls.</summary>
         public List<WallAsset> ChamberWalls()
         {
@@ -558,6 +570,7 @@ namespace DungeonGen
             prisonWallCache = null;
             pitWallCache = null;
             chamberWallCache = null;
+            prisonFloorPool = null;
             wallFlagCache = null;
             lookup = null;
         }

@@ -540,6 +540,7 @@ namespace DungeonGen
                 // it correctly inherits that room's floor), then the cell type. Each falls
                 // back to the kit's generic, so a partially authored style still renders.
                 GameObject[] floorSlot = kit.floorPrefabs;
+                List<WeightedPrefab> floorPool = null;   // non-null wins over floorSlot
                 GameObject[] ceilingSlot = kit.ceilingPrefabs;
                 if (style != null)
                 {
@@ -565,7 +566,12 @@ namespace DungeonGen
                     }
                     else if (t == CellType.Prison)
                     {
-                        floorSlot = style.PrisonFloors() ?? floorSlot;
+                        // WEIGHTED POOL WINS WHERE ONE IS AUTHORED. The plain slot is picked with
+                        // Hash(cell) % length — every tile exactly equally likely — so a floor
+                        // variant could only be made rarer by listing another twice. Same dial
+                        // WallAsset.weight already gives walls.
+                        floorPool = style.PrisonFloorPool();
+                        if (floorPool == null) floorSlot = style.PrisonFloors() ?? floorSlot;
                         ceilingSlot = style.PrisonCeilings() ?? ceilingSlot;
                     }
                     // SEWER CHAMBER BEFORE THE HALLWAY FALLBACK, for the same reason pits go
@@ -586,7 +592,13 @@ namespace DungeonGen
                 }
 
                 if (gen.NeedsSlabBetween(c + Vector3Int.down, c))
-                    Emit(floorSlot, "floor", center, Yaw(c, kit.randomizeFloorYaw), kit.floorOffset, c);
+                {
+                    if (floorPool != null)
+                        EmitPrefab(PickWeightedPrefab(floorPool, c, 163), "floor", center,
+                                   Yaw(c, kit.randomizeFloorYaw), kit.floorOffset, c);
+                    else
+                        Emit(floorSlot, "floor", center, Yaw(c, kit.randomizeFloorYaw), kit.floorOffset, c);
+                }
 
                 // Ceiling.
                 if (t != CellType.StairLower && gen.NeedsSlabBetween(c, c + Vector3Int.up))
@@ -1937,7 +1949,7 @@ namespace DungeonGen
         /// and alcove pools, where the original single slot survives as a weight-1 entry so
         /// variants EXTEND rather than supersede.
         /// </summary>
-        static List<WeightedPrefab> MergePool(GameObject[] plain, WeightedPrefab[] weighted)
+        public static List<WeightedPrefab> MergePool(GameObject[] plain, WeightedPrefab[] weighted)
         {
             var pool = new List<WeightedPrefab>();
             if (plain != null)
@@ -1955,7 +1967,7 @@ namespace DungeonGen
         /// and still varies cell to cell. Identical shape to PickWall's weighting, deliberately:
         /// two ways of turning a weight into a choice would drift.
         /// </summary>
-        static GameObject PickWeightedPrefab(List<WeightedPrefab> pool, Vector3Int cell, int salt)
+        public static GameObject PickWeightedPrefab(List<WeightedPrefab> pool, Vector3Int cell, int salt)
         {
             if (pool == null || pool.Count == 0) return null;
 
