@@ -600,11 +600,12 @@ whether it takes the room's HUE are different questions; when not tinting, the b
 is now read back off the graph so an untinted flame still flickers around the artist's
 colour.
 
-**ONLY THE INSTANCED PATH IS DISTANCE-CULLED — EVERY GAMEOBJECT RENDERER IS NOT, and at depth
-20 that is the whole framerate story.** `InstancedDungeonRenderer` culls per frame by
-`renderDistance`; anything rendering as a real GameObject has nothing but Unity's frustum
-culling, so a long sightline submits every door, prop and torch in the dungeon at any distance.
-Measured at depth 20, from ONE SPOT, turning on the spot:
+**GAMEOBJECT RENDERERS ARE DISTANCE-CULLED BY `DungeonRendererCulling`; FOR A LONG TIME ONLY
+THE INSTANCED PATH WAS.** `InstancedDungeonRenderer` culls per frame by `renderDistance`
+because it owns its own submission; everything rendering as a real GameObject — doors,
+FullGameObject props, carryables, chests, grates — had nothing but Unity's FRUSTUM culling, so a
+long sightline submitted every one of them at any distance. Measured at depth 20, from ONE SPOT,
+turning on the spot:
 
 | looking down a corridor | facing a wall |
 |---|---|
@@ -624,9 +625,24 @@ discriminating-test rule: the statistics panel counts shadow submissions inside 
 so only the frame debugger separates the two.
 Doors dominate because there are **190 of them at depth 20** (room count and corridor length
 both scale with depth, and every prison adds one) at ~3 materials each — not a generation bug,
-just scale. The fix that addresses all four categories at once is a sliced distance cull for
-GameObject renderers under the generated roots, exactly the shape `TorchCullingManager` already
-uses for lights; atlasing doors 3 materials → 1 compounds with it but only helps doors.
+just scale.
+**`DungeonRendererCulling` is the fix, and three of its decisions are load-bearing:**
+- **It toggles `Renderer.enabled`, NEVER `GameObject.SetActive`.** Deactivating would take out
+  the collider, the `PhysicsDoor`, the `Carryable` and every script — and a `StaticCollider`
+  prop IS its collider, so the world would go walkable-through at range. For doors it is worse
+  still: the collider vanishing lets an NPC walk through a closed doorway, and re-activating
+  could leave a body inside the door. Disabling only the renderer changes nothing behavioural.
+- **It is SLICED (250/frame) and writes only on a CHANGE.** Testing every renderer each frame is
+  the cost it exists to remove, and `transform.position` is a managed→native transition per
+  access — the profile that made `Separation()` 58% of `NpcLocomotion` before it was batched.
+- **`DungeonMesh` MUST stay excluded.** `DungeonMesher` emits the entire shell as ONE GameObject
+  with one renderer at the origin, so a distance test against it is meaningless and the whole
+  dungeon blinks out once you are 60m from world zero.
+Size `cullDistance` to the FOG, not to taste — past where `DungeonFogController` has washed
+geometry to the room colour the pop is invisible, which is exactly why `renderDistance` gets
+away with it. Separate from NPC dormancy (roadmap 26), which caps AI cost rather than draws and
+toggles `NpcLocomotion`; each owns a different property so they compose without knowing about
+each other. Atlasing doors 3 materials → 1 compounds with this but only helps doors.
 
 **Torch culling (TorchCullingManager)** — sliced per-frame distance cull of torch
 lights + **disciplined shadows**: only the nearest `maxShadowCasters` (default 3)
@@ -759,6 +775,30 @@ textures too; we only want to band the *lighting*). Passes: ForwardLit, Outline
   instanced batch.
 - **Inverted-hull outline** — black shell, front-faces culled. Per-object, rides
   instancing. Not screen-space.
+  **IT DOUBLES THE DRAW CALLS OF EVERY TOONLIT MATERIAL IN THE PROJECT.** The Outline pass
+  is tagged `LightMode = SRPDefaultUnlit`, which URP renders in the opaque queue alongside
+  `ForwardLit` — so one material is TWO submissions, always. Found by unticking a single
+  renderer and watching Draw Calls fall by 2 for a 1-material mesh and by 6 for a 3-material
+  one. It is not a bug and the look depends on it, but the cost is a flat ×2 on the whole
+  dungeon and it was not priced in when this was first written down.
+  **It is also what finally reconciled the door numbers**: 190 doors × 3 materials × 2 = 1140,
+  against ~1200 measured. Without the outline factor the arithmetic stalls at 570 and the
+  measurement looks wrong — which is what it was blamed on for a while.
+  **`_OutlineEnabled` DOES NOT SAVE THE DRAW CALL, and an earlier version of this entry claimed
+  it did.** It is a uniform branch collapsing the hull to a degenerate triangle in the VERTEX
+  stage — the mesh is still submitted, the pass still runs, the set-pass call still happens.
+  It saves RASTERISATION, which is worth nothing while the frame is submission-bound (GPU 2.8ms
+  of 21ms). The same trap applies to any "cull the outline at distance" idea done in the shader.
+  **To actually stop submitting the pass, the material's SHADER must not have it** — i.e. a
+  `ToonLit` variant with the Outline pass absent, sharing its code with the original through an
+  `.hlsl` include so the two cannot drift. That is a permanent 50% cut for anything that should
+  never have an outline, and it multiplies with atlasing (a 3-material door: 6 draws → 1).
+  But note **whole-renderer distance culling (roadmap 16b) dominates the DISTANCE version of
+  this idea** — it is the same per-object bookkeeping for twice the saving, since it drops the
+  lit pass too, and the per-room fog already hides the pop exactly as `renderDistance` relies on
+  today. The one place outline-distance culling is uniquely possible is the INSTANCED path,
+  where individual renderers cannot be disabled but `RenderParams.shaderPass` lets the outline
+  be submitted to a shorter radius than the lit pass.
   **`_OutlineWidth = 0` IS THE WORST CASE, NOT THE OFF SWITCH** — the trap that made
   `[ToggleUI] _OutlineEnabled` necessary. A zero-width hull is a shell exactly COINCIDENT
   with the mesh, and with `Cull Front` + `ZWrite On` the two surfaces z-fight, so the
@@ -817,7 +857,16 @@ textures too; we only want to band the *lighting*). Passes: ForwardLit, Outline
 **72 draws against 140 for the entire opaque pass**, i.e. a full extra geometry submission every
 frame. Ticking **`After Opaque`** removes it outright (the prepass is replaced by a single
 `CopyDepth`) while keeping SSAO working AND keeping ToonWater's foam, which was verified rather
-than assumed. Free win; take it on any new renderer.
+than assumed. **BUT IT MOVES SSAO TO THE FAR SIDE OF FOG, AND `Falloff` IS WHAT KEEPS THAT FROM SHOWING.**
+With it off, SSAO folds into lighting during the opaque pass, so each shader's `MixFog` at the
+end of its fragment stage fogs the occlusion along with everything else. With it ON, SSAO is a
+full-screen pass applied AFTER opaque — i.e. after every shader already applied its fog — so it
+darkens pixels the fog had washed out and occlusion is visible THROUGH the haze on distant
+geometry. The stock `Falloff` of 100 metres applies AO far past where fog has taken over, which
+is what makes it obvious; **dropping Falloff to ~10 confines AO to the near field**, keeping the
+contact shading on cobblestone a metre away while distant geometry goes back to pure fog. Two
+settings whose names give no hint they are coupled. Free win once tuned; take it on any new
+renderer, and set Falloff at the same time.
 The uncomfortable corollary for the entry below: adding the `DepthNormals` pass to ToonLit was a
 correct fix for a real bug, but the CHEAPER fix was this renderer setting, since SSAO's source
 mode is what redirected depth-texture population in the first place. Keep the shader pass — it
@@ -2996,15 +3045,20 @@ Cosmetic-first; combat is far off ("get the world together first").
     carrying/throwing with mass-driven encumbrance + ImpactAudio.
 15. ✅ Head bob (footstep-locked; deepens with carry load).
 16. ✅ Torch flame VFX tinted to the per-room torch palette.
-16b. ⏳ **DISTANCE-CULL GAMEOBJECT RENDERERS** — the top perf item, and a real target since
-    depth 20 is a shipping depth. Only the instanced path is culled today, so a long sightline
-    submits every door, prop and torch in the dungeon: 21ms frame against **2.8ms GPU**, i.e.
-    CPU-bound on submission. §5 has the full measurements and why shadows were ruled out.
-    Extend `TorchCullingManager`'s sliced per-frame pattern to renderers under the generated
-    roots — one change covering doors, torches, prison props and room props together.
+16b. ✅ **DISTANCE-CULL GAMEOBJECT RENDERERS** (`DungeonRendererCulling`) — only the instanced
+    path was culled, so a long sightline submitted every door, prop and torch in the dungeon:
+    21ms frame against **2.8ms GPU**, CPU-bound on submission. Sliced `Renderer.enabled`
+    toggling under the generated roots, covering doors, torches, prison props and room props
+    together. Field verdict at depth 20: "huge increase in fps when looking into the mass of the
+    dungeon." §5 has the measurements, why SHADOWS were the wrong suspect, and the three
+    decisions that matter. ⏳ open: the same idea for the INSTANCED path's outline pass, where
+    `RenderParams.shaderPass` could submit the outline to a shorter radius than the lit pass —
+    low priority, that path is ~300 of 3242 draws.
 17. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material)
     — mostly Blender/texture work; toon shader packed-mask already ready. **Doors first**:
     190 of them at depth 20 at ~3 materials each is the single biggest asset-side contributor.
+    **Multiply by two for the outline pass** (§6), and note the two fixes COMPOUND — a
+    3-material door with an outline is 6 draws; atlased and outline-off it is 1.
 18. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit →
     home base → depth increment → sell/replenish). Design chat first.
 19. ✅ **NPC AI phase 1** — runtime NavMesh (`DungeonNavBaker`) + locomotion body
