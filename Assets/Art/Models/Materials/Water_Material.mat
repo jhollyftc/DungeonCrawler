@@ -25,7 +25,8 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
-  m_InvalidKeywords: []
+  m_InvalidKeywords:
+  - _WORLDSPACEMOTION_ON
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 1
   m_DoubleSidedGI: 0
@@ -42,8 +43,8 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
-        m_Texture: {fileID: 2800000, guid: 99b282f2ebd35f140984e7299f9fbc1f, type: 3}
-        m_Scale: {x: 0.2, y: 0.2}
+        m_Texture: {fileID: 2800000, guid: 6e07b373d05bca74dacb22f1461d86f9, type: 3}
+        m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _DetailAlbedoMap:
         m_Texture: {fileID: 0}
@@ -98,28 +99,28 @@ Material:
     - _AddPrecomputedVelocity: 0
     - _AlphaClip: 0
     - _AlphaToMask: 0
-    - _BandSoftness: 1
-    - _Bands: 2
+    - _BandSoftness: 0.422
+    - _Bands: 2.44
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
-    - _BumpScale: 0.765
+    - _BumpScale: 0.292
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
-    - _ColorBands: 2
+    - _ColorBands: 2.09
     - _Cull: 2
     - _Cutoff: 0.5
     - _DebugDepth: 0
-    - _DepthFade: 0.27
-    - _DepthStrength: 0.616
+    - _DepthFade: 0.05
+    - _DepthStrength: 1
     - _DetailAlbedoMapScale: 1
     - _DetailNormalMapScale: 1
     - _DstBlend: 0
     - _DstBlendAlpha: 0
     - _EnvironmentReflections: 1
-    - _FoamCutoff: 0.712
-    - _FoamDistance: 0.048
-    - _FresnelAmount: 0.023
-    - _FresnelPower: 7.52
+    - _FoamCutoff: 0.123
+    - _FoamDistance: 0.09
+    - _FresnelAmount: 0
+    - _FresnelPower: 8
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
@@ -128,12 +129,12 @@ Material:
     - _Parallax: 0.005
     - _QueueOffset: 0
     - _ReceiveShadows: 1
-    - _RippleScaleA: 6.08
-    - _RippleScaleB: 10.54
+    - _RippleScaleA: 0.2
+    - _RippleScaleB: 0.22
     - _Smoothness: 0.5
     - _SmoothnessTextureChannel: 0
-    - _SpecPower: 211.7
-    - _SpecSoftness: 0.178
+    - _SpecPower: 227
+    - _SpecSoftness: 0.171
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
@@ -142,19 +143,20 @@ Material:
     - _WaveFrequency: 10
     - _WaveSpeed: 2
     - _WorkflowMode: 1
+    - _WorldSpaceMotion: 1
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _Color: {r: 1, g: 1, b: 1, a: 1}
-    - _DeepColor: {r: 0.0024919915, g: 0.05594773, b: 0.0754717, a: 0.95}
+    - _DeepColor: {r: 0.10320275, g: 0.16037738, b: 0.003782485, a: 0.95}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-    - _FoamColor: {r: 0.7169812, g: 0.7169812, b: 0.7169812, a: 1}
+    - _FoamColor: {r: 0, g: 0, b: 0, a: 1}
     - _FresnelColor: {r: 0.2990388, g: 0.6037736, b: 0.49068344, a: 1}
-    - _RippleSpeedA: {r: 0.03, g: 0.03, b: 0, a: 0}
-    - _RippleSpeedB: {r: -0.03, g: -0.03, b: 0, a: 0}
-    - _ShadowTint: {r: 0.6037736, g: 0.6037736, b: 0.6037736, a: 1}
-    - _ShallowColor: {r: 0.4094874, g: 0.44229016, b: 0.8113208, a: 0.55}
-    - _SpecColor: {r: 0.49123356, g: 0.55506414, b: 0.7830189, a: 1}
+    - _RippleSpeedA: {r: 0.01, g: 0.01, b: 0, a: 0}
+    - _RippleSpeedB: {r: -0.01, g: -0.01, b: 0, a: 0}
+    - _ShadowTint: {r: 0.6132076, g: 0.6132076, b: 0.6132076, a: 1}
+    - _ShallowColor: {r: 0, g: 0, b: 0, a: 0.55}
+    - _SpecColor: {r: 0.069152735, g: 0.13207549, b: 0.10816376, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
