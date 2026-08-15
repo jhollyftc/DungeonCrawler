@@ -42,6 +42,16 @@ namespace DungeonGen
         /// <summary>Chamber → bore. The face the grate replaces.</summary>
         public Vector3Int IntoBore;
         public Vector3Int BoreCell => ChamberCell + IntoBore;
+
+        /// <summary>
+        /// Does this opening actually have BARS to wrench off, or is it simply a hole?
+        ///
+        /// Once chambers gained through-routes the number of grates per run multiplied, and
+        /// wrenching each one stopped being a moment and became a toll. Rarity is what makes the
+        /// mechanic mean anything — an opening you can just crawl through costs nothing to pass
+        /// and makes the barred one worth noticing.
+        /// </summary>
+        public bool HasGrate;
     }
 
     public class CrawlwayChamber

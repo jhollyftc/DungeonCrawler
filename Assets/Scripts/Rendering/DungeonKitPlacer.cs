@@ -96,6 +96,10 @@ namespace DungeonGen
         [Header("Crawlway MOUTHS — kit-frame; the TUBES live in the BASE-ORIGIN section below")]
         [Tooltip("GRATE / MOUTH piece where a crawlway breaks out of a wall — the framed 1.5m opening plus the masonry filling the rest of that 3m face.\n\nTO MAKE IT BREAKABLE, put a CrawlwayGrate component on the BARS as a child, never on the frame: the frame carries the collision standing in for the suppressed 3m wall quad, and detaching that opens a hole in the rock either side of the opening. The placer detects the component and switches this piece to FullGameObject automatically (an instanced mesh cannot be un-drawn), and tells it which way to fall. Give the bars an ImpactAudio for the landing clang.\n\nTHIS PIECE CARRIES THE WALL'S COLLISION AND THE FEATURE DOES NOT WORK WITHOUT IT. The greybox emits ONE quad per cell face, so opening a crawlway suppresses a whole 3m x 3m collider, not a 1.5m one — without a ring of colliders here (four boxes around the bore is the simple shape) the player walks through the rock either side of the grate. Suppression is GATED on this slot being filled, so leaving it empty is safe: crawlways simply stay sealed behind solid wall.\n\nAuthor facing +Z, rotated to point INTO the open cell you see it from — the same convention as a wall — and floor-aligned, matching the tube. KIT-FRAME: globalVisualOffset IS applied, because this piece has to line up with the walls it interrupts. That differs from the TUBE pieces below, which are base-origin like ladders and bridges; the two halves of one feature genuinely follow different conventions, which is why they are filed in different sections here.")]
         public GameObject[] crawlwayMouthPrefabs; // optional — skipped if empty, and suppression is skipped with it
+        [Tooltip("OPEN mouth — the same framed 1.5m opening WITHOUT bars, for chamber entrances that have no grate (see sewerChamberGrateChance). It still has to carry the ring of collision filling the rest of the 3m face, exactly like the grated version; only the bars are absent.\n\nLEAVE EMPTY AND IT STILL WORKS: the grated prefab is placed and its bars are stripped at spawn, which is correct but leaves whatever frame that prefab has. Author this when you want an ungrated opening to look deliberately different — a broken-out hole, a rusted-away frame — rather than merely bar-less.")]
+        public GameObject[] crawlwayOpenMouthPrefabs;
+        [Tooltip("WEIGHTED variants for the open (bar-less) mouth. Same rules as the others.")]
+        public WeightedPrefab[] crawlwayOpenMouthVariants;
         [Tooltip("WEIGHTED variants for the mouth / grate piece. Same rules as the tube variants: weight is relative within the list, 0 mutes an entry, and the plain list above still works with its entries counting as weight 1.")]
         public WeightedPrefab[] crawlwayMouthVariants;
         [Tooltip("Nudge for the mouth in its OWN frame: Z = further into the room / back into the wall, Y = up, X = along the face. Rotated with the piece, so one value is correct on all four wall directions (the ladderOffset lesson).")]
@@ -1631,6 +1635,7 @@ namespace DungeonGen
             var manholePool = MergePool(kit.crawlwayManholePrefabs, kit.crawlwayManholeVariants);
 
             var mouthPool = MergePool(kit.crawlwayMouthPrefabs, kit.crawlwayMouthVariants);
+            var openMouthPool = MergePool(kit.crawlwayOpenMouthPrefabs, kit.crawlwayOpenMouthVariants);
 
             bool haveTube = tubePool.Count > 0;
             bool haveMouth = mouthPool.Count > 0;
@@ -1733,13 +1738,17 @@ namespace DungeonGen
                     // than a detour.
                     foreach (var ch in cw.Chambers)
                         foreach (var op in ch.Openings)
-                            mouths += PlaceMouth(op.ChamberCell, op.IntoBore);
+                            mouths += PlaceMouth(op.ChamberCell, op.IntoBore, op.HasGrate);
                 }
             }
 
-            int PlaceMouth(Vector3Int openCell, Vector3Int intoRock)
+            int PlaceMouth(Vector3Int openCell, Vector3Int intoRock, bool grated = true)
             {
-                GameObject prefab = PickWeightedPrefab(mouthPool, openCell, 151);
+                // An ungrated opening prefers a purpose-built bar-less frame; with none authored
+                // it falls back to the grated piece and strips the bars below, which is correct
+                // but leaves whatever frame that prefab happens to have.
+                var pool = grated || openMouthPool.Count == 0 ? mouthPool : openMouthPool;
+                GameObject prefab = PickWeightedPrefab(pool, openCell, 151);
                 if (prefab == null) return 0;
 
                 // On the wall face, at floor level, facing back into the open cell — the same
@@ -1768,7 +1777,11 @@ namespace DungeonGen
                 if (placed != null)
                 {
                     var g = placed.GetComponentInChildren<CrawlwayGrate>(true);
-                    if (g != null) g.OutwardDirection = -(Vector3)intoRock;
+                    if (g != null)
+                    {
+                        g.OutwardDirection = -(Vector3)intoRock;
+                        if (!grated) g.RemoveGrate();
+                    }
                 }
                 return 1;
             }

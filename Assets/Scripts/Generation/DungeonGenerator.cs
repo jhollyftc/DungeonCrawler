@@ -122,6 +122,8 @@ namespace DungeonGen
         public int sewerMouthNetworkSpacing = 10;
         [Tooltip("Chance PER TOUCHING TUNNEL that a chamber gets an extra grate, letting the player pass THROUGH it instead of reversing out.\n\nChambers sit against other passages far more often than it looks: RecessFits forbids a footprint touching any OPEN cell but its host, and bore cells are Empty — so nothing has ever stopped one being carved hard against two or three tunnels. Rolled per candidate rather than per chamber, so a room wedged between three passages is likelier to become a real junction than one merely brushing a single tunnel.")]
         [Range(0f, 1f)] public float sewerChamberThroughChance = 0.55f;
+        [Tooltip("Chance a chamber opening actually has BARS rather than being an open hole you crawl straight through.\n\nRARITY IS THE MECHANIC. Once chambers gained through-routes the number of grates per run multiplied, and wrenching each one stopped being a moment and became a toll — the same failure as a dead-end crawlway, arriving from the other side. An opening you simply pass through costs nothing and makes the barred one worth noticing.\n\nNetwork WALL mouths are unaffected and always barred: those are the entrance to the whole system and the one place the wrench is the point.")]
+        [Range(0f, 1f)] public float sewerChamberGrateChance = 0.4f;
         [Tooltip("Most grates one chamber may have, counting the one it was carved off. 3 makes a genuine junction possible without turning a small room into a colander.")]
         public int sewerChamberMaxOpenings = 3;
         [Tooltip("Chance a network that runs under a PRISON CELL also opens a manhole up into it — a drain you drop through, one-way.\n\nPRISONS ONLY, deliberately. A drain in the floor of a cell reads as somewhere waste went; the same hole in a throne room or a corridor reads as a hazard nobody built. It also keeps the entrance somewhere the player has to have found a prison to find at all.")]
@@ -2808,7 +2810,10 @@ namespace DungeonGen
                             // same trick that makes alcoves free.
                             foreach (var c in cells) { Grid[c] = CellType.Hallway; crawlChamberCells[c] = net; }
 
-                            ch.Openings.Add(new ChamberOpening { ChamberCell = ch.MouthCell, IntoBore = -side });
+                            ch.Openings.Add(new ChamberOpening {
+                                ChamberCell = ch.MouthCell, IntoBore = -side,
+                                HasGrate = rng.NextDouble() < cfg.sewerChamberGrateChance,
+                            });
                             crawlMouthFaces.Add((ch.MouthCell, -side));
                             crawlMouths.Add(ch.MouthCell);
                             AddChamberThroughRoutes(net, ch);
@@ -2966,7 +2971,10 @@ namespace DungeonGen
                 if (rng.NextDouble() >= cfg.sewerChamberThroughChance) continue;
                 if (ch.Openings.Count >= cfg.sewerChamberMaxOpenings) break;
 
-                ch.Openings.Add(op);
+                // ChamberOpening is a struct, so the loop variable is read-only — copy, set, add.
+                var opening = op;
+                opening.HasGrate = rng.NextDouble() < cfg.sewerChamberGrateChance;
+                ch.Openings.Add(opening);
                 crawlMouthFaces.Add((op.ChamberCell, op.IntoBore));
                 crawlMouths.Add(op.ChamberCell);
             }

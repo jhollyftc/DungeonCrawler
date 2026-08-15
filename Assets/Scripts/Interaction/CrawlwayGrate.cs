@@ -499,6 +499,43 @@ namespace DungeonGen
         /// Free the grate. Public so a future damage path (or an NPC that wants through) can
         /// call it without going via the interaction system.
         /// </summary>
+        /// <summary>
+        /// Strip the bars at spawn, leaving an opening you simply walk through.
+        ///
+        /// NOT `Break()`. Breaking frees the bars as a physics object and drops them on the
+        /// floor, which is right when the player wrenched them off and wrong on a dungeon that
+        /// was authored open — every ungrated mouth would litter its room with a grate nobody
+        /// touched. This removes them instead, and disables the component so no prompt appears
+        /// on an opening with nothing to open.
+        /// </summary>
+        public void RemoveGrate()
+        {
+            if (grate != null && grate != transform)
+            {
+                grate.gameObject.SetActive(false);
+            }
+            else
+            {
+                // The component is on the mouth ROOT with no separate bars child, so there is
+                // nothing to switch off without taking the frame — and the frame is the wall
+                // collision standing in for a suppressed 3m quad. Clear the blocker so the
+                // opening is at least passable, and say why it still looks barred.
+                if (blockingCollider != null) blockingCollider.enabled = false;
+                Debug.LogWarning(
+                    $"[Grate] '{name}' has no separate `grate` child, so an UNGRATED opening cannot " +
+                    "have its bars hidden — the passage is clear but the mesh still shows a grate. " +
+                    "Put CrawlwayGrate's bars on their own child and assign it, or author a " +
+                    "crawlwayOpenMouthPrefabs entry with no bars.", this);
+            }
+
+            IsOpen = true;
+            // DESTROYED, not merely disabled: PlayerInteractor resolves with
+            // GetComponentInParent<IInteractable>(), which finds disabled components too — so a
+            // hole with nothing to open would still claim the interaction and show an empty
+            // prompt. The frame GameObject is untouched.
+            Destroy(this);
+        }
+
         public void Break() => Break(false);
 
         /// <param name="handToPlayer">Put it straight into the player's hands rather than
