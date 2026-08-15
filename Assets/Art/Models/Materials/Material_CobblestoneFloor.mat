@@ -39,6 +39,7 @@ Material:
     m_Ints: []
     m_Floats:
     - _BandSoftness: 0.9
+    - _OutlineEnabled: 1
     - _OutlineWidth: 0.0034
     - _SpecPower: 21.5
     - _SpecSoftness: 0.1699

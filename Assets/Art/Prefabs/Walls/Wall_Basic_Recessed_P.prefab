@@ -55,6 +55,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 1
   tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+  tintIntensity: 10
 --- !u!1 &1410938339094276167
 GameObject:
   m_ObjectHideFlags: 0
@@ -109,6 +110,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 1
   tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+  tintIntensity: 10
 --- !u!1 &3055559571234822208
 GameObject:
   m_ObjectHideFlags: 0
@@ -164,6 +166,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 1
   tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+  tintIntensity: 10
 --- !u!1 &5220320478250230830
 GameObject:
   m_ObjectHideFlags: 0
@@ -219,6 +222,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 1
   tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+  tintIntensity: 10
 --- !u!1 &6163076913884553795
 GameObject:
   m_ObjectHideFlags: 0
@@ -273,6 +277,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 1
   tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+  tintIntensity: 10
 --- !u!1 &6200810391942698410
 GameObject:
   m_ObjectHideFlags: 0
@@ -326,6 +331,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 1
   tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+  tintIntensity: 10
 --- !u!1 &7856350703712761765
 GameObject:
   m_ObjectHideFlags: 0
@@ -380,6 +386,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 1
   tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+  tintIntensity: 10
 --- !u!1001 &2898871811467801386
 PrefabInstance:
   m_ObjectHideFlags: 0

@@ -105,12 +105,16 @@ Material:
     - _DstBlend: 0
     - _DstBlendAlpha: 0
     - _EnvironmentReflections: 1
+    - _FlickerAmount: 0
+    - _FlickerCellSize: 0
+    - _FlickerSpeed: 1.5
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _Metallic: 0.868
     - _OcclusionStrength: 1
-    - _OutlineWidth: 0.06
+    - _OutlineEnabled: 0
+    - _OutlineWidth: 0
     - _Parallax: 0.005
     - _QueueOffset: 0
     - _ReceiveShadows: 1
@@ -118,8 +122,8 @@ Material:
     - _RimThreshold: 0
     - _Smoothness: 0.496
     - _SmoothnessTextureChannel: 1
-    - _SpecPower: 24
-    - _SpecSoftness: 0.25
+    - _SpecPower: 36.6
+    - _SpecSoftness: 0.2492
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
@@ -128,13 +132,13 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.7924528, g: 0.7924528, b: 0.7924528, a: 1}
-    - _Color: {r: 0.7924528, g: 0.7924528, b: 0.7924528, a: 1}
+    - _BaseColor: {r: 0.4811321, g: 0.4811321, b: 0.4811321, a: 1}
+    - _Color: {r: 0.4811321, g: 0.4811321, b: 0.4811321, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-    - _OutlineColor: {r: 0.5568628, g: 0.5568628, b: 0.5568628, a: 1}
+    - _OutlineColor: {r: 0.1509434, g: 0.1509434, b: 0.1509434, a: 1}
     - _RimColor: {r: 1, g: 0.93, b: 0.8, a: 1}
-    - _ShadowTint: {r: 0.5566038, g: 0.5566038, b: 0.5566038, a: 1}
-    - _SpecColor: {r: 0.8113208, g: 0.8113208, b: 0.8113208, a: 1}
+    - _ShadowTint: {r: 0.1792453, g: 0.1792453, b: 0.1792453, a: 1}
+    - _SpecColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!114 &174097822036780727

@@ -116,11 +116,15 @@ Material:
     - _DstBlend: 0
     - _DstBlendAlpha: 0
     - _EnvironmentReflections: 1
+    - _FlickerAmount: 0
+    - _FlickerCellSize: 0
+    - _FlickerSpeed: 1.5
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _Metallic: 0
     - _OcclusionStrength: 1
+    - _OutlineEnabled: 1
     - _OutlineWidth: 0.005
     - _Parallax: 0.005
     - _QueueOffset: 0
@@ -143,7 +147,7 @@ Material:
     - _AmbientColor: {r: 0.27999997, g: 0.25999996, b: 0.32999998, a: 1}
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _Color: {r: 1, g: 1, b: 1, a: 1}
-    - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _EmissionColor: {r: 0.00073146453, g: 0.00009668082, b: 0, a: 1}
     - _OutlineColor: {r: 0.02, g: 0.02, b: 0.03, a: 1}
     - _RimColor: {r: 0.86336803, g: 0.8679245, b: 0.5199359, a: 1}
     - _ShadowTint: {r: 0.3962264, g: 0.3962264, b: 0.3962264, a: 1}

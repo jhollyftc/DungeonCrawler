@@ -91,14 +91,14 @@ AudioSource:
       inWeight: 0
       outWeight: 0
     - serializedVersion: 3
-      time: 0.53333336
-      value: 0.125
-      inSlope: -0.2344687
-      outSlope: -0.2344687
+      time: 0.54322106
+      value: 0.104644775
+      inSlope: -0.34222984
+      outSlope: -0.34222984
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
-      outWeight: 0
+      outWeight: 0.19960465
     - serializedVersion: 3
       time: 1
       value: 0

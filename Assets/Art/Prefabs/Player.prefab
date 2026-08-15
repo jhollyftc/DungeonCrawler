@@ -279,14 +279,17 @@ MonoBehaviour:
   crouchKey: 306
   crouchMouseButton: 326
   crouchSpeed: 1
-  crouchHeight: 1.3
+  crouchHeight: 1
   crouchTransitionSpeed: 1.5
   ceilingMask:
     serializedVersion: 2
     m_Bits: 55
   climbSpeed: 3
   climbHorizontalDamp: 0.35
+  ladderFacingAngle: 75
+  ladderReleaseAngle: 105
   showControls: 1
+  overlayFontSize: 12
   maxDebugDepth: 20
   externalDamping: 7
   pushTolerance: 0.0005
@@ -327,7 +330,7 @@ MonoBehaviour:
     library: {fileID: 11400000, guid: 37df9bb4b5dd2cb4d93c00877b2392ad, type: 2}
     probeMask:
       serializedVersion: 2
-      m_Bits: 4031
+      m_Bits: 3089
     probeUp: 0.5
     probeDown: 1.2
     useCellFallback: 1
@@ -345,10 +348,10 @@ MonoBehaviour:
   scaleStrideBySpeed: 1
   crouchStride: 0.8
   sprintStride: 2
-  volume: 0.3
+  volume: 0.2
   speedVolumeInfluence: 1
   fullVolumeSpeed: 0
-  crouchVolumeMultiplier: 0.3
+  crouchVolumeMultiplier: 0.55
   pitchJitter: 0.08
   landVelocityThreshold: 4
   groundedGrace: 0.2
@@ -417,7 +420,7 @@ MonoBehaviour:
   throwClips:
   - {fileID: 8300000, guid: 9f1127586c657054dae34c3f57f775e2, type: 3}
   - {fileID: 8300000, guid: a5bcc42fe67771c45bde41a694489516, type: 3}
-  voiceVolume: 0.24
+  voiceVolume: 0.2
   voicePitchRange: {x: 0.96, y: 1.06}
   heavyMass: 30
   effortPitchRange: {x: 1.08, y: 0.88}
@@ -503,7 +506,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PlayerNoiseEmitter
   stepLoudness: {x: 0.25, y: 1}
-  crouchMultiplier: 0
+  crouchMultiplier: 0.2
   landLoudness: 0.9
 --- !u!114 &7502153845330713350
 MonoBehaviour:
@@ -856,6 +859,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PlayerBow
   animator: {fileID: 4030257989103932190}
+  aimConvergeDistance: 150
+  minConvergeDistance: 2.5
+  aimMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
   bowRoot: {fileID: 8923123858559799021}
   muzzle: {fileID: 1098458565750517616}
   aimSource: {fileID: 6328108747647057218}
@@ -864,8 +872,8 @@ MonoBehaviour:
   arrowPrefab: {fileID: 802496856220870784, guid: 1da5711f4ebcb96488a9625146d99d17, type: 3}
   fullDrawSpeed: 38
   minDrawSpeed: 14
-  drawTime: 0.5
-  minDrawToFire: 0.25
+  drawTime: 0.8
+  minDrawToFire: 0.5
   shotCooldown: 0.35
   drawMoveScale: 0.65
   drawFovZoom: 20
@@ -887,11 +895,13 @@ MonoBehaviour:
   source: {fileID: 0}
   drawLoopSource: {fileID: 0}
   mixerGroup: {fileID: -5347128251453312461, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
-  nockClips: []
+  nockClips:
+  - {fileID: 8300000, guid: 7f14c00fa8fcd5147963653df4ff0cfd, type: 3}
   drawLoop: {fileID: 0}
   releaseClips:
-  - {fileID: 8300000, guid: ce86a5c84520c9c4ea76ed8a9c413102, type: 3}
-  relaxClips: []
+  - {fileID: 8300000, guid: 123e5f9ca64ee094195f80f2119a1fb2, type: 3}
+  relaxClips:
+  - {fileID: 8300000, guid: 675814f8e40484b40b9515c2e3ba8ea7, type: 3}
   nockVolume: 0.7
   relaxVolume: 0.5
   releaseVolumeMin: 0.45
@@ -1050,7 +1060,7 @@ Light:
   serializedVersion: 13
   m_Type: 2
   m_Color: {r: 1, g: 0.7038871, b: 0, a: 1}
-  m_Intensity: 1
+  m_Intensity: 4
   m_Range: 4
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -1280,7 +1290,7 @@ MonoBehaviour:
   m_RequiresOpaqueTextureOption: 2
   m_CameraType: 0
   m_Cameras: []
-  m_RendererIndex: -1
+  m_RendererIndex: 0
   m_VolumeLayerMask:
     serializedVersion: 2
     m_Bits: 1
@@ -1327,7 +1337,9 @@ MonoBehaviour:
   viewmodelFieldOfView: 60
   nearClip: 0.01
   farClip: 20
-  debugSetup: 0
+  overlayRendererIndex: 1
+  postProcessViewmodel: 1
+  debugSetup: 1
 --- !u!114 &4595080490211936034
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1344,11 +1356,11 @@ MonoBehaviour:
   damping: 26
   maxRotation: 6
   maxPosition: 0.035
---- !u!1001 &1248173569293614554
-PrefabInstance:
   maxSustainedRotation: 20
   maxSustainedPosition: 0.32
   sustainSpeed: 9
+--- !u!1001 &1248173569293614554
+PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Modification:
@@ -1614,7 +1626,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: d6d1f25dc6ad6fe4d9c65b3e7b09cd22, type: 3}
       propertyPath: m_LocalScale.x
-      value: 200
+      value: 600
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: d6d1f25dc6ad6fe4d9c65b3e7b09cd22, type: 3}
       propertyPath: m_LocalScale.y

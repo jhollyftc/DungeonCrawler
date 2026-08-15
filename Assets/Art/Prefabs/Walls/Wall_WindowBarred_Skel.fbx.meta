@@ -12,6 +12,11 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
+      name: InteriorMapping
+    second: {fileID: 2100000, guid: 8020b30478ae0094b962b7eb00b93a23, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
       name: Skeleto_material.001
     second: {fileID: 2100000, guid: e397de31379414f488c94d1904b17fa6, type: 2}
   - first:

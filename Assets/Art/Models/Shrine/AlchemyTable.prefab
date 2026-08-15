@@ -63,6 +63,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: b61d4fa9889d47546a5633c85da12b12, type: 3}
       insertIndex: -1
       addedObject: {fileID: 7109841131408697359}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: b61d4fa9889d47546a5633c85da12b12, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7041580715109703238}
   m_SourcePrefab: {fileID: 100100000, guid: b61d4fa9889d47546a5633c85da12b12, type: 3}
 --- !u!1 &2731656401227985495 stripped
 GameObject:
@@ -90,3 +93,16 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.029403081, y: 0.015488888, z: 0.014362673}
   m_Center: {x: 0, y: -8.6749806e-18, z: 0.007181374}
+--- !u!114 &7041580715109703238
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2731656401227985495}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8ea6e79a15e84b4a84f7b400d7b5ed8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.Surface
+  type: 3

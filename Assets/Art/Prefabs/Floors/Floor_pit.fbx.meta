@@ -9,6 +9,11 @@ ModelImporter:
       assembly: UnityEngine.CoreModule
       name: Floor_pit_material
     second: {fileID: 2100000, guid: 790a83d750e3fc94ba7a419a6e79cf16, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Water_Material
+    second: {fileID: 2100000, guid: 8e9b36570a79c5f4b8294e6d7138bd0d, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
