@@ -1,0 +1,136 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &2626692913745971739
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7071067
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      propertyPath: m_Name
+      value: Wall_Sewer_Grate_Round_P
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2986137661574013817}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5110903427050623028}
+  m_SourcePrefab: {fileID: 100100000, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+--- !u!4 &2592202242989764080 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+  m_PrefabInstance: {fileID: 2626692913745971739}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &2932558693579913034 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: f44127f94de99be48bb68281eb15c102, type: 3}
+  m_PrefabInstance: {fileID: 2626692913745971739}
+  m_PrefabAsset: {fileID: 0}
+--- !u!64 &2986137661574013817
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2932558693579913034}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 0
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 5990535383159641140, guid: aa43c53cf7c3d874fa6e027715a51c36, type: 3}
+--- !u!114 &5110903427050623028
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2932558693579913034}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 72eb99d42a8e25f48b081beac8e1ec95, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.CrawlwayGrate
+  grate: {fileID: 2592202242989764080}
+  blockingCollider: {fileID: 2986137661574013817}
+  brokenCollider: {fileID: 0}
+  requireStrain: 1
+  strainToBreak: 2
+  strainDecayPerSecond: 1.2
+  gripBreakDistance: 4
+  tetherSlack: 0.6
+  tetherPull: 9
+  tetherMaxSpeed: 6
+  gripBaseline: 0.35
+  strainPrompt: Pull it loose!
+  debugGrip: 0
+  strainVisualShift: 0.06
+  strainRattle: 0.012
+  strainCameraLean: 2.5
+  mass: 60
+  outwardSpeed: 3.5
+  tumble: 6
+  settleDelay: 4
+  makeCarryable: 1
+  carryDisplayName: Grate
+  carryHoldDistance: 1.6
+  carryThrowSpeed: 6.5
+  carryThrowSpin: 3.5
+  breakLoudness: 0.85
+  prompt: Remove Grate
