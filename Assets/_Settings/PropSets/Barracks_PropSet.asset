@@ -46,6 +46,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Fountain Wall
     prefabs:
@@ -80,6 +82,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Statue King
     prefabs:
@@ -114,6 +118,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Well
     prefabs:
@@ -148,6 +154,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Barrel
     prefabs:
@@ -184,6 +192,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Cobwebs
     prefabs:
@@ -218,6 +228,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Firewood
     prefabs: []
@@ -251,6 +263,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Stockades
     prefabs:
@@ -286,6 +300,8 @@ MonoBehaviour:
     ceilingLayout: 1
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Sacks
     prefabs:
@@ -320,6 +336,8 @@ MonoBehaviour:
     ceilingLayout: 1
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Chandeliers
     prefabs:
@@ -343,8 +361,8 @@ MonoBehaviour:
     maxPerRoom: 0
     preferredZones: 7
     facing: 0
-    yawRange: {x: 0, y: 5}
-    subCellJitter: 0.163
+    yawRange: {x: 0, y: 180}
+    subCellJitter: 0
     snapToWall: 1
     snapToInsideCorner: 0
     sharesTile: 0
@@ -354,4 +372,6 @@ MonoBehaviour:
     ceilingLayout: 1
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 2
     allowCenter: 0

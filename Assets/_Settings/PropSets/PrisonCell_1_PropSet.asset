@@ -46,6 +46,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Chains
     prefabs:
@@ -65,8 +67,8 @@ MonoBehaviour:
     tintIntensity: 1
     guaranteed: 0
     count: 0
-    chancePerCell: 1
-    maxPerRoom: 1
+    chancePerCell: 0.709
+    maxPerRoom: 2
     preferredZones: -1
     facing: 0
     yawRange: {x: 0, y: 180}
@@ -80,6 +82,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 1
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Caged Skeleton
     prefabs:
@@ -115,4 +119,6 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 1
+    minRoomHeightCells: 0
     allowCenter: 0

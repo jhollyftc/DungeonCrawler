@@ -53,7 +53,7 @@ MonoBehaviour:
   alcoveBaseChance: 1
   alcoveChancePerDepth: 1
   alcoveMaxChance: 0.8
-  alcoveMaxCount: 20
+  alcoveMaxCount: 50
   alcoveKinds:
   - kind: 0
     minDepth: 1
@@ -66,19 +66,23 @@ MonoBehaviour:
     weight: 0.8
     maxPerRun: 6
     widthRange: {x: 1, y: 1}
-    depthRange: {x: 2, y: 2}
+    depthRange: {x: 1, y: 2}
   - kind: 2
     minDepth: 1
     weight: 1.2
     maxPerRun: 10
     widthRange: {x: 1, y: 1}
-    depthRange: {x: 1, y: 1}
+    depthRange: {x: 1, y: 3}
   - kind: 3
     minDepth: 1
     weight: 1
     maxPerRun: 8
     widthRange: {x: 1, y: 1}
     depthRange: {x: 1, y: 1}
+  crawlwayMinDepth: 2
+  sewerBaseNetworks: 3
+  sewerNetworksPerDepth: 0.34
+  sewerMaxNetworks: 6
   guaranteedSatellites:
   - host: 3
     satellite: 10

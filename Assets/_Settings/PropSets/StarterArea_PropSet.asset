@@ -46,6 +46,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Statue King
     prefabs:
@@ -80,6 +82,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Well
     prefabs:
@@ -114,11 +118,14 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Barrel
     prefabs:
     - {fileID: 8418309518360107936, guid: 26210594d958cc14ebdec7eb22c3ae0f, type: 3}
     - {fileID: 6154846084994668213, guid: f3a632176cfd83b44b667cbbb8936833, type: 3}
+    - {fileID: 3505821494461039929, guid: 051b9939b063eaf4aa08cd78886ea85f, type: 3}
     anchor: 0
     tier: 3
     featurePositionMode: 1
@@ -143,12 +150,14 @@ MonoBehaviour:
     snapToWall: 1
     snapToInsideCorner: 0
     sharesTile: 0
-    wallGap: 0.5
+    wallGap: 1
     mountHeight: 2.2
     mountHeightJitter: 0
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Cobwebs
     prefabs:
@@ -183,4 +192,6 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0

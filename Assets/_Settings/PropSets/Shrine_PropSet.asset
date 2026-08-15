@@ -46,6 +46,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 1
   - label: Caged Skeleton
     prefabs:
@@ -80,6 +82,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 1
   - label: Coffin
     prefabs:
@@ -114,6 +118,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 1
   - label: Debris_bones
     prefabs:
@@ -150,6 +156,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 1
   - label: Blood Drip
     prefabs:
@@ -184,4 +192,42 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
+    allowCenter: 0
+  - label: Chandelier
+    prefabs:
+    - {fileID: 919132149155446097, guid: 87296d388c210a34a9df93401f5f2558, type: 3}
+    anchor: 1
+    tier: 0
+    featurePositionMode: 1
+    featureWallSide: 2
+    featureSpot: 0
+    featureFacing: 4
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    tintToRoomPalette: 1
+    tintMaterial: {fileID: 2100000, guid: e81ea1d530715e748911bd38adbfcd89, type: 2}
+    tintIntensity: 50
+    guaranteed: 0
+    count: 1
+    chancePerCell: 1
+    maxPerRoom: 0
+    preferredZones: 7
+    facing: 0
+    yawRange: {x: 0, y: 180}
+    subCellJitter: 0
+    snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 0
+    wallGap: 0.1
+    mountHeight: 2.2
+    mountHeightJitter: 0
+    ceilingLayout: 1
+    gridStride: 2
+    snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 2
     allowCenter: 0

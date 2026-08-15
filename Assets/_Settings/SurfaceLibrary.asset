@@ -15,10 +15,44 @@ MonoBehaviour:
   impactMixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   impactSpatial:
     spatialBlend: 1
-    minDistance: 3
-    maxDistance: 25
+    minDistance: 1
+    maxDistance: 15
     rolloff: 0
-    spread: 20
+    customRolloff: 0
+    rolloffCurve:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 1
+        inSlope: -1.8180774
+        outSlope: -1.8180774
+        tangentMode: 34
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0.33333334
+      - serializedVersion: 3
+        time: 0.49968734
+        value: 0.091529734
+        inSlope: -0.22213466
+        outSlope: -0.22213466
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.33333334
+        outWeight: 0.067239165
+      - serializedVersion: 3
+        time: 1
+        value: 0
+        inSlope: -0.18294506
+        outSlope: -0.18294506
+        tangentMode: 34
+        weightedMode: 0
+        inWeight: 0.33333334
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    spread: 30
   entries:
   - surface: 1
     vfx: {fileID: 2219292488338847417, guid: c008c0df9793a6b418a4548dc3f6666c, type: 3}

@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4513e280b80619d4e86cb1fe07bbf2c4, type: 3}
-  m_Name: ExitRoom_PropSett
+  m_Name: ExitRoom_PropSet
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSet
   entries:
   - label: TheWayOut
@@ -26,6 +26,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 1
     chancePerCell: 0.444
@@ -57,6 +60,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 4
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 0.444
@@ -88,6 +94,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 4
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 0.444
@@ -120,6 +129,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 2
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 1
@@ -151,6 +163,9 @@ MonoBehaviour:
     hostLabel: 
     chancePerHost: 0.6
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 1
@@ -181,6 +196,9 @@ MonoBehaviour:
     hostLabel: Fireplace
     chancePerHost: 1
     minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
     guaranteed: 0
     count: 0
     chancePerCell: 1

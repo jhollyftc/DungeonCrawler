@@ -46,15 +46,17 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Book Shelves
     prefabs:
     - {fileID: 1841846976050919672, guid: b2a4a10f82e4acb4da4bac9d45767f07, type: 3}
     - {fileID: 3091887059629816438, guid: 4bc2428f94769cc4090b737b288d507b, type: 3}
-    - {fileID: 919132149155446097, guid: 8592573fee5c1264884d5850b9c30371, type: 3}
-    - {fileID: 919132149155446097, guid: 7cd060bcea50d8548b0a265292cf1e77, type: 3}
-    - {fileID: 919132149155446097, guid: 60faecd8d03527745ae05c70be3fae97, type: 3}
-    - {fileID: 919132149155446097, guid: f0de073891f74bf43ab2ce53532e3691, type: 3}
+    - {fileID: 1549839761264291060, guid: a7646f00d157e6441b1cb69998b8a115, type: 3}
+    - {fileID: 5332266532162713577, guid: 2966efaea79da95478b98e3887cef087, type: 3}
+    - {fileID: 7552949713593458139, guid: 5ebecc41f55b0b44a90cf8d7e6b0922e, type: 3}
+    - {fileID: 5987522684047226288, guid: a7846756d08ba7b4b980383401230063, type: 3}
     anchor: 0
     tier: 1
     featurePositionMode: 0
@@ -85,6 +87,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Cobwebs
     prefabs:
@@ -119,6 +123,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Alchemy Table
     prefabs:
@@ -153,6 +159,8 @@ MonoBehaviour:
     ceilingLayout: 0
     gridStride: 2
     snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
     allowCenter: 0
   - label: Chandeliers
     prefabs:
@@ -176,7 +184,7 @@ MonoBehaviour:
     maxPerRoom: 0
     preferredZones: 7
     facing: 0
-    yawRange: {x: -45, y: 45}
+    yawRange: {x: 0, y: 180}
     subCellJitter: 0
     snapToWall: 1
     snapToInsideCorner: 0
@@ -187,4 +195,6 @@ MonoBehaviour:
     ceilingLayout: 1
     gridStride: 2
     snapToCeilingWall: 1
+    avoidEntranceCell: 0
+    minRoomHeightCells: 2
     allowCenter: 0

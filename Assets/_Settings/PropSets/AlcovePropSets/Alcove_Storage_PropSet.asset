@@ -18,7 +18,7 @@ MonoBehaviour:
     - {fileID: 239324533688105287, guid: 84c65fccf816c134399bf0011f88dd7f, type: 3}
     - {fileID: 5527588616426762877, guid: f7c9b50012688d3428840a576ca800cc, type: 3}
     anchor: 3
-    tier: 0
+    tier: 1
     featurePositionMode: 0
     featureWallSide: 0
     featureSpot: 0
