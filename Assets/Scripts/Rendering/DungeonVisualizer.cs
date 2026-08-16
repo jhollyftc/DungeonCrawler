@@ -96,6 +96,11 @@ namespace DungeonGen
             /// <summary>The floating text. Its own layer because it is by far the noisiest part
             /// and is usually the first thing you want gone.</summary>
             Labels    = 1 << 11,
+            /// <summary>Areas of influence over prop selection. Its own layer because it is the
+            /// only gizmo covering VOLUME rather than cells, so it swamps everything else the
+            /// moment it is on. Appended at a NEW bit rather than inserted, so masks already
+            /// saved on a visualizer keep meaning what they meant.</summary>
+            Regions   = 1 << 12,
             Everything = ~0,
         }
 
@@ -634,6 +639,68 @@ namespace DungeonGen
                         $"{cw.Manholes.Count} manhole(s), " +
                         $"{cw.Chambers.Count} chamber(s) ({chamberCells} cells)" +
                         $"{(cw.BestDetour > 0 ? $" — longest walk it short-circuits: {cw.BestDetour}" : "")}");
+#endif
+                }
+            }
+
+            // ---- Regions: areas of influence over prop selection ----
+            //
+            // DRAWN AS AN ELLIPSOID, NOT A SPHERE, and that is the whole reason this is worth
+            // having. The distance metric multiplies dy by regionYScale, so a region reaches
+            // `radius` cells horizontally but only `radius / YScale` STOREYS vertically — a
+            // wire sphere would draw a lie, and the vertical extent is the part that is
+            // genuinely hard to reason about from the numbers.
+            //
+            // Two shells: the outer one is the hard cutoff where influence hits zero, the inner
+            // one is where it falls to HALF. The gap between them is the honest picture of
+            // falloffPower — a high power puts the half-shell close to the centre and most of
+            // the volume is barely influenced, which is exactly the tuning trap the default used
+            // to walk into.
+            if (Show(GizmoLayers.Regions) && gen.Regions != null && gen.Regions.Any)
+            {
+                float ys = Mathf.Max(0.01f, gen.Regions.YScale);
+                for (int i = 0; i < gen.Regions.Sites.Count; i++)
+                {
+                    RegionSite s = gen.Regions.Sites[i];
+                    Color c = s.Definition != null ? s.Definition.gizmoColor : Color.green;
+
+                    Vector3 centre = transform.position
+                                   + (s.Cell + Vector3.one * 0.5f) * cellSize;
+
+                    // Squash Y by the same factor the metric exaggerates it by, so the drawn
+                    // shape is the set of cells the field actually reaches.
+                    Matrix4x4 prev = Gizmos.matrix;
+                    Gizmos.matrix = Matrix4x4.TRS(centre, Quaternion.identity,
+                                                  new Vector3(1f, 1f / ys, 1f));
+
+                    Gizmos.color = new Color(c.r, c.g, c.b, 0.55f);
+                    Gizmos.DrawWireSphere(Vector3.zero, s.Radius * cellSize);
+
+                    float power = s.Definition != null ? s.Definition.falloffPower : 2f;
+                    float strength = s.Definition != null ? s.Definition.strength : 1f;
+                    // Where influence == 0.5: (1-t)^power * strength = 0.5
+                    float halfT = 1f - Mathf.Pow(Mathf.Clamp01(0.5f / Mathf.Max(0.0001f, strength)),
+                                                 1f / Mathf.Max(0.0001f, power));
+                    if (halfT > 0.01f)
+                    {
+                        Gizmos.color = new Color(c.r, c.g, c.b, 0.9f);
+                        Gizmos.DrawWireSphere(Vector3.zero, s.Radius * halfT * cellSize);
+                    }
+
+                    Gizmos.matrix = prev;
+
+                    Gizmos.color = c;
+                    Gizmos.DrawWireCube(centre, Vector3.one * cellSize * 0.6f);
+
+#if UNITY_EDITOR
+                    if (Show(GizmoLayers.Labels))
+                    {
+                        UnityEditor.Handles.color = c;
+                        UnityEditor.Handles.Label(centre + Vector3.up * cellSize * 0.6f,
+                            $"{(s.Definition != null ? s.Definition.Label : "?")}\n" +
+                            $"r {s.Radius:0.#} cells / {s.Radius / ys:0.#} floors\n" +
+                            $"half at {s.Radius * halfT:0.#} (power {power:0.##}, strength {strength:0.##})");
+                    }
 #endif
                 }
             }
