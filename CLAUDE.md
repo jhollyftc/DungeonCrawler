@@ -785,6 +785,46 @@ away with it. Separate from NPC dormancy (roadmap 26), which caps AI cost rather
 toggles `NpcLocomotion`; each owns a different property so they compose without knowing about
 each other. Atlasing doors 3 materials → 1 compounds with this but only helps doors.
 
+**THOSE FIXES WORKED AND THE BOTTLENECK MOVED — THE FRAME IS NOW GPU-BOUND.** Re-measured after
+`DungeonRendererCulling` and the SSAO `After Opaque` change, standing in a corridor:
+
+| | | |
+|---|---|---|
+| Global frametime | **7.7 ms** | ~130 FPS |
+| **GPU frametime** | **7.4 ms** | i.e. the GPU is setting the pace |
+| Draw calls | 804 (19,118 instances) | was 3242 |
+| Set-pass | 552 | was 2997 |
+| Triangles | **114 M** | where the time is going |
+
+The old entry above — 21ms frame against **2.8ms** GPU, CPU-bound on submission — is still an
+accurate record of what was true then, and is kept because the diagnosis is still the one to copy.
+But it is no longer the current state, and optimising against it now would be optimising the wrong
+half of the frame.
+
+**CONSEQUENCE: TRIANGLE COUNT IS THE LEVER NOW, NOT BATCHING.** LODs, lower-poly décor, and
+`renderDistance`/`cullDistance` buy more than atlasing does. Roadmap 17/28 (atlas door materials)
+targets draw calls the frame is no longer short of — still worth doing eventually, no longer a
+priority. **Re-measure before the next optimisation** rather than trusting either table: this
+project has now twice found the bottleneck somewhere other than where the previous measurement
+said (§12's interrogate-the-metric rule, applied to your own past measurements).
+
+**INSTANCE COUNT IS ESSENTIALLY FREE; DISTINCT MATERIALS ARE NOT.** Measured directly by adding
+~1 more décor prop per corridor cell:
+
+| | before | after |
+|---|---|---|
+| Instances | 19,118 | 19,823 (**+705**) |
+| Draw calls | 804 | **757** |
+| `Standard Instanced` | 513 draws / 18,901 inst | 497 draws / **19,625** inst |
+| Frametime | 7.7 ms | 7.6 ms |
+
+More props in FEWER draw calls — 36.8 → 39.5 instances per call — because `BatchKey` is
+`(mesh, submesh, material, castShadows)` and knows nothing about count. The frametime delta is
+inside the noise, and the draw-call *drop* is view variation between the two captures, which is
+the useful part: **the measurement noise is larger than the effect.** So décor density is an
+authoring decision, not a performance one — as long as new variants SHARE a material, since ten
+variants on ten materials is ten batches whatever the density, doubled by the outline pass (§6).
+
 **Torch culling (TorchCullingManager)** — sliced per-frame distance cull of torch
 lights + **disciplined shadows**: only the nearest `maxShadowCasters` (default 3)
 torches cast shadows; the rest are shadowless fill. **Point-light shadows are a
@@ -3404,6 +3444,10 @@ Cosmetic-first; combat is far off ("get the world together first").
     190 of them at depth 20 at ~3 materials each is the single biggest asset-side contributor.
     **Multiply by two for the outline pass** (§6), and note the two fixes COMPOUND — a
     3-material door with an outline is 6 draws; atlased and outline-off it is 1.
+    **DEPRIORITISED — re-measured, the frame is now GPU-BOUND** (7.4ms GPU of a 7.7ms frame,
+    804 draw calls, 114M triangles; §5 has the table). This targets draw calls the frame is no
+    longer short of. Still worth doing, but LODs / lower-poly meshes / `renderDistance` buy more
+    now. Re-measure before starting it.
 18. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit →
     home base → depth increment → sell/replenish). Design chat first.
 19. ✅ **NPC AI phase 1** — runtime NavMesh (`DungeonNavBaker`) + locomotion body
@@ -3613,7 +3657,13 @@ Cosmetic-first; combat is far off ("get the world together first").
     and it is the first thing that goes wrong when a weapon's range changes.
     `RandomMeshSelector` is a temporary visual stand-in this supersedes.
 28. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material) —
-    mostly Blender/texture work; toon shader packed-mask already ready.
+    mostly Blender/texture work; toon shader packed-mask already ready. Duplicate of item 17;
+    see there for why it is deprioritised (the frame is GPU-bound now, not submission-bound).
+28b. ⏳ **Triangle budget** — the lever the re-measurement actually points at: 114M triangles
+    against a 7.4ms GPU frame. LODs on the kit and on décor, lower-poly scatter meshes, and
+    `renderDistance`/`cullDistance` tuning. Nothing here is designed yet; it replaces atlasing
+    as the next perf item if one is wanted. NB décor INSTANCE count is not the problem — 705
+    extra props measured free (§5) — so this is about per-mesh cost, not prop density.
 29. ⏳ Home-base meta loop + depth progression tuning (portal-out at Exit → home
     base → depth increment → sell/replenish). Design chat first.
 29b. ✅ **Corridor spatial variety** — the pass that made hallways worth walking. Wide
