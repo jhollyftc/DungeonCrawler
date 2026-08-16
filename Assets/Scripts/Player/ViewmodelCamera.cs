@@ -72,6 +72,24 @@ namespace DungeonGen
                 if (root != null) root.gameObject.SetActive(visible);
         }
 
+        /// <summary>
+        /// Put a hierarchy spawned AFTER Awake onto the viewmodel layer.
+        ///
+        /// The Awake sweep covers the authored roots once and can never see anything created
+        /// later — a picked-up weapon's viewmodel, an enchant VFX added to a hand. Missing the
+        /// layer does not throw or warn: the object renders through the BASE camera instead,
+        /// so it clips through walls and is graded by world post-processing while looking
+        /// otherwise correct. Any runtime viewmodel spawn must call this.
+        /// </summary>
+        public void AdoptViewmodel(Transform root)
+        {
+            if (root == null) return;
+            int layer = LayerMask.NameToLayer(viewmodelLayer);
+            if (layer < 0) return;   // already errored loudly in Awake
+            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+                t.gameObject.layer = layer;
+        }
+
         void Awake()
         {
             baseCamera = GetComponent<Camera>();
