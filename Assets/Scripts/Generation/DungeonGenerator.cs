@@ -51,6 +51,9 @@ namespace DungeonGen
         [Tooltip("No prison may be placed within this many cells (XZ) of a staircase.")]
         public int prisonStairClearance = 2;
 
+        [Tooltip("Log which regions a run placed, where, and how far they reach.")]
+        public bool debugRegions = false;
+
         [Header("Satellite closets")]
         [Tooltip("Satellite width in tiles, ACROSS the door.\n\nA width above 1 gets a 1x1 VESTIBULE and widens behind it, exactly as a wide prison does — and for the same hard reason, not for looks: SatelliteFits requires the footprint to touch the host on EXACTLY ONE cell, so a wide slab laid flat against the host wall touches it several times over and is always rejected. Set back by one tile, the wide part's near neighbours are the solid rock either side of the doorway.")]
         public Vector2Int satelliteWidthRange = new Vector2Int(1, 2);
@@ -375,13 +378,22 @@ namespace DungeonGen
             CrawlwayGeometryAvailable &&
             crawlMouthFaces.Contains((cell, d));
 
+        /// <summary>
+        /// Areas of influence over prop selection. Always non-null; EMPTY below
+        /// <c>DepthProfile.regionMinDepth</c>, which is the vanilla state the whole system is
+        /// built to preserve.
+        /// </summary>
+        public RegionField Regions { get; } = new RegionField();
+
         readonly DungeonConfig cfg;
         readonly Random rng;
+        readonly int dungeonSeed;
 
         public DungeonGenerator(DungeonConfig config, int seed)
         {
             cfg = config;
             rng = new Random(seed);
+            dungeonSeed = seed;
 
             // When a depth profile is assigned, it derives room count and grid
             // size from run depth (and gates room types in the typing pass).
@@ -411,6 +423,107 @@ namespace DungeonGen
             WidenJunctions();
             PlaceAlcoves();
             PlaceCrawlways();
+            PlaceRegions();
+        }
+
+        // ---------------- Regions: areas of influence over prop selection ----------------
+
+        /// <summary>
+        /// Choose and site this run's regions.
+        ///
+        /// DRAWS FROM ITS OWN Random, NOT `rng`, and that is the point. Every stage above shares
+        /// the sequential stream, so adding a draw anywhere shifts everything after it; seeding
+        /// a separate generator off the dungeon seed means regions cannot perturb rooms,
+        /// corridors, prisons, alcoves or sewers however much they are retuned. Combined with
+        /// the placers consuming the field through `HashStream` rather than `rng`, the whole
+        /// feature is stream-neutral by construction.
+        ///
+        /// Runs LAST anyway, so even sharing the stream would be safe today — but it will not
+        /// stay last, and the separate generator is what makes that harmless.
+        /// </summary>
+        void PlaceRegions()
+        {
+            Regions.Sites.Clear();
+            var profile = cfg.depthProfile;
+            if (profile == null) return;
+
+            Regions.YScale = Mathf.Max(0.01f, profile.regionYScale);
+
+            int count = profile.RegionCountAt(cfg.depth);
+            if (count <= 0) return;                       // vanilla, and provably so
+
+            var legal = profile.RegionsAt(cfg.depth);
+            if (legal.Count == 0)
+            {
+                if (cfg.debugRegions)
+                    Debug.LogWarning($"[Regions] depth {cfg.depth} wants {count} region(s) but the " +
+                                     "DepthProfile has none legal here — check the regions list and " +
+                                     "their minDepth values.");
+                return;
+            }
+
+            var regionRng = new Random(dungeonSeed ^ RegionField.SeedSalt);
+            var used = new Dictionary<RegionDefinition, int>();
+            var chosen = new List<RegionSite>();
+            var avail = new List<RegionRule>();
+            bool exhausted = false;
+
+            for (int i = 0; i < count; i++)
+            {
+                // FILTER THE CANDIDATES, THEN DRAW ONCE. The determinism rule is about the
+                // number of DRAWS, not the size of the pool: one roll per site whatever is left
+                // in it, so the stream never depends on what was already placed.
+                //
+                // The alcove pass rejects AFTER its draw instead, and copying that here was a
+                // real bug. It is fine with dozens of attempts, where a discarded pick costs
+                // nothing — with two or three regions and few definitions the weighted draw
+                // lands on the same one repeatedly, and every collision silently deleted a
+                // region. The symptom is "I authored two and only get one".
+                avail.Clear();
+                foreach (var r in legal)
+                {
+                    used.TryGetValue(r.definition, out int n);
+                    if (r.maxPerRun <= 0 || n < r.maxPerRun) avail.Add(r);
+                }
+                if (avail.Count == 0) { exhausted = true; break; }
+
+                float total = 0f;
+                foreach (var r in avail) total += r.weight;
+                double roll = regionRng.NextDouble() * total;
+                double radiusRoll = regionRng.NextDouble();
+
+                RegionRule pick = avail[avail.Count - 1];
+                foreach (var r in avail)
+                {
+                    roll -= r.weight;
+                    if (roll <= 0d) { pick = r; break; }
+                }
+
+                used.TryGetValue(pick.definition, out int placed);
+                used[pick.definition] = placed + 1;
+
+                Vector2 rr = pick.definition.radiusRange;
+                chosen.Add(new RegionSite
+                {
+                    Definition = pick.definition,
+                    Radius = Mathf.Lerp(Mathf.Min(rr.x, rr.y), Mathf.Max(rr.x, rr.y), (float)radiusRoll),
+                });
+            }
+
+            Regions.Place(chosen, Rooms, regionRng);
+
+            // SAY WHAT WAS WANTED AS WELL AS WHAT LANDED. "2 wanted, 1 placed" is answerable;
+            // a list of what happened to survive is not, and every way of coming up short here
+            // is an authoring problem with a different fix.
+            if (cfg.debugRegions || exhausted)
+            {
+                string why = !exhausted ? ""
+                    : $" — ran out of eligible definitions: every region legal at this depth hit its " +
+                      $"maxPerRun. Raise maxPerRun, add more RegionDefinitions, or lower their minDepth.";
+                string msg = $"[Regions] depth {cfg.depth}: {count} wanted, {Regions.Sites.Count} placed " +
+                             $"from {legal.Count} legal definition(s). {Regions.Describe()}{why}";
+                if (exhausted) Debug.LogWarning(msg); else Debug.Log(msg);
+            }
         }
 
         // ---------------- Stage 4: hallway carving ----------------

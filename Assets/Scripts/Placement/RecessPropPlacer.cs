@@ -270,9 +270,21 @@ namespace DungeonGen
                 var usedFloor = new HashSet<Vector3Int>();
                 var usedCeiling = new HashSet<Vector3Int>();
 
-                foreach (var e in set.entries)
+                // A RECESS RESOLVES ONCE, AT ITS MOUTH. It is one to a handful of cells — small
+                // enough that a gradient across it would be invisible and a boundary through it
+                // would just look wrong. Same treatment rooms get, for the same reason;
+                // corridors are the only pass that varies per cell.
+                //
+                // Appended after the authored entries, so every base entry draws first and base
+                // placement is unchanged whether regions exist or not.
+                var recessEntries = new List<PropSet.PropEntry>(set.entries);
+                var regionOf = new Dictionary<PropSet.PropEntry, int>();
+                gen.Regions.AppendEntries(recess.MouthCell, recessEntries, regionOf);
+
+                foreach (var e in recessEntries)
                 {
                     if (e.prefabs == null || e.prefabs.Length == 0) continue;
+                    float regionMult = gen.Regions.MultiplierAt(regionOf, e, recess.MouthCell);
 
                     // Recesses (prisons and alcoves) come out of RecessFits, which carves
                     // 1-tall pockets - same reasoning as the corridor check.
@@ -324,20 +336,20 @@ namespace DungeonGen
                             // No floor occupancy, so NoBlocking doesn't apply — a banner over the
                             // doorway blocks nothing.
                             total += PlaceWallMounted(e, recess, cellSize, CellCentre, Pick, Place,
-                                                      wallStream, grid, wallFaces, Open);
+                                                      wallStream, grid, wallFaces, Open, regionMult);
                             break;
 
                         case PropAnchor.CeilingHung:
                             // Ceiling plane: also exempt, for the same reason.
                             total += PlaceScatterLike(e, recess, entryCells, cellSize, CellCentre, Pick, Place,
                                                       ceilingStream, usedCeiling, grid, wallFaces, Open,
-                                                      ceiling: true, CanBlock: null);
+                                                      ceiling: true, CanBlock: null, chanceMult: regionMult);
                             break;
 
                         default: // FloorScatter, and anything room-only degrades to scatter
                             total += PlaceScatterLike(e, recess, entryCells, cellSize, CellCentre, Pick, Place,
                                                       scatterStream, usedFloor, grid, wallFaces, Open,
-                                                      ceiling: false, CanBlock: CanBlock);
+                                                      ceiling: false, CanBlock: CanBlock, chanceMult: regionMult);
                             break;
                     }
                 }
@@ -420,7 +432,7 @@ namespace DungeonGen
                                     System.Func<PropSet.PropEntry, HashStream, GameObject> Pick,
                                     System.Action<PropSet.PropEntry, GameObject, Vector3, Quaternion> Place,
                                     HashStream s, Grid3D<CellType> grid, WallFaceRegistry wallFaces,
-                                    System.Func<Vector3Int, bool> Open)
+                                    System.Func<Vector3Int, bool> Open, float chanceMult = 1f)
         {
             var faces = new List<(Vector3Int c, Vector3Int d)>();
             foreach (var c in a.Cells)
@@ -444,7 +456,7 @@ namespace DungeonGen
                 if (!e.guaranteed)
                 {
                     if (e.maxPerRoom > 0 && placed >= e.maxPerRoom) break;
-                    if (s.Next01() >= e.chancePerCell) continue;
+                    if (s.Next01() >= e.chancePerCell * chanceMult) continue;
                 }
                 GameObject prefab = Pick(e, s);
                 if (prefab == null) continue;
@@ -477,7 +489,7 @@ namespace DungeonGen
                                     HashStream s, HashSet<Vector3Int> used,
                                     Grid3D<CellType> grid, WallFaceRegistry wallFaces,
                                     System.Func<Vector3Int, bool> Open, bool ceiling,
-                                    System.Func<Vector3Int, bool> CanBlock)
+                                    System.Func<Vector3Int, bool> CanBlock, float chanceMult = 1f)
         {
             int salt = s.Next();
             // Filtered BEFORE the hash sort, so a refused cell doesn't consume a chance roll and
@@ -508,7 +520,7 @@ namespace DungeonGen
                 if (!e.guaranteed)
                 {
                     if (e.maxPerRoom > 0 && placed >= e.maxPerRoom) break;
-                    if (s.Next01() >= e.chancePerCell) continue;
+                    if (s.Next01() >= e.chancePerCell * chanceMult) continue;
                 }
 
                 Vector3Int? wallDir = null;

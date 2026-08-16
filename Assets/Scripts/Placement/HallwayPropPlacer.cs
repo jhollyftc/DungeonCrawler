@@ -189,7 +189,19 @@ namespace DungeonGen
 
             int total = 0;
 
-            foreach (var e in set.entries)
+            // CORRIDORS RESOLVE PER CELL, unlike rooms. A corridor pass covers the whole dungeon
+            // and has no single position, so every region's entries are appended and the
+            // per-cell multiplier gates each placement — which is exactly what produces the
+            // gradient: cobwebs thickening as you walk toward the nest rather than switching on
+            // at a boundary.
+            //
+            // Appended AFTER the authored entries so every base entry draws first and base
+            // placement is unchanged whether regions exist or not.
+            var entries = new List<PropSet.PropEntry>(set.entries);
+            var regionOf = new Dictionary<PropSet.PropEntry, int>();
+            gen.Regions.AppendEntries(null, entries, regionOf);
+
+            foreach (var e in entries)
             {
                 if (e.prefabs == null || e.prefabs.Length == 0) continue;
 
@@ -219,7 +231,7 @@ namespace DungeonGen
                         if (!e.guaranteed)
                         {
                             if (e.maxPerRoom > 0 && placed >= e.maxPerRoom) break;
-                            if (ceilingStream.Next01() >= e.chancePerCell) continue;
+                            if (ceilingStream.Next01() >= e.chancePerCell * gen.Regions.MultiplierAt(regionOf, e, c)) continue;
                         }
                         bool cornerSnap = !insideCorner && !gridLayout && e.snapToCeilingWall;
                         Vector3Int? wallDir = cornerSnap ? NearestWall(c, ceilingStream, true) : null;
@@ -280,7 +292,7 @@ namespace DungeonGen
                         if (!e.guaranteed)
                         {
                             if (e.maxPerRoom > 0 && placed >= e.maxPerRoom) break;
-                            if (wallStream.Next01() >= e.chancePerCell) continue;
+                            if (wallStream.Next01() >= e.chancePerCell * gen.Regions.MultiplierAt(regionOf, e, c)) continue;
                         }
                         GameObject prefab = Pick(e, wallStream);
                         if (prefab == null) continue;
@@ -314,7 +326,7 @@ namespace DungeonGen
                         if (!e.guaranteed)
                         {
                             if (e.maxPerRoom > 0 && placed >= e.maxPerRoom) break;
-                            if (scatterStream.Next01() >= e.chancePerCell) continue;
+                            if (scatterStream.Next01() >= e.chancePerCell * gen.Regions.MultiplierAt(regionOf, e, c)) continue;
                         }
                         Vector3Int? wallDir = wantsWall ? NearestWall(c, scatterStream, e.snapToWall) : null;
                         if (e.snapToWall && !insideCorner && !wallDir.HasValue) continue;

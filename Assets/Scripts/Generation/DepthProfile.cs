@@ -78,6 +78,19 @@ namespace DungeonGen
         public Vector2Int depthRange;
     }
 
+    /// <summary>One region kind and when it may appear. Mirrors <see cref="AlcoveRule"/>.</summary>
+    [System.Serializable]
+    public struct RegionRule
+    {
+        public RegionDefinition definition;
+        [Tooltip("Run depth below which this region is never picked. Staggering these is what makes deeper runs introduce KINDS the player has not seen, rather than just more of the same ones.")]
+        public int minDepth;
+        [Tooltip("Relative pick weight among the regions legal at the current depth. Normalized at pick time, so these are ratios, not probabilities.")]
+        public float weight;
+        [Tooltip("Hard ceiling on this region per run. 0 = unlimited.\n\n1 IS THE USUAL ANSWER — two spider nests in one dungeon dilute both — but note the interaction: if every legal region is capped at 1 and the run wants more sites than you have definitions, the extras have nowhere to go and are dropped with a warning. Regions are removed from the candidate pool once capped rather than being drawn and discarded, so a cap costs you a site only when the pool genuinely runs dry.")]
+        public int maxPerRun;
+    }
+
     [CreateAssetMenu(fileName = "DepthProfile", menuName = "Dungeon/Depth Profile")]
     public class DepthProfile : ScriptableObject
     {
@@ -192,6 +205,38 @@ namespace DungeonGen
             if (alcoveKinds == null) return legal;
             foreach (var r in alcoveKinds)
                 if (depth >= r.minDepth && r.weight > 0f) legal.Add(r);
+            return legal;
+        }
+
+        [Header("Regions (areas of influence over prop selection)")]
+        [Tooltip("Run depth below which the dungeon has NO regions at all and is entirely vanilla.\n\nABOVE 1 ON PURPOSE, and it is also the system's regression test: with no sites every influence is zero and every multiplier is 1, so depth 1 must place props bit-identically to a build without regions. That provable-inert state is what lets the plumbing ship before any content exists — the same property the crawlway bore has.")]
+        public int regionMinDepth = 3;
+        [Tooltip("Regions at regionMinDepth. Starting at ONE is deliberate: a single strange quarter in an otherwise ordinary dungeon reads as an anomaly, which is a stronger first impression than two competing ones.")]
+        public int regionBaseCount = 1;
+        [Tooltip("Extra regions per depth beyond regionMinDepth. Fractional — 0.34 adds roughly one every three depths.")]
+        public float regionCountPerDepth = 0.34f;
+        [Tooltip("Hard ceiling on regions in one run. KEEP IT SMALL. Regions have to be bigger than the distance a player walks between landmarks or none of them reads as a place, and past four or five the dungeon is all region and nothing is vanilla to contrast against.")]
+        public int regionMaxCount = 4;
+        [Tooltip("Vertical exaggeration in the region distance metric. At 1 a region is a full-height column whatever the maths says, because the grid is ~12 tall against ~40 wide. At 3, twelve storeys read as roughly as far apart as the floor is wide — so a staircase becomes a transition between regions.")]
+        public float regionYScale = 3f;
+        [Tooltip("The regions that may appear, with their own depth gates and caps.")]
+        public List<RegionRule> regions = new List<RegionRule>();
+
+        /// <summary>How many regions a run at this depth gets. 0 below <c>regionMinDepth</c>.</summary>
+        public int RegionCountAt(int depth)
+        {
+            if (depth < regionMinDepth || regionMaxCount <= 0) return 0;
+            int n = regionBaseCount + Mathf.FloorToInt((depth - regionMinDepth) * regionCountPerDepth);
+            return Mathf.Clamp(n, 0, regionMaxCount);
+        }
+
+        /// <summary>Regions legal at this depth, for the weighted pick.</summary>
+        public List<RegionRule> RegionsAt(int depth)
+        {
+            var legal = new List<RegionRule>();
+            if (regions == null) return legal;
+            foreach (var r in regions)
+                if (r.definition != null && depth >= r.minDepth && r.weight > 0f) legal.Add(r);
             return legal;
         }
 

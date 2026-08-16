@@ -633,6 +633,17 @@ namespace DungeonGen
                     e.guaranteed ? 2 : 3;
                 ordered = ordered.OrderBy(Rank).ToList();
 
+                // REGIONS RESOLVE ONCE PER ROOM, at its interior floor cell — never per cell.
+                // A boundary slicing a room in half reads as a fault (one end webbed, the other
+                // ivied); a room is one coherent space. Corridors and recesses resolve per cell
+                // instead, where the gradient reads as the approach to somewhere. Same instinct
+                // DungeonMapper follows: rooms reveal wholesale, corridors drip.
+                //
+                // Appended AFTER the sort, so every base entry draws first and base placement is
+                // unchanged whether regions exist or not.
+                var regionOf = new Dictionary<PropSet.PropEntry, int>();
+                gen.Regions.AppendEntries(room.InteriorFloorCell, ordered, regionOf);
+
                 // Nearest free floor cell to the room's true centroid (hoisted
                 // above — shared with FaceRoomCenter scatter facing).
                 (Vector3Int cell, bool ok) PickRoomCenterCell(string spacingLabel, int minSpacing)
@@ -844,7 +855,7 @@ namespace DungeonGen
                             if (!e.guaranteed)
                             {
                                 if (e.maxPerRoom > 0 && placedCount >= e.maxPerRoom) break;
-                                if (ceilingStream.Next01() >= e.chancePerCell) continue;
+                                if (ceilingStream.Next01() >= e.chancePerCell * gen.Regions.MultiplierAt(regionOf, e, room.InteriorFloorCell)) continue;
                             }
                             Vector3Int? wallDir = wantsWall ? NearestWallDir(c, ceilingStream, cornerSnap) : null;
                             // A corner-snap entry belongs against a wall: no
@@ -909,7 +920,7 @@ namespace DungeonGen
                             if (!e.guaranteed)
                             {
                                 if (e.maxPerRoom > 0 && placedCount >= e.maxPerRoom) break;
-                                if (wallStream.Next01() >= e.chancePerCell) continue;
+                                if (wallStream.Next01() >= e.chancePerCell * gen.Regions.MultiplierAt(regionOf, e, room.InteriorFloorCell)) continue;
                             }
                             GameObject prefab = PickPrefab(e, wallStream);
                             if (prefab == null) continue;
@@ -960,7 +971,7 @@ namespace DungeonGen
                             if (!e.guaranteed)
                             {
                                 if (e.maxPerRoom > 0 && placedCount >= e.maxPerRoom) break;
-                                if (scatterStream.Next01() >= e.chancePerCell) continue;
+                                if (scatterStream.Next01() >= e.chancePerCell * gen.Regions.MultiplierAt(regionOf, e, room.InteriorFloorCell)) continue;
                             }
                             Vector3Int? wallDir = wantsWall ? NearestWallDir(c, scatterStream, e.snapToWall) : null;
                             // A snap entry belongs against a wall: a cell with
