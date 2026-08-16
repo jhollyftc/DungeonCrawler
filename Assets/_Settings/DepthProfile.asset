@@ -83,6 +83,20 @@ MonoBehaviour:
   sewerBaseNetworks: 3
   sewerNetworksPerDepth: 0.34
   sewerMaxNetworks: 6
+  regionMinDepth: 2
+  regionBaseCount: 1
+  regionCountPerDepth: 0.5
+  regionMaxCount: 4
+  regionYScale: 3
+  regions:
+  - definition: {fileID: 11400000, guid: 4d9b7085d004cab478451050353d32f7, type: 2}
+    minDepth: 1
+    weight: 1
+    maxPerRun: 1
+  - definition: {fileID: 11400000, guid: 6956a3515d7680a4abe6974201c2d118, type: 2}
+    minDepth: 1
+    weight: 1
+    maxPerRun: 1
   guaranteedSatellites:
   - host: 3
     satellite: 10
