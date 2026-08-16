@@ -572,7 +572,7 @@ namespace DungeonGen
                 "Shift - Sprint\n" +
                 "Ctrl / Mouse4 - Crouch\n" +
                 "E - Interact / Pick up / Drop\n" +
-                "1 / 2 - Sword+Shield / Bow\n" +
+                "1 / 2 / 3 - Sword+Shield / Bow / Torch+Shield\n" +
                 "LMB (hold) - Light Attack / Draw Bow\n" +
                 "LMB (carrying) - Throw (winds up)\n" +
                 "RMB (hold) - Shield Block / tap to Parry\n" +
