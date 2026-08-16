@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc950adf974a2a64b8176875ddd44846, type: 3}
+  m_Name: Weapon_Sword_02
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.WeaponDefinition
+  displayName: Sword 2
+  viewmodelPrefab: {fileID: 919132149155446097, guid: 1cbc55cdce608cd44a089ebda80b6958, type: 3}
+  worldPrefab: {fileID: 2037913935395480243, guid: 2e95dce04f226dc4d8c1623a5322162f, type: 3}
+  damage: 6
+  range: 1.2
+  sweepRadius: 0.05
+  sweepUpExtent: 0.1
+  sweepDownExtent: 0.3
+  knockback: 10
+  poiseDamage: 25
+  windup: 0.2
+  recovery: 0.45
+  drawClips: []
+  dropClips:
+  - {fileID: 8300000, guid: 2746c57417d4a5a479327f3298dddf28, type: 3}
