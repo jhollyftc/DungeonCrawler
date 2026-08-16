@@ -141,8 +141,12 @@ namespace DungeonGen
         [Header("Voice sync")]
         [Tooltip("The NPC's voice AudioSource (grunts/death cry). The jaw opens to its live amplitude, so it looks like it's making the sound. Left empty, NpcCombatAudio's source is used automatically.")]
         public AudioSource voiceSource;
-        [Tooltip("How strongly the jaw opens to voice amplitude. 0 = no lip movement, just the idle sway.")]
+        [Tooltip("How strongly the jaw opens to voice amplitude. 0 = no lip movement, just the idle sway.\n\nGetOutputData reads POST-volume, POST-spatialisation output, so a distant NPC reads quieter and this is effectively distance-dependent. Tune it at conversational range.")]
         public float voiceJawGain = 6f;
+        [Tooltip("How fast the jaw opens toward the voice level, per second. FAST, so a short bark or a hard consonant still registers — a slow attack simply misses clips shorter than the ramp.")]
+        public float voiceAttackRate = 35f;
+        [Tooltip("How fast the jaw closes once the voice drops, per second. SLOWER than the attack: this is what makes the mouth close like a jaw rather than a switch, and what stops a gap between syllables snapping it shut.")]
+        public float voiceReleaseRate = 12f;
         [Tooltip("Local jaw angle at FULLY OPEN. A grunt drives the jaw toward THIS, BEYOND the current mood's idle range — otherwise an angry clamped-shut jaw can't open to vocalize. Set it to your rig's wide-open jaw (may be higher OR lower than the idle range depending on the bone's orientation).")]
         public float jawOpenAngle = 160f;
 
@@ -165,7 +169,11 @@ namespace DungeonGen
         readonly Expression blendScratch = new Expression();
         float hurtUntil;
         bool dead;   // permanent once set — see deathExpression
-        readonly float[] sampleBuf = new float[256];
+        // 1024 samples is ~21ms at 48kHz, comparable to a frame — 256 was ~5ms, so each frame
+        // point-sampled a fifth of the interval and consecutive reads disagreed wildly, which is
+        // half of why the raw value looked like noise rather than a voice.
+        readonly float[] sampleBuf = new float[1024];
+        float voiceEnv;
 
         const float WaveAmplitudeSum = 0.15f + 0.05f + 0.02f;
 
@@ -232,8 +240,21 @@ namespace DungeonGen
                 // the fully-open angle, PAST that range — so an angry, near-clamped jaw
                 // still opens to grunt. (Blending toward jawMax instead would cap the
                 // opening at the mood's tight idle range — the bug this fixes.)
+                // THE IDLE SWAY STANDS DOWN WHILE THE VOICE SPEAKS, and this is the fix for
+                // "the same grunt moves the jaw a different amount every time". Lerping from
+                // wherever the idle wave HAPPENS to be toward jawOpenAngle makes the travel
+                // depend on the wave's phase at that instant: with Calm authored 90-155 against
+                // an open angle of 160, one grunt gets 70 degrees and the next gets 5. Identical
+                // audio, unrecognisably different motion.
+                //
+                // Ducking the idle toward the mood's CLOSED end first makes the voice's travel
+                // phase-independent and full — and it is what a mouth does anyway: a face at
+                // rest mumbles, a face that is speaking is driven by the speech, not by both at
+                // once.
+                float voice = VoiceOpen();
                 float idleJaw = Mathf.Lerp(jMin, jMax, Wave01(t, jSpeed));
-                float jawAngle = Mathf.Lerp(idleJaw, jawOpenAngle, VoiceOpen());
+                float restJaw = Mathf.Lerp(idleJaw, jMin, voice);
+                float jawAngle = Mathf.Lerp(restJaw, jawOpenAngle, voice);
 
                 jaw.localRotation = Quaternion.AngleAxis(jawAngle, jawAxis.normalized);
             }
@@ -331,15 +352,46 @@ namespace DungeonGen
             return Mathf.Clamp01(0.5f + (w / WaveAmplitudeSum) * 0.5f);
         }
 
+        /// <summary>
+        /// How far the voice is pulling the jaw open, 0..1 — an ENVELOPE, not a raw reading.
+        ///
+        /// TWO BUGS LIVED HERE, and both present as "the jaw twitches once and it's janky":
+        ///
+        /// **NO `isPlaying` GATE.** `NpcCombatAudio` plays every line through `PlayOneShot`, and
+        /// `AudioSource.isPlaying` reports the state of the source's OWN clip — it is not a
+        /// reliable answer for one-shot audio, so the gate could refuse to read a voice that was
+        /// audibly playing. It bought nothing either way: `GetOutputData` returns silence when
+        /// nothing is sounding, so the RMS is already zero.
+        ///
+        /// **AN ENVELOPE, BECAUSE THE RAW READING IS POINT-SAMPLED.** The old code fed raw
+        /// per-frame RMS straight into the bone rotation, alone among everything in this
+        /// component in not being smoothed. A 1024-sample window is ~21ms and a frame is ~16ms,
+        /// so consecutive frames sample different parts of the waveform and the value jumps —
+        /// and a SHORT clip is over in a handful of frames, giving one snap open and shut rather
+        /// than a mouth moving. Attack is fast so consonants still register; release is slower,
+        /// which is what makes the jaw close like a jaw instead of a switch.
+        ///
+        /// NB `GetOutputData` reads POST-volume, POST-spatialisation output, so a distant NPC
+        /// reads quieter and `voiceJawGain` is effectively distance-dependent. Tune it at
+        /// conversational range; the clamp keeps close-up from flapping wide open.
+        /// </summary>
         float VoiceOpen()
         {
-            if (!Application.isPlaying || voiceSource == null || !voiceSource.isPlaying || voiceJawGain <= 0f)
+            if (!Application.isPlaying || voiceSource == null || voiceJawGain <= 0f)
+            {
+                voiceEnv = 0f;
                 return 0f;
+            }
+
             voiceSource.GetOutputData(sampleBuf, 0);
             float sum = 0f;
             for (int i = 0; i < sampleBuf.Length; i++) sum += sampleBuf[i] * sampleBuf[i];
             float rms = Mathf.Sqrt(sum / sampleBuf.Length);
-            return Mathf.Clamp01(rms * voiceJawGain);
+            float raw = Mathf.Clamp01(rms * voiceJawGain);
+
+            float rate = raw > voiceEnv ? voiceAttackRate : voiceReleaseRate;
+            voiceEnv = Mathf.Lerp(voiceEnv, raw, 1f - Mathf.Exp(-rate * Time.deltaTime));
+            return Mathf.Clamp01(voiceEnv);
         }
 
         /// <summary>

@@ -2689,6 +2689,27 @@ Formula-driven with authored override points (the user's explicit choice).
   - **Voice sync** — jaw opens to live `NpcCombatAudio` amplitude, toward
     `jawOpenAngle` BEYOND the mood's idle range (blending toward the mood's `jawMax`
     instead caps an angry clamped jaw shut — real bug).
+    **THREE MORE BUGS LIVED HERE AND ALL PRESENTED IDENTICALLY** — "the jaw twitches once and
+    it looks janky" — which is worth knowing, because the obvious suspect (the mood expressions
+    overwriting the voice) was wrong and they compose fine.
+    - **`AudioSource.isPlaying` IS NOT AN ANSWER FOR ONE-SHOT AUDIO.** It reports the state of
+      the source's OWN clip, and `NpcCombatAudio` plays every line through `PlayOneShot`, so a
+      gate on it could refuse to read a voice that was audibly sounding. It bought nothing
+      either: `GetOutputData` returns silence when nothing plays, so the RMS is already zero.
+    - **A RAW PER-FRAME RMS IS NOT AN ENVELOPE.** It was the only value in the component not
+      smoothed, and a 256-sample window is ~5ms against a ~16ms frame — each frame point-samples
+      a fifth of the interval, so consecutive reads disagree wildly and a SHORT clip is over in
+      a handful of frames. One snap open and shut. Now a 1024-sample window feeding an
+      attack/release follower: fast attack so consonants register, slower release so it closes
+      like a jaw rather than a switch.
+    - **THE IDLE SWAY MUST STAND DOWN WHILE SPEAKING, or the travel depends on the wave's
+      PHASE.** Lerping from wherever the idle happens to be toward `jawOpenAngle` meant Calm
+      (authored 90-155, open 160) gave one grunt 70 degrees and the next 5 — identical audio,
+      unrecognisable motion, which is what actually reads as "janky". Ducking the idle toward
+      the mood's closed end as the voice rises makes it phase-independent, and matches what a
+      mouth does: a resting face mumbles, a speaking face is driven by the speech.
+    NB `GetOutputData` reads POST-volume, POST-spatialisation output, so `voiceJawGain` is
+    effectively distance-dependent — tune it at conversational range, not standing on the NPC.
   (Class was `JawSineAnimation` in `FacePoseTester.cs` — renamed to match, rule 3.)
 - **NavMesh from stairs — BUILD-ONLY TRAP (real, cost hours):** runtime navmesh baking
   reads triangles off MeshColliders, which **in a player build requires the mesh's
