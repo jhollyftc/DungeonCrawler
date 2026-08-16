@@ -2634,7 +2634,6 @@ MonoBehaviour:
   hurtClips:
   - {fileID: 8300000, guid: 995ab1d82f1e2fe4fb17ccc4b99a47eb, type: 3}
   - {fileID: 8300000, guid: 9ec6570dc46868d429dbea2e550fc2e7, type: 3}
-  - {fileID: 8300000, guid: edcbcf989f0e01246bdc904f2fad94d6, type: 3}
   - {fileID: 8300000, guid: 9ecb3b7b7aef6a84b8634ea59b7d7671, type: 3}
   - {fileID: 8300000, guid: 7d16c974f07758245b9160be4dd73359, type: 3}
   hurtFullImpulse: 6
@@ -2651,7 +2650,11 @@ MonoBehaviour:
   attackChance: 0.75
   attackInterval: 1.2
   deathClips:
+  - {fileID: 8300000, guid: 995ab1d82f1e2fe4fb17ccc4b99a47eb, type: 3}
+  - {fileID: 8300000, guid: 9ec6570dc46868d429dbea2e550fc2e7, type: 3}
   - {fileID: 8300000, guid: edcbcf989f0e01246bdc904f2fad94d6, type: 3}
+  - {fileID: 8300000, guid: 9ecb3b7b7aef6a84b8634ea59b7d7671, type: 3}
+  - {fileID: 8300000, guid: 7d16c974f07758245b9160be4dd73359, type: 3}
   bodyFallClips: []
   bodyFallDelay: 1.1
   deathVolume: 1
@@ -2873,7 +2876,7 @@ MonoBehaviour:
     scleraBrightness: 0.4
   deathBlendRate: 15
   voiceSource: {fileID: 7127011215433136385}
-  voiceJawGain: 60
+  voiceJawGain: 30
   voiceAttackRate: 35
   voiceReleaseRate: 12
   jawOpenAngle: 160
@@ -2974,9 +2977,9 @@ MonoBehaviour:
   mixerGroup: {fileID: -5347128251453312461, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   maxDistance: 10
   whooshClips:
-  - {fileID: 8300000, guid: c32f3ba66ddc334448b1918287210117, type: 3}
-  - {fileID: 8300000, guid: 26e306c8f0a230544bef4e80a9813304, type: 3}
-  - {fileID: 8300000, guid: 26ad8124e828a654b81cfc217f424ac1, type: 3}
+  - {fileID: 8300000, guid: 3c61da52cc7fb294a99170275e873920, type: 3}
+  - {fileID: 8300000, guid: 501273cd3d8232f418564914d71be9d3, type: 3}
+  - {fileID: 8300000, guid: 4880c7e2b5598724c9fa3057fdf22bcc, type: 3}
   volume: 0.7
   pitchRange: {x: 0.9, y: 1.1}
   whooshFromAnimationEvent: 1
