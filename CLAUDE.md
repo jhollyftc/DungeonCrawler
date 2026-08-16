@@ -150,6 +150,8 @@ Order matters; several stages depend on earlier ones. Current order:
     **Prison** (would give a validated one-opening cell a second opening).
 12. **PlaceAlcoves** — small validated recesses off corridors with an authored KIND
     (statue nook / shrine niche / collapsed dig / storage recess). See §4.
+14. **PlaceRegions** — areas of influence that bias which props appear where. Sites only; it
+    carves nothing and mutates no cell. See §4.
 13. **PlaceCrawlways** — 1.5m crawl passages bored through solid rock between two places
     that are already connected but a long walk apart. See §4 and `CRAWLWAY_PLAN.md`.
 
@@ -456,6 +458,46 @@ GEOMETRY rather than by a rule anyone maintains** — an escape route they canno
   dig is the best entrance the feature can have), which carries a known clash: `RecessPropPlacer`
   puts the hero prop on that same back wall. The fix is the existing one — claim the mouth face
   in `WallFaceRegistry` before it runs.
+
+**Regions (`PlaceRegions`, `DungeonRegions.cs`, `RegionDefinition`)** — scattered areas of
+influence that bias prop selection, so part of a run reads as infested and another as overgrown,
+and the same barracks is goblins-and-vines on one seed and webs-and-spiders on the next.
+- **IT IS NOT A VORONOI PARTITION, and refusing to make one is the load-bearing decision.** The
+  obvious implementation — nearest-site-wins, or normalising influence across sites — gives every
+  cell an owner. **That destroys the vanilla baseline**, which is the whole design: the dungeon
+  starts ordinary and gains regions with depth. Four regions also come nowhere near covering the
+  grid, so a partition would stretch each across territory it has no business owning. Instead:
+  **absolute radial influence, never normalised**. Zero far from every site, saturating near one,
+  and where two overlap BOTH contribute — the "goblins AND vines" case arriving free instead of
+  being authored.
+- **PLACEMENT-TIME ONLY, AND THAT IS WORTH DEFENDING.** The prop placers draw from `HashStream`,
+  never the generator's `rng`, so a field consumed only by them is stream-neutral by
+  construction — every existing seed keeps its rooms, corridors, prisons and sewers, and regions
+  can be retuned all day without reshuffling a layout. Sites come from their own
+  `Random(seed ^ RegionField.SeedSalt)` rather than the sequential stream, so even the
+  generation-stage half cannot perturb anything. **Do not let regions influence GENERATION**
+  (room typing, carving); that is the change that buys the whole determinism problem back.
+- **THE INSERTION POINT IS EXACT, WHICH IS WHY IT COSTS NOTHING.** All eight roll sites across
+  the three placers read `if (stream.Next01() >= e.chancePerCell) continue;` — the roll is drawn
+  BEFORE the comparison, so scaling the THRESHOLD shifts no stream at all.
+- **Y MUST BE SCALED (~3) OR YOU WRITE 3D CODE AND GET 2D BEHAVIOUR.** `gridHeight` is ~12
+  against ~40 cells of floor, so under isotropic distance a site influences every storey
+  near-equally and each region becomes a full-height column. At 3 the reach is
+  `radius / YScale` STOREYS, and a staircase becomes a transition between regions.
+- **THREE DIALS, THREE QUESTIONS**: `radius` how FAR (a hard cutoff), `strength` how INTENSE
+  (scales the curve; does not extend the edge), `falloffPower` how the intensity is DISTRIBUTED.
+  **Lower power is broader** — influence at half-radius is 0.71 at power 0.5, 0.25 at power 2.
+  The original default of 2 was documented as "holds the core near full strength", which is
+  backwards, and made every region a tight hotspot rather than an area. Default is now 0.8.
+- **`maxPerRun` FILTERS THE CANDIDATE POOL; IT DOES NOT REJECT AFTER THE DRAW.** Copying
+  `AlcoveRule`'s reject-after-pick was a real bug: alcoves make dozens of attempts so a discarded
+  pick costs nothing, while a run makes two or three region picks and with few definitions the
+  weighted draw collides constantly — every collision silently deleted a region, presenting as
+  "I authored two and only get one". The determinism rule is about the NUMBER OF DRAWS, and
+  filtering keeps that at exactly one per site. **When porting a rule, check what it was
+  protecting, not just what it did** (§12's denominator lesson).
+- Sites use **best-candidate sampling over ROOM CENTRES** — with four sites, two clumping wastes
+  half a run's content, and centring in solid rock leaves only fringes touching anything walkable.
 
 **Pits (`PlacePits`, `Pit.cs`)** — chasms cut across a room's floor, with the space beneath
 carved out, a bridge across and a ladder out. **Rooms only, structurally:**
@@ -1490,6 +1532,32 @@ Everything else is reused unchanged (`PropSet`, anchors, `PropTier`, `PropInstan
   reshuffle every alcove. Hallway is 12002/12003/12005, rooms 110xx.
 - `snapToInsideCorner` pays off unusually well here: a recess is nearly all inside corners.
 
+**Regions add entries; they never replace them (`RegionField.AppendEntries`).** One resolver
+shared by all three placers, exactly as `PropTint` is — a corridor and the room it opens into
+must never disagree about where they are.
+- **APPENDED AFTER THE RANK SORT, NEVER MERGED INTO IT.** Region entries land at the end of the
+  list, so every base entry completes its draws first and base placement is bit-identical whether
+  regions exist or not. Sorting them in by rank would interleave their draws and reshuffle the
+  entire dungeon's props the moment a region appeared.
+- **THEY COMPETE FOR LEFTOVER SPACE, and it is worth knowing before authoring.** Base entries
+  place first and claim cells from the shared `usedCells`; region entries then roll for what
+  remains. So a region CANNOT thin or displace a base prop, a densely-furnished room masks its
+  region, and corridors show regions most clearly. Three ways round it, all better than raising
+  the chance: the **ceiling is a separate occupancy plane** (`usedCeilingCells`), `sharesTile`
+  ignores tile occupancy, and `snapToInsideCorner` targets corners ordinary scatter never takes.
+- **`chancePerCell` on a region entry is the PEAK, at the site's centre** — not the average. The
+  commonest authoring mistake will be setting it as though it were typical.
+- **ROOMS AND RECESSES RESOLVE ONCE; CORRIDORS RESOLVE PER CELL.** A boundary slicing a room in
+  half reads as a fault — a room is one coherent space, and a recess is too small for a gradient
+  to show. Corridors are where the gradient reads as the approach to somewhere. Same instinct
+  `DungeonMapper` follows: rooms reveal wholesale, corridors drip.
+- **Phase 1 accepts `FloorScatter`, `CeilingHung` and `WallMounted` only.** Feature, guaranteed
+  and `NearPropAsset` occupy ranks that run BEFORE scatter in the most-constrained-first order,
+  so a region entry cannot join them without being sorted into the list — which is exactly what
+  would shift every base placement. Skipped rather than silently misplaced.
+- Known limitation: region entries share the base pass streams, so adding region A shifts region
+  B. Base is unaffected either way, which is the half that matters.
+
 **Hallways (HallwayPropPlacer + RoomStyle.hallwayProps):** one GLOBAL corridor
 PropSet — debris, cobwebs, roots. Corridors aren't rooms (no zones/centroid/
 entrance), so it's a separate pass scanning CellType.Hallway cells. Supports
@@ -1717,6 +1785,13 @@ Formula-driven with authored override points (the user's explicit choice).
 - When a profile is assigned, the generator derives room count + grid size from
   `depth` at construction. Without a profile, explicit config values are used and
   some type-driven features (satellites, columns) are skipped.
+- **Region budget:** `regionMinDepth` (**above 1**), `regionBaseCount`, `regionCountPerDepth`,
+  `regionMaxCount` (keep at 4–5: a region must be bigger than the distance walked between
+  landmarks or it reads as nothing, and past five there is no vanilla left to contrast against),
+  `regionYScale`, and a `RegionRule` list. **`regionMinDepth > 1` is also the system's regression
+  test** — with no sites every influence is zero and every multiplier is 1, so depth 1 must place
+  props bit-identically to a build without regions. The same provable-inert property the crawlway
+  bore has, and what let the plumbing ship before any content existed.
 - **Alcove budget:** `alcoveMinDepth`, `alcoveBaseChance`/`alcoveChancePerDepth`/
   `alcoveMaxChance`, `alcoveMaxCount`, and an `AlcoveRule` list (kind, minDepth, weight,
   maxPerRun, widthRange, depthRange). Kind pick is ONE weighted draw against the legal
@@ -1767,7 +1842,12 @@ Formula-driven with authored override points (the user's explicit choice).
   chambers, manholes, three kinds of graph edge and a label on most of them, everything at once
   is unreadable. One multi-select dropdown rather than a row of bools, so "show me only sewers"
   is a single click. **LABELS is its own layer** — the floating text is the noisiest part and
-  killing just that recovers most of the readability. Two layers cannot follow `CellType`, for
+  killing just that recovers most of the readability. **REGIONS draw an ELLIPSOID, not a sphere**
+  — the metric scales `dy` by `regionYScale`, so a wire sphere would draw a lie about the
+  vertical reach, which is the part hardest to judge from the numbers. Two shells: the outer hard
+  cutoff and the shell where influence falls to HALF, so `falloffPower` is visible rather than
+  inferred. It is the only gizmo covering VOLUME, so it swamps the cell layers and wants
+  isolating. Two layers cannot follow `CellType`, for
   the reason that keeps recurring: PITS are `CellType.Room` (so the pit test happens inside the
   Room case, or turning Rooms off takes chasms with it) and CHAMBERS are `CellType.Hallway` like
   alcoves (so corridors/alcoves/chambers are three registry lookups in one case).
