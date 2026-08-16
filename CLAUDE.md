@@ -2259,8 +2259,88 @@ Formula-driven with authored override points (the user's explicit choice).
   Transform, out string)` runs the REAL `CanHit` path and reports its rejection reason
   live, so "did I miss or did the code refuse" is answerable instead of guessable.
   `TryHit` delegates to the same `CanHit`, so the reticle can't drift from the swing.
-- **Player ranged attack (`PlayerLoadout`, `PlayerBow`, `Arrow`, `PlayerBowAudio`,
-  `Hitbox`)** — `1` = melee+shield, `2` = bow; hold LMB to draw, release to fire.
+- **Player equipment (`PlayerLoadout`, `PlayerTorch`, `PlayerWeaponSlots`, `WeaponDefinition`,
+  `WeaponPickup`, `ViewmodelEquipRaise`, `PlayerWeaponAudio`)** — `1` sword+shield, `2` bow,
+  `3` torch+shield, and weapons you find on the floor.
+  - **`PlayerLoadout` answers "which slot is active"; `PlayerWeaponSlots` answers "what is IN
+    the melee slot".** Folding them together would put prefab spawning and throwing swords on
+    the floor inside the component that decides whether the bow may read the mouse.
+  - **ONE FLAG PER SLOT, never `!isMelee`.** The binary form was correct with two slots and
+    silently wrong the moment a third arrived — "not melee" stopped meaning "bow", so the bow
+    would have been enabled and visible in the torch slot. Any new slot means auditing every
+    place the old one was expressed as a negation.
+  - **THE SHIELD RIDES EVERY ONE-HANDED SLOT** (`offhandViewmodels`), separate from the melee
+    array so it survives a swap to the torch. The bow is the exception and takes it away, being
+    two-handed.
+  - **`PlayerTorch` IS NEVER DISABLED BY THE LOADOUT.** It reads no input, so there is nothing
+    to arbitrate — and a disabled component could not hold the stowed ember. It takes
+    `SetHeld(bool)` instead. **Stowing dims rather than extinguishes**, and the RANGE falls less
+    than the intensity does: collapsing the range is what reads as the light being switched off
+    rather than lowered.
+  - **DO NOT AUTO-FIND THE TORCH LIGHT.** An earlier version fell back to
+    `GetComponentInChildren<Light>(true)`, which grabs the first light under the player — very
+    often one belonging to a WEAPON viewmodel, which `PlayerWeaponSlots` destroys on the next
+    swap, throwing a `MissingReferenceException` every frame from a component that looked
+    correctly wired. **A greedy search that usually finds the right thing is worse than no
+    search**, because it fails at a distance from its cause. Assign it, and keep it out from
+    under any root the loadout deactivates (checked at startup — only the loadout knows which
+    roots it hides).
+  - **A WEAPON'S WORLD FORM AND HELD FORM CANNOT BE ONE GameObject**, and this is the decision
+    the whole design rests on. HELD is a rig on the Viewmodel layer under an overlay camera that
+    clears depth, carrying a `ViewmodelSway` that captures a REST POSE at startup plus
+    `ViewmodelCollision`'s authored anchors, with **no collider** because the swing is its own
+    cast. WORLD is a Rigidbody and a collider on the normal layer. Re-parenting between those
+    means re-layering the hierarchy and toggling physics on every pickup, and anything added
+    later (an enchant VFX) silently renders through the wrong camera. So identity lives in DATA:
+    `WeaponDefinition` holds the numbers and BOTH prefabs, and is shared with NPCs (roadmap 27);
+    `WeaponPickup` holds the instance, and is where PER-COPY state belongs — a worn or enchanted
+    sword — which is the one thing an SO structurally cannot carry.
+  - **`ApplyTo` pushes stats and sweep GEOMETRY but never the MASKS or the aim source.** Those
+    describe the ATTACKER, not the blade; a weapon asset overwriting them would silently
+    re-target whoever picked it up. Note it DOES overwrite `range` and the sweep extents, so a
+    weapon asset becomes the source of truth for reach the moment one is equipped — retune there,
+    not on `MeleeAttack`.
+  - **A WEAPON PICKUP IS NOT A `Carryable`.** `Carryable.Interact()` hard-codes `PlayerCarry`
+    and `PlayerInteractor` stands down entirely while carrying, so a weapon routed through the
+    carry rig is hauled around like a barrel and can never reach the loadout.
+  - **THREE SILENT FAILURES IN THE SPAWN PATH**, each fixed once and each worth knowing:
+    a runtime-spawned viewmodel misses `ViewmodelCamera`'s Awake layer sweep and renders through
+    the BASE camera — clipping walls, taking world post-processing, looking otherwise correct
+    (`AdoptViewmodel`); `PlayerMelee.swordSway` is a DIRECT reference, so without rebinding it
+    every swing after the first pickup animates a sword that no longer exists; and the old
+    viewmodel must be destroyed by TRACKED REFERENCE, never by sweeping the socket's children,
+    which had been taking out a torch light parented in the same hand.
+  - **THE LOADOUT MUST BE TOLD WHAT IT OWNS** (`SetMeleeViewmodel`). The first design required
+    the weapon SOCKET to be the entry in `meleeViewmodels`, so hiding the socket hid its
+    contents — which works only if the authored weapon is ALSO re-parented under it. It was not,
+    so the spawner made a sword the loadout had never heard of: the authored one was hidden, the
+    spawned one showed in every slot, and the player held a torch and a sword at once.
+    **A requirement that must be satisfied in two places to work will be half-satisfied.**
+  - **THE EQUIP RAISE ANIMATES A WRAPPER, NOT THE WEAPON** (`ViewmodelEquipRaise`).
+    `ViewmodelSway` rewrites its own `localPosition`/`localRotation` every LateUpdate from a
+    captured rest pose — it is a write-only owner of that transform (§5), so anything else
+    animating the same values is discarded a frame later with no error. The weapon is parented
+    under a holder and the HOLDER is driven; sway composes underneath. **The empty-hands beat is
+    a HOLD at the low pose, not a hide**, because `Update` does not run on an inactive GameObject
+    and hiding the holder would freeze the timer meant to un-hide it — which also keeps
+    `PlayerLoadout` the single owner of every `activeSelf` in the hierarchy. Consequence: the
+    weapon is genuinely present during the delay, so the low offset MUST sit below the frame.
+  - **DROPPING MUST NOT FOLLOW CAMERA PITCH** (real bug — "press E and ride into the ceiling").
+    Spawning at `camera.position + camera.forward * d` puts the weapon under the capsule the
+    moment you look down, and `CharacterController.Move` ALWAYS resolves whatever overlap it
+    finds itself in regardless of requested motion (the quirk behind
+    `NpcLocomotion.RejectUnwantedPush`), so every drop lifted the player and spamming E was a
+    staircase. It now drops from the **live viewmodel pose** so it reads as letting go, with a
+    guard that only nudges the point clear when it genuinely lands inside the capsule — an
+    earlier guard used `radius + 0.35` and fired on EVERY drop, silently overriding the hand
+    pose one line after it was computed and putting every weapon in front of the player.
+  - **The swap SOUND comes from the weapon, and the DRAW fires when the lift starts**, not at
+    the input — played on the press it covers the pause and leaves the visible motion silent,
+    the same reasoning that moved the throw grunt off the wind-up. The floor CLATTER is a
+    different sound from a different source: the dropped object's own `ImpactAudio`, out in the
+    world where it landed. Filling `dropClips` as well stacks them into a double hit.
+- **Player ranged attack (`PlayerBow`, `Arrow`, `PlayerBowAudio`,
+  `Hitbox`)** — hold LMB to draw, release to fire.
   - **`PlayerLoadout` swaps by ENABLING only the active script**, not by spawning or
     destroying anything — each weapon component owns its own input and stands down when
     disabled, so adding a third weapon needs no dispatcher.
@@ -3315,7 +3395,7 @@ Cosmetic-first; combat is far off ("get the world together first").
     ✅ **Melee LOS self-occlusion** fixed (the target no longer occludes itself) +
     `MeleeReticle` (F6) reporting the real `CanHit` rejection reason — see §10. This
     had been costing genuine swings while reading as an aim problem.
-22b. ✅ **Player ranged attack** — `PlayerLoadout` (1 = melee+shield, 2 = bow),
+22b. ✅ **Player ranged attack** — `PlayerLoadout` (1 = melee+shield, 2 = bow, 3 = torch),
     `PlayerBow` (Animator-driven draw/release, unlike the procedural sword),
     `Arrow` (sticks to world and NPCs, follows rather than parents), `PlayerBowAudio`,
     and `Hitbox` weak points (headshots) + `DamageType.Projectile`. §10 has the detail
@@ -3329,6 +3409,17 @@ Cosmetic-first; combat is far off ("get the world together first").
     §8 has the fracture-collider and shrink-about-visual-centre lessons, plus debris
     velocity inheritance (the prop's own motion + the killing blow). ⏳ open: loot
     on destruction (the destruction event is the hook).
+22d. ✅ **Held torch + weapon pickup** — the PLAYER half of item 27. `3` equips a torch in the
+    main hand (shield stays, guard still works) and stowing it dims the light to an ember rather
+    than killing it. Weapons are `IInteractable` pickups: taking one slots it, drops whatever was
+    there, and raises the new one into view after a beat, with draw/release audio authored on the
+    weapon. `WeaponDefinition` is the SO item 27 always planned, so **NPC equipment now needs only
+    an `NpcEquipment` that reads the same asset** — the numbers, the prefabs and `ApplyTo` are
+    already shared. §10 has the design and the six field bugs testing it found.
+    ⏳ open: bow, torch and shield pickups (melee only for now); per-weapon `SwingDefinition`
+    arcs; per-instance state (wear, enchantment) on `WeaponPickup`, which is structured for it
+    but carries none; `PlayerGuard` is still ungated by the loadout, so you can block with the
+    bow drawn and an invisible shield.
 23. ✅ **NPC hit reactions v2** — directional spring flinch (`NpcFlinch`, authored
     per-angle profiles, orbit debug tool) for living hits; full blended ragdoll
     (`NpcRagdollReaction`, gravity-off flinch / gravity-on death) for death, opt-in
@@ -3636,6 +3727,22 @@ Cosmetic-first; combat is far off ("get the world together first").
   announce itself (`AudioBudgetDebug` flags `<unrouted>` sources; `ReverbDirector` warns once
   naming the exact unexposed parameter). When adding a system that can be half-wired, budget
   for one of those two rather than a line in a tooltip.
+- **`Collider.ClosestPoint` IS UNSUPPORTED ON A NON-CONVEX MeshCollider AND RETURNS THE QUERY
+  POINT UNCHANGED.** No exception, no warning — the input handed straight back. That matters
+  here more than in most projects because `DungeonMesher` emits the ENTIRE shell as one concave
+  MeshCollider (§5), so it is the collider melee, props and anything else are most likely to
+  meet. The symptom was melee sparks hanging in mid-air at chest height: every whiff clipped the
+  floor (the sweep dips ~0.2m below the feet so it reaches short enemies), took the
+  environment-hit path, and "the closest point on the dungeon" evaluated to the cast origin.
+  Use the real hit point from the cast that found the collider, and where there isn't one, fall
+  back to `Collider.Raycast`, which DOES support concave meshes.
+  **AND BOUND THAT RAY BY THE QUERY'S OWN REACH.** The first fix used an arbitrary 100m, and
+  against a collider that IS the whole dungeon the ray ran down the corridor and returned the
+  far wall — putting the spark under the reticle dozens of metres away. **That was WORSE than
+  the bug it replaced and much harder to doubt**, because a hit effect appearing exactly where
+  the player is aiming looks correct. Same family as "a SphereCast that starts inside a collider
+  reports no hit" (§10): the physics API's degenerate answers are silent, plausible, and need
+  guarding rather than trusting.
 - **Two unrelated fixes in one file still get two commits.** Stage one, commit,
   restore the other, commit again — the history is what makes a field lesson findable
   later, and a combined commit buries one of them.
