@@ -380,7 +380,7 @@ MonoBehaviour:
     - {fileID: 1653914997044485433, guid: 04037e0f2add6274fa63b35cc5bb8089, type: 3}
   - type: 1
     archwayPrefabs:
-    - {fileID: 1222708879805728174, guid: d1a9ad98a5b88cd4591abb6df8a66a93, type: 3}
+    - {fileID: 7485307119221061454, guid: 00a7543ebd7055346bb497bc367dceab, type: 3}
     doorPrefabs:
     - {fileID: 1029005481309709157, guid: 52494da86f067b0408b58e8fb47dd04d, type: 3}
     outerPillarPrefabs: []
@@ -497,7 +497,7 @@ MonoBehaviour:
   - type: 6
     props: {fileID: 11400000, guid: 4f3a1a894028cfc4083cc3e4a602ecd7, type: 2}
   - type: 11
-    props: {fileID: 11400000, guid: 068433a7c4626834bafc83d9c5ff0414, type: 2}
+    props: {fileID: 11400000, guid: f354cd966c32116459dc8bcfa167748d, type: 2}
   - type: 10
     props: {fileID: 11400000, guid: 068433a7c4626834bafc83d9c5ff0414, type: 2}
   - type: 12
@@ -649,7 +649,7 @@ MonoBehaviour:
   - {fileID: 919132149155446097, guid: 5d5433e5d39869044ac91255b4e30a09, type: 3}
   prisonFloorVariants:
   - prefab: {fileID: 919132149155446097, guid: 5d5433e5d39869044ac91255b4e30a09, type: 3}
-    weight: 5
+    weight: 3
   - prefab: {fileID: 919132149155446097, guid: 2c4856eefb46e4d49aa9ed1c58602db1, type: 3}
     weight: 1
   prisonCeilingPrefabs:

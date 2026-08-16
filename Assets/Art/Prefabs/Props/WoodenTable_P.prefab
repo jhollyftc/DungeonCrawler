@@ -53,6 +53,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &252424924725314453
 GameObject:
   m_ObjectHideFlags: 0
@@ -107,6 +108,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &811862522356218101
 GameObject:
   m_ObjectHideFlags: 0
@@ -161,6 +163,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &1429076319813654980
 GameObject:
   m_ObjectHideFlags: 0
@@ -214,6 +217,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &2024593664188633243
 GameObject:
   m_ObjectHideFlags: 0
@@ -268,6 +272,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &3160825867175794329
 GameObject:
   m_ObjectHideFlags: 0
@@ -322,6 +327,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &3383306775112432879
 GameObject:
   m_ObjectHideFlags: 0
@@ -378,6 +384,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &5227287461416039495
 GameObject:
   m_ObjectHideFlags: 0
@@ -434,6 +441,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &5373119534730818150
 GameObject:
   m_ObjectHideFlags: 0
@@ -460,7 +468,7 @@ Transform:
   m_GameObject: {fileID: 5373119534730818150}
   serializedVersion: 2
   m_LocalRotation: {x: 0.5, y: -0.5, z: -0.5, w: 0.5}
-  m_LocalPosition: {x: -0.0044, y: -0.00182, z: 0.00368}
+  m_LocalPosition: {x: 0.00099, y: -0.00093, z: 0.00388}
   m_LocalScale: {x: 0.0033333332, y: 0.003333334, z: 0.003333334}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -479,14 +487,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropSocket
   childPrefabs:
-  - {fileID: 585498852465811658, guid: 8d70325a8fd94ad42812fdee2c34e1f9, type: 3}
+  - {fileID: 2037913935395480243, guid: 2e95dce04f226dc4d8c1623a5322162f, type: 3}
   childTier: 3
   fillChance: 1
   yawJitter: 180
-  positionJitter: 0
+  positionJitter: 0.5
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &6275643084963084968
 GameObject:
   m_ObjectHideFlags: 0
@@ -543,6 +552,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &6696369824526567129
 GameObject:
   m_ObjectHideFlags: 0
@@ -596,6 +606,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &7041651390431705504
 GameObject:
   m_ObjectHideFlags: 0
@@ -652,6 +663,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1 &7949371829878183949
 GameObject:
   m_ObjectHideFlags: 0
@@ -705,6 +717,7 @@ MonoBehaviour:
   countsAsTorch: 0
   tintToRoomPalette: 0
   tintMaterial: {fileID: 0}
+  tintIntensity: 0
 --- !u!1001 &7621728581137564067
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1039,7 +1052,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.PropPhysicsSleep
   sleepOnStart: 1
-  wakeNeighbourRadius: 0.75
+  wakeNeighbourMargin: 0.15
   warnIfHovering: 1
   hoverCheckDelay: 1.5
   hoverTolerance: 0.08
