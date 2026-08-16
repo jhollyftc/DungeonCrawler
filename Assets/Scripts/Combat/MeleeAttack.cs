@@ -159,6 +159,47 @@ namespace DungeonGen
         bool envHitFound;      // this swing touched a non-damageable solid — the first one found
         Vector3 envHitPoint;
         Collider envHitCollider;
+
+        /// <summary>
+        /// Where on a non-damageable collider the blade actually met it.
+        ///
+        /// `Collider.ClosestPoint` IS UNSUPPORTED ON A NON-CONVEX MeshCollider AND RETURNS THE
+        /// QUERY POINT UNCHANGED — no exception, no warning, just the input handed back. That is
+        /// a real shipped bug in this project: the entire dungeon shell is ONE concave
+        /// MeshCollider (DungeonMesh, §5), so every whiff that clipped a wall or the floor
+        /// sparked at the CAST ORIGIN instead — a hit effect hanging in empty air at chest
+        /// height in front of the player, with the log cheerfully reporting a correct rejection.
+        ///
+        /// Convex and primitive colliders answer ClosestPoint properly, so they keep using it.
+        /// For everything else, `Collider.Raycast` tests this ONE collider and does support
+        /// concave meshes.
+        ///
+        /// <paramref name="maxDistance"/> MUST BE THE SWEEP'S OWN REACH, and getting that wrong
+        /// is its own shipped bug: an arbitrary large value (100m) sent the ray straight down
+        /// the corridor and returned the far wall, so the spark appeared under the reticle
+        /// dozens of metres away — further from the truth than the mid-air version it replaced,
+        /// and far more convincing, because it landed exactly where the player was aiming.
+        /// The blade cannot reach past its own capsule, so neither may this.
+        /// </summary>
+        static Vector3 SurfacePointOn(Collider c, Vector3 origin, Vector3 dir, float maxDistance)
+        {
+            bool concaveMesh = c is MeshCollider mc && !mc.convex;
+            if (!concaveMesh)
+            {
+                Vector3 p = c.ClosestPoint(origin);
+                // Guard the degenerate answer anyway: ClosestPoint also returns the query point
+                // when it is INSIDE a convex collider, which a melee origin can easily be.
+                if ((p - origin).sqrMagnitude > 1e-6f) return p;
+            }
+
+            if (c.Raycast(new Ray(origin, dir), out RaycastHit hit, maxDistance)) return hit.point;
+
+            // Nothing along the aim within reach — the capsule touched this collider with its
+            // vertical extent rather than its nose (the floor under your feet is the usual
+            // case). Clamp to the reach instead of guessing far: wrong by centimetres, in front
+            // of the blade, and never out in the room.
+            return origin + dir * Mathf.Min(0.5f, maxDistance);
+        }
         Faction ownFaction;
         InnerCone activeInner;   // set per DoConeSweep call, read by ConeHit
         ConePush activePush;     // ditto, read by ShoveProp
@@ -394,7 +435,16 @@ namespace DungeonGen
             else
             {
                 hits = Physics.CapsuleCastNonAlloc(top, bottom, sweepRadius, dir, castScratch, range, hitMask, QueryTriggerInteraction.Ignore);
-                for (int i = 0; i < hits; i++) TryHit(castScratch[i].collider, origin, dir, blowDir);
+                for (int i = 0; i < hits; i++)
+                {
+                    // THE CAST ALREADY KNOWS WHERE IT TOUCHED — pass it through rather than
+                    // reconstructing it later from the collider alone. distance 0 means the cast
+                    // STARTED inside this collider, where `point` is meaningless (the same trap
+                    // ViewmodelCollision and the melee LOS check both carry); null falls back to
+                    // the reconstruction.
+                    var h = castScratch[i];
+                    TryHit(h.collider, origin, dir, blowDir, h.distance > 0f ? h.point : (Vector3?)null);
+                }
             }
 
             blowDirectionOverride = Vector3.zero;
@@ -794,7 +844,7 @@ namespace DungeonGen
             return true;
         }
 
-        void TryHit(Collider c, Vector3 origin, Vector3 dir, Vector3 blowDir)
+        void TryHit(Collider c, Vector3 origin, Vector3 dir, Vector3 blowDir, Vector3? surfacePoint = null)
         {
             if (c == null) return;
 
@@ -815,12 +865,14 @@ namespace DungeonGen
                 if (!envHitFound && c.transform != transform && !c.transform.IsChildOf(transform))
                 {
                     envHitFound = true;
-                    envHitPoint = c.ClosestPoint(origin);
+                    envHitPoint = surfacePoint ?? SurfacePointOn(c, origin, dir, range + sweepRadius);
                     envHitCollider = c;
                 }
                 if (debugAttack) Debug.Log($"[Melee] {name}: '{c.transform.root.name}/{c.name}' rejected — no IDamageable (scenery).", this);
                 return;
             }
+
+            // (see SurfacePointOn, below, for why ClosestPoint alone is not enough)
 
             // Every legality rule lives in CanHit, which the reticle's PreviewWouldHit
             // also calls — ONE copy, so a "would this land?" readout can never disagree
