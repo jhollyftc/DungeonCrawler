@@ -150,7 +150,9 @@ Order matters; several stages depend on earlier ones. Current order:
     **Prison** (would give a validated one-opening cell a second opening).
 12. **PlaceAlcoves** — small validated recesses off corridors with an authored KIND
     (statue nook / shrine niche / collapsed dig / storage recess). See §4.
-14. **PlaceRegions** — areas of influence that bias which props appear where. Sites only; it
+14. **PlaceGates** — locks some MST doors and divides some corridors with a portcullis, siting a
+    lever on each side. Carves nothing. See §4.
+15. **PlaceRegions** — areas of influence that bias which props appear where. Sites only; it
     carves nothing and mutates no cell. See §4.
 13. **PlaceCrawlways** — 1.5m crawl passages bored through solid rock between two places
     that are already connected but a long walk apart. See §4 and `CRAWLWAY_PLAN.md`.
@@ -458,6 +460,68 @@ GEOMETRY rather than by a rule anyone maintains** — an escape route they canno
   dig is the best entrance the feature can have), which carries a known clash: `RecessPropPlacer`
   puts the hero prop on that same back wall. The fix is the existing one — claim the mouth face
   in `WallFaceRegistry` before it runs.
+
+**Gates (`PlaceGates`, `DungeonGates.cs`, `Portcullis`, `DoorLock`, `Lever`)** — a locked MST
+door, or a portcullis dividing a corridor, opened by a lever sited somewhere else. Pull a lever
+in a quiet corner and hear something heavy move in the distance.
+- **THE ONE INVARIANT: a gate's NEAR lever must be reachable from Start with that gate shut.** On
+  an MST edge the far side is reachable ONLY through the gate, so a lever there can never be used
+  first — and the subtree behind it, possibly holding the Exit, becomes unreachable. Everything
+  else here is subordinate to that.
+- **EVERY PLACED GATE COUNTS AS CLOSED WHEN SITING THE NEXT ONE.** Treating already-placed gates
+  as OPEN — the obvious reading of "the shallower ones are unlocked by then" — lets gate B's near
+  lever sit behind gate A, which reads as reachable and is not, because A may be beyond B.
+  Requiring every lever to be reachable with ALL gates shut makes the dependency graph EMPTY
+  rather than merely acyclic: no gate can depend on another, ordering stops mattering, and the
+  cycle is unrepresentable. It costs lever spread and occasionally a dropped gate. **A gate is
+  optional content; connectivity is not.**
+- **THE CUT TEST MUST COUNT CELLS LOST, EXCLUDING THE GATE'S OWN** — and getting that wrong cost
+  three rounds of debugging aimed at the wrong thing. `Reachable` drops the blocked cell from its
+  result, so a portcullis severing NOTHING still returns one cell fewer than before; comparing
+  COUNTS therefore accepted every corridor cell, including ones with a loop running parallel. The
+  consequence was not a stray gate: with nothing severed the "near side" is the WHOLE DUNGEON, so
+  a lever sited anywhere passed as reachable — including beyond the gate it opens. Reported twice
+  as "the lever is on the wrong side", and both times the labelling was blamed. **A derived count
+  is not the question; "was anything cut off" and "did fewer cells remain" differ by exactly the
+  cell you removed to ask.**
+- **NOT THE NAVMESH.** Reachability is a hand-rolled cell BFS (`Reachable`), because the navmesh
+  does not exist at generation time and deliberately excludes doors. It is CONSERVATIVE by
+  design: ladders count (they exist to keep an elevated entrance two-way) but a ladderless drop-in
+  does NOT, because counting it would OVERSTATE reachability — the dangerous direction, since it
+  would let a near lever sit somewhere unreachable. Understating only ever costs a gate.
+- **CRAWLWAYS ARE EXCLUDED FROM THE CUT TEST, deliberately.** A bore linking both sides means the
+  gate is not a true cut — and that is good: a sewer bypassing a portcullis is what the sewer
+  system is for, and extra routes can only ever help. Manholes likewise (one-way, additive only).
+- **A PORTCULLIS IS MID-CORRIDOR, NOT A DOORWAY, and that removes a whole constraint.**
+  `HallwayPathfinder.SurroundingsOk` already demands solid rock ABOVE and BELOW every corridor
+  cell (it is why pits are rooms-only), so the space the gate raises into is guaranteed — no
+  rock-above check, no rejected candidates. It also replaces no wall, so unlike a crawlway mouth
+  there is no suppression and no mesher involvement. Siting needs the cell to be 1-WIDE (both
+  perpendicular faces solid), which excludes junction plazas and corners for free without needing
+  the plaza registry that `WidenJunctions` never keeps.
+- **BOTH JAMB FACES MUST BE FLAT, AND ONLY THE KIT CAN ARRANGE THAT.** The gate presses against
+  both side walls, so a recessed window or heavy relief there is a clip. It cannot be fixed at
+  gate-placement time — `GatePlacer` runs after the kit, and an instanced wall CANNOT be
+  un-emitted (`Commit` has no removal path) — so `IsPortcullisJamb` reaches the WALL PICK, reusing
+  `allowWallMounted` rather than inventing a second flag. Same shape as the crawlway mouth's
+  suppression.
+- **PORTCULLIS LEVERS GO IN CORRIDORS OR PRISON CELLS, NEVER ROOMS** (field-reported). A lever on
+  the wall of a large room opening a gate down some corridor reads as unrelated to it, and rooms
+  are big and prop-dense enough that the lever is simply missed — turning "seek out the lever"
+  into "sweep every wall of every room". Alcoves qualify for free (typed Hallway) and are among
+  the best spots. Locked doors are exempt: their gate IS a room's doorway, so a lever in that room
+  is both natural and findable.
+- **THE GENERATOR OFFERS SEVERAL CANDIDATE FACES PER SIDE** because it cannot see which wall ASSET
+  the kit will land on one — `WallFaceRegistry` does not exist until the kit emits. The placer
+  takes the first that survives. A corridor cell has only TWO solid faces, so one wall refusing
+  mounts plus one carrying an authored socket torch rules the whole cell out; alternatives are
+  what stop that costing the lever. The near side's distance floor also RELAXES toward 0 rather
+  than failing — a gate near Start has a tiny near region, and a lever closer than intended beats
+  no lever.
+- **A gate whose NEAR lever cannot be placed is NEUTRALISED, not shipped** — the portcullis
+  destroyed, the door unlocked, and its orphaned far lever removed with it. Skipping that check
+  shipped a real softlock: a gate armed with only its far lever, reachable only by passing the
+  gate it opens.
 
 **Regions (`PlaceRegions`, `DungeonRegions.cs`, `RegionDefinition`)** — scattered areas of
 influence that bias prop selection, so part of a run reads as infested and another as overgrown,
@@ -1251,8 +1315,16 @@ One RoomStyle asset defines a room type's whole look. What it holds:
   also tracks **claimed** faces (one occupant per face): TorchPlacer claims
   each accepted face, and RoomPropPlacer's WallMounted pass skips claimed
   faces and claims its own — so a banner never lands behind a torch flame.
-  `allowPropsInFront` gates both floor-in-front props and wall-mounted props
-  (one flag; split only if a real asset needs the distinction).
+  **`allowPropsInFront` AND `allowWallMounted` ARE NOW SEPARATE, and this entry used to say "one
+  flag; split only if a real asset needs the distinction" — a recessed window was that asset.**
+  A wall that is not FLAT has nothing wrong with the floor tile in front of it, so debris and
+  crates there are fine; what it cannot take is something MOUNTED on it, which floats over the
+  recess or buries itself in relief. Collapsing the two meant clearing the face also forbade the
+  ground. `WallFaceRegistry` carries both (`PropsAllowed` / `WallPropsAllowed`), and the
+  wall-mounted query is what LEVERS and portcullis JAMBS consult. Torches keep their own third
+  flag, which is right: a niche often wants a candle in it while refusing a banner.
+  **When splitting a flag, audit every consumer for which half it meant** — three wall-mounted
+  passes moved, four floor-snap sites stayed.
   **FLAGS ARE AUTHORED PER LIST, SO THEY MUST BE READ BACK PER LIST** (real field
   bug). `WallFlagsFor` merged most-restrictive keyed by PREFAB ALONE, but the same
   prefab legitimately appears in several lists with different flags — `Wall_Basic_P`
@@ -2135,6 +2207,49 @@ Formula-driven with authored override points (the user's explicit choice).
   originally chosen for a thin collider, and it was re-examined once the collider got
   thicker (the reasoning above suggested raising it toward 0.5–1.0) — but 0.1 tested
   better in play. Don't "fix" it upward on the thickness argument alone.
+- **Gates at runtime (`PhysicsDoor` lock, `Portcullis`, `Lever`, `GateAudio`, `PlayerMessage`)**
+  - **`IsLocked` IS ITS OWN FLAG, never inferred from `isKinematic`.** Two systems write that
+    field — the standoff jam and the lock — and a shared field read back AS STATE is how they
+    come to disagree. `Jam()` already refused to touch a kinematic door for the mirror-image
+    reason, so the two compose without either knowing about the other.
+  - **A LOCKED DOOR NEVER RECEIVES `Push()`, and that nearly killed the feature silently.**
+    `CharacterControllerPhysicsPush` early-returns on `isKinematic` BEFORE dispatching
+    `IPushable` — the identical trap `PropPhysicsSleep` already carries a note about, and the
+    comment there even names `PhysicsDoor` as a deliberate exclusion (correctly, for the temporary
+    JAM). A locked door needs the opposite, so the push component calls `ShoveLocked` directly,
+    gated on `IsLocked` rather than on the rigidbody state.
+  - **NPCs RUN THAT COMPONENT VERBATIM, so the rattle fires for them too** — which is wanted (a
+    goblin shaking a bolted door is atmosphere) but the on-screen message is not.
+    `OnLockedRattle` therefore carries `fromPlayer`, resolved at the call site from a
+    `FirstPersonController` check, because nothing downstream can tell a goblin's shove from
+    yours. **Any player-facing feedback hanging off a shared player/NPC code path needs this.**
+  - **THE RATTLE PIVOTS AT THE HINGE, not the transform.** Rotating the transform alone pivots at
+    its origin — the middle of the leaf on these prefabs — so both edges swing opposite ways. A
+    door strains at its LATCH while the hinge edge stays put, and that asymmetry is most of what
+    makes the twitch read as bolted. `hinge.anchor`/`hinge.axis` supply it with no authoring;
+    rotating about a POINT means moving position too, and the anchor must be SCALED (these kit
+    prefabs carry non-unit scale). Rest is captured only when a rattle STARTS, or repeated shoves
+    walk the door out of its frame from a moving baseline.
+  - **The portcullis eases the PROGRESS of its move, not absolute position** (`stopEase`, no
+    ease-in). Easing position leaves the curve flat wherever the gate IS — including where it
+    starts — so a close appeared to lag badly: opening, the first centimetres are a gap at the
+    FLOOR and you see them instantly; closing, they are the top edge inside dark rock. Same
+    motion, one of them invisible. A gate responds to a lever just pulled and must start at once.
+  - **`GateAudio` PLAYS AT THE GATE and deliberately fights the audio defaults.** `AudioCull` and
+    `AudioOcclusion` are correct for ambience and exactly wrong for a landmark meant to be heard
+    through rock from across the dungeon, so it takes a large `maxDistance` and skips occlusion
+    registration. The LEVER's own clunk is separate and short-range: if it carried as far it would
+    muddy the distant cue arriving at the same instant.
+  - **The lever prompt says only "Pull lever".** It read "(opens)"/"(closes)", which gave away
+    that a gate existed, that it was shut, and that this was the answer — before the player had
+    found any of it.
+  - **Components reached from a spawned prefab need `GetComponentInChildren`, not
+    `GetComponent`.** Kit prefabs here are consistently a FRAME plus a moving child, so
+    `PhysicsDoor` sits on the leaf while `DungeonDoorMarker` lands on the root. `GetComponent`
+    found nothing, the gate was never armed, and pass 2 then skipped its levers too — so the
+    symptom (candidate markers, no lever, unlocked door) pointed at lever siting rather than at
+    the door lookup that actually failed. Same shape as destroying `component.gameObject` and
+    leaving the rest of the prefab standing.
 - **Carrying / throwing (`PlayerCarry` + `Carryable`)** — pick up (via
   `IInteractable`/E), carry, drop (E), throw (LMB). The carry is **VELOCITY-DRIVEN,
   not a kinematic parent**: the prop stays a fully dynamic Rigidbody pulled toward
@@ -3722,6 +3837,16 @@ Cosmetic-first; combat is far off ("get the world together first").
     generic and the floor pick is the same uniform `Hash % length`; per-kind kit walls and
     floors for alcoves; an arch on the alcove mouth (pay the `BuildArchways` + `FrameFace`
     pair cost together, §7, or posts land through arches).
+29c. ✅ **GATES — locked doors, portcullises and levers.** MST doors go kinematic and rattle when
+    shoved; portcullises divide long corridors and toggle. Levers are sited away from what they
+    open, and the GATE makes the sound, so pulling one in a quiet corner and hearing something
+    move elsewhere is the point. Depth-scaled, with separate budgets per kind. §4 has the softlock
+    invariant and the cut test; §10 the runtime. This is roadmap 30's lock-and-key with a lever
+    where the key would be.
+    ⏳ open: keys and keyholes as the other half of 30; timed or trapped gates (a portcullis
+    dropping behind you) now that toggling is proven; NPCs operating levers (`Lever` is
+    faction-agnostic and would work, but needs AI to decide); gates on LOOP edges as optional
+    shortcut gates — safe by construction, but the player walks around and may never notice.
 30. Later: lock-and-key on the MST (key tree-ancestral to lock; single-entrance
     doored rooms = lockable set), difficulty gradient by graph depth, equipment
     + SwayProfiles.
@@ -3894,6 +4019,21 @@ Cosmetic-first; combat is far off ("get the world together first").
   the player is aiming looks correct. Same family as "a SphereCast that starts inside a collider
   reports no hit" (§10): the physics API's degenerate answers are silent, plausible, and need
   guarding rather than trusting.
+- **A FAILURE IN STEP 1 THAT DISABLES STEP 2 REPORTS ITSELF IN STEP 2'S LANGUAGE.** A locked door
+  could not be found (`GetComponent` on the root, component on the leaf), so the gate was never
+  registered — and the lever pass, keyed on that registration, silently placed nothing. The
+  visible evidence was candidate lever markers with no lever, which reads unmistakably as "wall
+  faces are being rejected". Two rounds went into the wall-flag logic before the door lookup was
+  suspected. The warning HAD fired; nobody read the console because the gizmos told a coherent
+  story. **When a symptom has a tidy explanation in the system you were last working on, check
+  the console before trusting it.**
+- **AN INSTRUMENT THAT DRAWS THE SYSTEM'S OWN BELIEF BEATS ANY AMOUNT OF READING THE CODE.** Three
+  attempts at "the lever is on the wrong side" failed while inspecting logic. Drawing the gate's
+  NEAR REGION on the floor answered it in one screenshot — the tint covered the entire dungeon,
+  which is only possible if the cut test passed a gate that severed nothing. The rule is the one
+  the alcove tally and the crowd-jitter hunt already recorded, with a sharper edge: **render what
+  the code BELIEVES, not what it produced.** Counts and labels stay self-consistent while being
+  wrong; a region drawn in the world cannot.
 - **Two unrelated fixes in one file still get two commits.** Stage one, commit,
   restore the other, commit again — the history is what makes a field lesson findable
   later, and a combined commit buries one of them.
