@@ -223,6 +223,17 @@ namespace DungeonGen
         /// </summary>
         private void FixedUpdate()
         {
+            // A LOCKED DOOR HAS NO PHYSICS TO DO. It is kinematic, takes no torque and has no
+            // velocity to clamp, so everything below is meaningless for it — the rattle is a
+            // scripted transform nudge, not a force, precisely because a kinematic body cannot
+            // be pushed. Checked before the jam, since a locked door must never be jammed
+            // (Unjam would hand it back as dynamic).
+            if (IsLocked)
+            {
+                TickRattle();
+                return;
+            }
+
             // A jammed door is kinematic — it has no velocity to clamp and takes no
             // torque, so skip the rest of the physics housekeeping entirely until the
             // standoff ends (see jamOnOpposingPush).
@@ -430,8 +441,151 @@ namespace DungeonGen
             if (debugPush) Debug.Log("[PhysicsDoor] jam released.", this);
         }
 
+        /// <summary>
+        /// Locked: the door is immovable until its lever is pulled.
+        ///
+        /// ITS OWN FLAG, NOT INFERRED FROM `isKinematic`. Two systems write that field — the
+        /// standoff jam and this — and a shared field read back AS STATE is exactly how they
+        /// would come to disagree. `Jam()` already refuses to touch a kinematic door for the
+        /// mirror-image reason, so the two compose without either knowing about the other.
+        /// </summary>
+        public bool IsLocked { get; private set; }
+
+        [Header("Locked")]
+        [Tooltip("How far a locked door twitches when shoved, in degrees. Small — this is a door refusing to move, not a door opening slightly.")]
+        [SerializeField] private float lockedRattleAngle = 1.6f;
+        [Tooltip("Seconds a rattle takes to spring back.")]
+        [SerializeField] private float lockedRattleTime = 0.18f;
+        [Tooltip("Minimum seconds between rattles. REQUIRED, not polish: Push() fires every frame you lean on a door, so without a gate the rattle and its sound are a machine gun. Same retrigger shape ImpactAudio carries.")]
+        [SerializeField] private float lockedRattleInterval = 0.55f;
+
+        /// <summary>
+        /// Fired when a locked door is shoved, at most once per rattle interval. Carries the push
+        /// strength so audio can scale with how hard you tried, and WHETHER THE PLAYER DID IT.
+        ///
+        /// The second argument exists because NPCs run `CharacterControllerPhysicsPush`
+        /// verbatim — that is the whole point of the hybrid locomotion — so a goblin leaning on
+        /// a locked door fires this exactly as the player does. The rattle and the sound SHOULD
+        /// happen either way (a creature shaking a bolted door is worth hearing), but a
+        /// player-facing message must not, and nothing downstream could tell the two apart.
+        /// </summary>
+        public event System.Action<float, bool> OnLockedRattle;
+        /// <summary>Fired once when the lever unlocks this door — the cue the player hears.</summary>
+        public event System.Action OnUnlocked;
+
+        float rattleReadyAt;
+        float rattleUntil;
+        Quaternion rattleRestRot;
+        Vector3 rattleRestPos;
+
+        /// <summary>
+        /// The locked twitch: a short rotation about the hinge that springs back.
+        ///
+        /// Driven on the TRANSFORM, not through the rigidbody, because a kinematic body ignores
+        /// torque entirely — the same reason the portcullis is script-animated. Eased out so it
+        /// reads as a door straining against a bolt rather than a door starting to open.
+        /// </summary>
+        void TickRattle()
+        {
+            if (Time.time >= rattleUntil) return;
+            float k = 1f - (rattleUntil - Time.time) / Mathf.Max(0.0001f, lockedRattleTime);
+            // One quick out-and-back over the window.
+            float swing = Mathf.Sin(k * Mathf.PI) * lockedRattleAngle;
+
+            if (Time.time >= rattleUntil - Time.fixedDeltaTime) swing = 0f;
+            ApplyRattle(swing);
+        }
+
+        /// <summary>
+        /// Pose the door `deg` degrees off rest, pivoting at the HINGE.
+        ///
+        /// ROTATING THE TRANSFORM ALONE PIVOTS AT ITS ORIGIN, which on these prefabs is the
+        /// middle of the leaf — so the door swivelled about its own centre, both edges moving in
+        /// opposite directions. A hinged door strains at its LATCH while its hinge edge stays
+        /// put, and that difference is most of what makes the twitch read as "bolted" rather
+        /// than "floating".
+        ///
+        /// The joint already knows where the hinge is, so nothing needs authoring: `hinge.anchor`
+        /// and `hinge.axis` are both in the body's own local space. Rotating about a POINT rather
+        /// than an axis means moving the position too — the standard
+        /// `p' = pivot + R * (p - pivot)`, done in the PARENT's space because that is what
+        /// localPosition/localRotation are measured in.
+        ///
+        /// Scale is folded into the anchor: these kit prefabs carry non-unit scale, and an
+        /// unscaled anchor would pivot at the wrong distance from the leaf.
+        /// </summary>
+        void ApplyRattle(float deg)
+        {
+            if (hinge == null)
+            {
+                transform.localRotation = rattleRestRot * Quaternion.AngleAxis(deg, Vector3.up);
+                return;
+            }
+
+            Vector3 axisParent = (rattleRestRot * hinge.axis).normalized;
+            Quaternion turn = Quaternion.AngleAxis(deg, axisParent);
+
+            // The hinge point, in parent space, at the door's rest pose.
+            Vector3 anchorLocal = Vector3.Scale(hinge.anchor, transform.localScale);
+            Vector3 pivot = rattleRestPos + rattleRestRot * anchorLocal;
+
+            transform.localRotation = turn * rattleRestRot;
+            transform.localPosition = pivot + turn * (rattleRestPos - pivot);
+        }
+
+        /// <summary>
+        /// Shove a locked door: twitch it, and report who tried.
+        ///
+        /// Its own entry point rather than a branch of <see cref="Push"/> because the capsule
+        /// contact path cannot reach Push at all — a locked door is kinematic, and
+        /// CharacterControllerPhysicsPush filters kinematic bodies out before dispatching
+        /// IPushable. That filter is also why the pusher's identity has to arrive here
+        /// explicitly: it is known at the call site and nowhere else.
+        /// </summary>
+        public void ShoveLocked(float strength, bool fromPlayer)
+        {
+            if (!IsLocked || Time.time < rattleReadyAt) return;
+            rattleReadyAt = Time.time + lockedRattleInterval;
+
+            // Captured only when a rattle STARTS, and only when one is not already running —
+            // re-capturing mid-twitch would take the displaced pose as rest and walk the door
+            // out of its frame over repeated shoves.
+            if (Time.time >= rattleUntil)
+            {
+                rattleRestRot = transform.localRotation;
+                rattleRestPos = transform.localPosition;
+            }
+            rattleUntil = Time.time + lockedRattleTime;
+            OnLockedRattle?.Invoke(strength, fromPlayer);
+        }
+
+        /// <summary>Lock at generation. Kinematic, so a CharacterController treats it as world geometry.</summary>
+        public void Lock()
+        {
+            if (IsLocked) return;
+            IsLocked = true;
+            if (doorBody != null) doorBody.isKinematic = true;
+        }
+
+        /// <summary>Pulled by the lever. One-shot: a locked door does not re-lock.</summary>
+        public void Unlock()
+        {
+            if (!IsLocked) return;
+            IsLocked = false;
+            if (doorBody != null) doorBody.isKinematic = false;
+            OnUnlocked?.Invoke();
+        }
+
         public void Push(Vector3 contactPoint, Vector3 pushDirection, float strength)
         {
+            // A LOCKED DOOR CONSUMES THE PUSH AND REPORTS IT. Returning silently would leave the
+            // player shoving a door that gives no sign of being different from a stuck one.
+            // Reached only by callers going through IPushable — the shield-bash cone, chiefly,
+            // which is always the player. The CAPSULE contact path never gets here: a locked
+            // door is kinematic and CharacterControllerPhysicsPush filters those out before
+            // dispatching IPushable, so it calls ShoveLocked directly with the real identity.
+            if (IsLocked) { ShoveLocked(strength, fromPlayer: true); return; }
+
             // Let the push win uncontested — see pushSpringSuppressTime's tooltip.
             // Recorded/applied on EVERY push (even one that's about to be speed-
             // clamped below) so sustained contact keeps the spring suppressed the

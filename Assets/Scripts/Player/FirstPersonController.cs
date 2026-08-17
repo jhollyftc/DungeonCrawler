@@ -196,7 +196,7 @@ namespace DungeonGen
         /// and crawlways are registry entries rather than RoomTypes (§4), and they are also the
         /// two spaces you cannot reach without breaking a grate and crawling — so they are worth
         /// far more on this list than most of the rooms are.</summary>
-        static readonly string[] warpSpaces = { "Sewer Chamber", "Crawlway Mouth", "Manhole" };
+        static readonly string[] warpSpaces = { "Sewer Chamber", "Crawlway Mouth", "Manhole", "Gate (near side)" };
 
         int warpTypeIndex;
 
@@ -427,7 +427,8 @@ namespace DungeonGen
             Vector3Int best = default;
             float bestSq = float.MaxValue;
             string label = spaceIndex == 0 ? "sewer chamber"
-                         : spaceIndex == 1 ? "sewer mouth" : "manhole";
+                         : spaceIndex == 1 ? "sewer mouth"
+                         : spaceIndex == 2 ? "manhole" : "gate (near side)";
 
             void Consider(Vector3Int cell)
             {
@@ -436,6 +437,44 @@ namespace DungeonGen
                 float sq = (world - transform.position).sqrMagnitude;
                 if (sq >= bestSq) return;
                 bestSq = sq; best = cell; found = true;
+            }
+
+            if (spaceIndex == 3)
+            {
+                // THE POINT OF THIS WARP IS TO CHECK WHICH SIDE YOU LAND ON. It deliberately
+                // takes the cell from the gate's own NearCells — the generator's answer to
+                // "your side with this shut" — rather than picking a neighbour by geometry.
+                // Landing somewhere and finding the lever unreachable is then a REAL finding
+                // about the reachability walk, not an artefact of the warp having guessed.
+                //
+                // Backed off a couple of cells so the gate is in front of you rather than in
+                // your face, and so you can see whether a lever is between you and it.
+                foreach (var g in gen.Gates)
+                {
+                    Vector3Int stand = g.Cell;
+                    int bestStep = -1;
+                    foreach (var c in g.NearCells)
+                    {
+                        int step = Mathf.Abs(c.x - g.Cell.x) + Mathf.Abs(c.y - g.Cell.y) * 4 +
+                                   Mathf.Abs(c.z - g.Cell.z);
+                        // Nearest cell at least 2 steps out — closer than that and a portcullis
+                        // fills the view; further and you cannot tell which side you are on.
+                        if (step < 2) continue;
+                        if (bestStep >= 0 && step >= bestStep) continue;
+                        bestStep = step; stand = c;
+                    }
+                    if (bestStep < 0) stand = g.Cell;   // near side is tiny; take what there is
+                    Consider(stand);
+                }
+
+                if (!found)
+                {
+                    Debug.LogWarning("[Warp] No gates this seed — check the [Gates] log for how many " +
+                                     "candidates were dropped, and at what depth gates start.");
+                    return;
+                }
+                WarpToCell(best, label);
+                return;
             }
 
             foreach (var cw in gen.Crawlways)

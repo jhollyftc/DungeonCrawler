@@ -138,6 +138,17 @@ namespace DungeonGen
         public GameObject[] crawlwayBlankPrefabs;
         [Tooltip("WEIGHTED variants for blank plates. Same rules as the straight variants.")]
         public WeightedPrefab[] crawlwayBlankVariants;
+        [Tooltip("PORTCULLIS — the barred gate that stands across a corridor and rises into the rock above.\n\nAuthor facing +Z along the corridor's run (the direction you walk THROUGH it), base-origin and floor-aligned like the crawlway tubes — NOT kit-frame, since it stands in an open cell rather than replacing a wall. Put a Portcullis component on it with the moving bars as `gate`.\n\nIt is spawned as a FullGameObject and its root is excluded from the navmesh bake; both are required and neither is optional. Empty = no portcullises are placed, and the generator says so.")]
+        public GameObject portcullisPrefab;
+        [Tooltip("LEVER — mounted on a wall face somewhere near its gate. Author facing +Z pointing OUT of the wall into the room, with a Lever component and the moving part as `handle`.\n\nEmpty = no gates are placed at all, since a gate with no lever is a wall.")]
+        public GameObject leverPrefab;
+        [Tooltip("Height above the floor the lever mounts at, in metres.")]
+        public float leverMountHeight = 1.35f;
+        [Tooltip("Gap from the wall plane, in metres. Same role as a WallMounted prop's wallGap — the greybox collision is inset by wallMargin, so this needs to clear that too.")]
+        public float leverWallGap = 0.12f;
+        [Tooltip("Nudge for the portcullis in its OWN frame: Z along the corridor, X across it, Y up.")]
+        public Vector3 portcullisOffset;
+
         [Tooltip("Metres of rock a crawlway tube leaves CLEAR at a cell face. A wall asset whose Rock Depth exceeds this is not offered on a face backing onto a bore, and that face takes a flat wall instead.\n\n0 IS CORRECT FOR THIS KIT and is why the setting exists: a cross and a tee run their arms all the way to the cell face so they can meet the neighbouring piece, so there is no clearance at all and a recess of any depth clips. Raise it only if the tube pieces are re-authored to stop short of the face.")]
         public float crawlwayWallClearance = 0f;
         [Tooltip("Nudge for a blank plate in its OWN frame: Z = further into the tube / back into the rock, Y = up, X = along the face. Rotated with the piece, so one value is correct on all four faces (the ladderOffset lesson).")]
@@ -475,21 +486,34 @@ namespace DungeonGen
                 // handles: a flat wall is the right answer, an absent one is a hole into the
                 // bore.
                 float clear = RockClearance(cell, d);
+
+                // A PORTCULLIS JAMB MUST BE FLAT. The gate spans the corridor and presses against
+                // both side faces, so a recess or heavy relief there is a clip. Reuses
+                // allowWallMounted rather than inventing a second flag: "is this face flat
+                // enough to put something against" is the same question a banner asks, so a wall
+                // already marked as refusing mounts is refused as a jamb for free.
+                //
+                // NOT RELAXABLE, like the depth filter and for the same reason — and if it
+                // leaves nothing, returning null drops the face to the kit generic, which is a
+                // plain wall and exactly the right answer for a gate jamb.
+                bool jamb = gen.IsPortcullisJamb(cell, d);
+                bool Fits(RoomStyle.WallAsset a) => a.FitsBehind(clear) && (!jamb || a.allowWallMounted);
+
                 float n = ValueNoise.ForCell(cell, kit.wallNoiseScale, kit.wallNoiseSalt);
 
                 float total = 0f;
                 foreach (var a in pool)
-                    if (a.FitsBehind(clear) && a.AllowsNoise(n)) total += Mathf.Max(0f, a.weight);
+                    if (Fits(a) && a.AllowsNoise(n)) total += Mathf.Max(0f, a.weight);
 
                 bool useNoise = total > 0f;
                 if (!useNoise)
                 {
                     foreach (var a in pool)
-                        if (a.FitsBehind(clear)) total += Mathf.Max(0f, a.weight);
+                        if (Fits(a)) total += Mathf.Max(0f, a.weight);
                     if (total <= 0f)
                     {
                         foreach (var a in pool)                   // every weight muted
-                            if (a.FitsBehind(clear)) return a.prefab;
+                            if (Fits(a)) return a.prefab;
                         return null;                              // nothing in the set fits here
                     }
                 }
@@ -500,13 +524,13 @@ namespace DungeonGen
                 float roll = Hash(Vector3Int.RoundToInt(posCells * 4f), 11) / (float)0x7fffffff * total;
                 foreach (var a in pool)
                 {
-                    if (!a.FitsBehind(clear)) continue;
+                    if (!Fits(a)) continue;
                     if (useNoise && !a.AllowsNoise(n)) continue;
                     roll -= Mathf.Max(0f, a.weight);
                     if (roll <= 0f) return a.prefab;
                 }
                 for (int i = pool.Count - 1; i >= 0; i--)      // float drift on the last bucket
-                    if (pool[i].FitsBehind(clear) && (!useNoise || pool[i].AllowsNoise(n)))
+                    if (Fits(pool[i]) && (!useNoise || pool[i].AllowsNoise(n)))
                         return pool[i].prefab;
                 return null;
             }

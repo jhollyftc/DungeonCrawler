@@ -39,7 +39,19 @@ namespace DungeonGen
         {
             controller = GetComponent<CharacterController>();
             moveIntent = GetComponent<IMoveIntent>();   // player reports input×speed; null = fall back to achieved velocity
+
+            // AM I THE PLAYER? This component is deliberately identical on the player and on
+            // every NPC — that is what makes them push doors through one code path that cannot
+            // drift — so nothing else in here knows or cares. The one place it matters is
+            // player-facing FEEDBACK: an NPC shoving a locked door should rattle it and be
+            // heard, but must not tell the player it is locked.
+            //
+            // FirstPersonController rather than a tag or layer: it is unambiguous, already
+            // required on the player, and cannot be accidentally set on a goblin.
+            isPlayer = GetComponent<FirstPersonController>() != null;
         }
+
+        private bool isPlayer;
 
         [Tooltip("Don't keep accelerating a loose body once it's already moving this fast (m/s). Doors clamp their own SWING speed instead — see PhysicsDoor.")]
         [SerializeField] private float maximumPushSpeed = 3f;
@@ -65,6 +77,38 @@ namespace DungeonGen
                 var sleeper = body.GetComponent<PropPhysicsSleep>();
                 if (sleeper != null && !sleeper.IsAwake) sleeper.Wake();
             }
+            // A LOCKED DOOR MUST STILL HEAR THE SHOVE. It is kinematic — that is what makes it
+            // immovable — so the bail-out below would swallow the very contact the lock exists
+            // to respond to, and the rattle, the sound and the "it's locked" message would all
+            // be dead with nothing to debug. The identical shape as the PropPhysicsSleep case
+            // directly above: kinematic filtered before IPushable was ever consulted.
+            //
+            // DELIBERATELY GATED ON IsLocked, NOT ON isKinematic. A door also goes kinematic for
+            // the standoff JAM, and dispatching there would defeat the one thing that keeps a
+            // door shoved from both sides from launching the pusher through it — which is
+            // exactly why locking got its own flag instead of being inferred from the rigidbody
+            // state.
+            if (body.isKinematic)
+            {
+                var lockedDoor = body.GetComponent<PhysicsDoor>();
+                if (lockedDoor != null && lockedDoor.IsLocked)
+                {
+                    Vector3 shove = new Vector3(hit.moveDirection.x, 0f, hit.moveDirection.z);
+                    if (shove.sqrMagnitude > 0.0001f)
+                    {
+                        // Intent, not achieved: leaning on a door you cannot move collapses
+                        // achieved velocity to nothing, and the rattle would then read as a
+                        // feeble tap however hard you were pressing.
+                        float lockedForce = pushForce * CurrentPushScale(true)
+                                          * (Time.deltaTime * referenceFrameRate);
+                        // WHO pushed matters here and nowhere else in this component. NPCs run
+                        // this script verbatim, so without it a goblin crowding a locked door
+                        // told the PLAYER it was locked.
+                        lockedDoor.ShoveLocked(lockedForce, isPlayer);
+                    }
+                }
+            }
+
             if (body.isKinematic) return;   // still kinematic = genuinely not pushable
 
             // Don't push objects we're standing on.

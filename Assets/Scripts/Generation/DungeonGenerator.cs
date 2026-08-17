@@ -53,6 +53,8 @@ namespace DungeonGen
 
         [Tooltip("Log which regions a run placed, where, and how far they reach.")]
         public bool debugRegions = false;
+        [Tooltip("Log which doors were locked, which corridors got a portcullis, and why candidates were dropped.")]
+        public bool debugGates = false;
 
         [Header("Satellite closets")]
         [Tooltip("Satellite width in tiles, ACROSS the door.\n\nA width above 1 gets a 1x1 VESTIBULE and widens behind it, exactly as a wide prison does — and for the same hard reason, not for looks: SatelliteFits requires the footprint to touch the host on EXACTLY ONE cell, so a wide slab laid flat against the host wall touches it several times over and is always rejected. Set back by one tile, the wide part's near neighbours are the solid rock either side of the doorway.")]
@@ -423,7 +425,265 @@ namespace DungeonGen
             WidenJunctions();
             PlaceAlcoves();
             PlaceCrawlways();
+            PlaceGates();
             PlaceRegions();
+        }
+
+        // ---------------- Gates: locked doors and portcullises ----------------
+
+        /// <summary>Every gate this run placed, each with both its levers.</summary>
+        public List<GateSpec> Gates { get; } = new List<GateSpec>();
+
+        readonly HashSet<(Vector3Int cell, Vector3Int dir)> portcullisJambs
+            = new HashSet<(Vector3Int, Vector3Int)>();
+
+        /// <summary>
+        /// Is this face one of the two side walls a portcullis stands against?
+        ///
+        /// THE KIT MUST ASK BEFORE IT PICKS A WALL, not after. A gate spans the full corridor
+        /// cross-section, so its frame is pressed flat against both perpendicular faces — and a
+        /// recessed window, candle niche or heavy relief there means the gate clips into it. The
+        /// fix cannot happen at gate-placement time: GatePlacer runs after the kit has emitted,
+        /// and an instanced wall CANNOT be un-emitted (InstancedDungeonRenderer.Commit has no
+        /// removal path). So the constraint has to reach the wall PICK, exactly as the crawlway
+        /// mouth's suppression does.
+        ///
+        /// Same question `WallAsset.allowWallMounted` answers for props: "is this face flat
+        /// enough to put something against". Reusing that flag means a wall already marked as
+        /// refusing banners is automatically refused as a gate jamb, with no second thing to
+        /// author.
+        /// </summary>
+        public bool IsPortcullisJamb(Vector3Int cell, Vector3Int d) =>
+            portcullisJambs.Contains((cell, d));
+
+
+        /// <summary>Salt so gates draw from their own stream and cannot perturb the layout.</summary>
+        const int GateSalt = 0x6A7E;
+
+        /// <summary>
+        /// Lock some MST doors and divide some corridors with portcullises, siting a lever on
+        /// each side of every gate.
+        ///
+        /// THE ONE INVARIANT THAT MATTERS: a gate's NEAR lever must be reachable from Start with
+        /// that gate closed. On an MST edge the far side is reachable ONLY through the gate, so a
+        /// lever there can never be used first — get this wrong and the subtree behind the gate,
+        /// possibly holding the Exit, is unreachable and the run is unwinnable.
+        ///
+        /// MULTIPLE GATES CAN DEADLOCK EACH OTHER — gate A's lever behind gate B and B's behind
+        /// A — so gates are processed in increasing distance from Start and each near lever is
+        /// sited in the region reachable given the SHALLOWER gates are open. A total order makes
+        /// the dependency graph a DAG by construction, so the cycle is unrepresentable rather
+        /// than merely unlikely (the same move that killed the degenerate sewer shortcut).
+        ///
+        /// A gate that cannot site a legal near lever is DROPPED. Gates are optional content;
+        /// connectivity is not.
+        ///
+        /// Draws from its own Random so existing seeds keep their layouts exactly.
+        /// </summary>
+        void PlaceGates()
+        {
+            Gates.Clear();
+            portcullisJambs.Clear();
+            var profile = cfg.depthProfile;
+            if (profile == null) return;
+
+            int wantDoors = profile.LockedDoorCountAt(cfg.depth);
+            int wantBars = profile.PortcullisCountAt(cfg.depth);
+            if (wantDoors <= 0 && wantBars <= 0) return;
+
+            int startRoom = Rooms.FindIndex(r => r.Type == RoomType.Start);
+            if (startRoom < 0) return;
+            Vector3Int origin = Rooms[startRoom].InteriorFloorCell;
+
+            var gateRng = new Random(dungeonSeed ^ GateSalt);
+            var blockedCells = new HashSet<Vector3Int>();
+            var blockedEdges = new HashSet<(Vector3Int, Vector3Int)>();
+
+            // Everything reachable with NOTHING blocked — the baseline every cut is measured
+            // against, and the set levers may be sited in before any gate exists.
+            var reachableAll = Reachable(origin, blockedCells, blockedEdges);
+
+            var candidates = new List<GateSpec>();
+            CollectLockedDoorCandidates(candidates, reachableAll);
+            CollectPortcullisCandidates(candidates, reachableAll, profile.portcullisMinRunLength);
+            if (candidates.Count == 0) return;
+
+            // Distance from Start orders the whole pass. Ties broken by a stable hash rather than
+            // list order, so candidate collection order never leaks into the result.
+            var dist = OpenDistancesFrom(origin);
+            foreach (var g in candidates)
+                g.DepthFromStart = dist.TryGetValue(g.Cell, out int d) ? d : int.MaxValue;
+            candidates.Sort((a, b) =>
+            {
+                int c = a.DepthFromStart.CompareTo(b.DepthFromStart);
+                return c != 0 ? c : DungeonKitPlacer.Hash(a.Cell, 7717).CompareTo(DungeonKitPlacer.Hash(b.Cell, 7717));
+            });
+
+            int placedDoors = 0, placedBars = 0, droppedNoLever = 0, droppedNoCut = 0;
+
+            foreach (var g in candidates)
+            {
+                bool isDoor = g.Kind == GateKind.LockedDoor;
+                if (isDoor && placedDoors >= wantDoors) continue;
+                if (!isDoor && placedBars >= wantBars) continue;
+
+                // EVERY GATE PLACED SO FAR COUNTS AS CLOSED, and this is the fix for a real
+                // softlock. Treating them as OPEN — which is what "the shallower ones are already
+                // unlocked" naively means — lets gate B's near lever be sited behind gate A. That
+                // reads as reachable, and is not: reaching it needs A open, and A may be beyond
+                // B. Field-reported as a portcullis on the only route out of Start whose one
+                // lever sat on the far side of it.
+                //
+                // Requiring every lever to be reachable with ALL gates shut makes the dependency
+                // graph EMPTY rather than merely acyclic — no gate can depend on another, so
+                // order stops mattering and the cycle is unrepresentable. It costs lever spread
+                // (they cluster toward Start as gates accumulate) and can drop a gate that finds
+                // nowhere legal, which is the right trade: a gate is optional content and
+                // connectivity is not.
+                var openNow = Reachable(origin, blockedCells, blockedEdges);
+
+                var testCells = new HashSet<Vector3Int>(blockedCells);
+                var testEdges = new HashSet<(Vector3Int, Vector3Int)>(blockedEdges);
+                Block(g, testCells, testEdges);
+                var near = Reachable(origin, testCells, testEdges);
+
+                // THE CUT TEST. Measured against what is reachable RIGHT NOW rather than a
+                // dungeon with every gate open, or a gate that severs nothing new would still
+                // look like a cut because an earlier gate did the severing.
+                //
+                // COUNT THE CELLS ACTUALLY LOST, EXCLUDING THE GATE'S OWN — and that exclusion is
+                // the whole test, not a detail. `Reachable` drops the blocked cell from its
+                // result, so a portcullis that severs NOTHING still returns one cell fewer than
+                // before. Comparing counts therefore called every corridor cell a valid cut,
+                // including ones with a loop running parallel. The consequence is not a stray
+                // gate: with nothing severed, the "near side" is the entire dungeon, so a lever
+                // sited anywhere at all passes as reachable — including on the far side of the
+                // gate it opens. Field-reported as exactly that, twice, while the labelling was
+                // blamed both times.
+                int cutOff = 0;
+                foreach (var c in openNow)
+                    if (c != g.Cell && !near.Contains(c)) cutOff++;
+                if (cutOff == 0) { droppedNoCut++; continue; }
+
+                if (!TrySiteLevers(g, near, openNow, gateRng)) { droppedNoLever++; continue; }
+
+                // Kept for the gizmo — see GateSpec.NearCells.
+                g.NearCells = near;
+                g.ReachOrigin = origin;
+                g.CutOffCells = cutOff;
+
+                // Now shut it for every later gate's test.
+                Block(g, blockedCells, blockedEdges);
+
+                // Stamp the index AFTER the gate survives, so a dropped candidate never leaves
+                // levers pointing at a gate that does not exist. LeverSpec is a struct, so the
+                // list entries must be rewritten rather than mutated in place.
+                int gi = Gates.Count;
+                for (int li = 0; li < g.Levers.Count; li++)
+                {
+                    var lv = g.Levers[li];
+                    lv.GateIndex = gi;
+                    g.Levers[li] = lv;
+                }
+
+                // Register the jamb faces so the KIT picks a flat wall there. Both perpendicular
+                // faces are solid by construction — that is the 1-wide test the candidate had to
+                // pass — so there are always exactly two.
+                if (!isDoor)
+                {
+                    Vector3Int perp = new Vector3Int(g.Axis.z, 0, g.Axis.x);
+                    portcullisJambs.Add((g.Cell, perp));
+                    portcullisJambs.Add((g.Cell, -perp));
+                }
+
+                Gates.Add(g);
+                if (isDoor) placedDoors++; else placedBars++;
+            }
+
+            if (cfg.debugGates)
+                Debug.Log($"[Gates] depth {cfg.depth}: {placedDoors}/{wantDoors} locked door(s), " +
+                          $"{placedBars}/{wantBars} portcullis(es) from {candidates.Count} candidate(s). " +
+                          $"Dropped — severed nothing: {droppedNoCut}, no legal lever pair: {droppedNoLever}.");
+        }
+
+        /// <summary>Mark a gate's passage as impassable for a reachability test.</summary>
+        void Block(GateSpec g, HashSet<Vector3Int> cells, HashSet<(Vector3Int, Vector3Int)> edges)
+        {
+            if (g.Kind == GateKind.Portcullis) { cells.Add(g.Cell); return; }
+            var d = Doors[g.DoorIndex];
+            edges.Add(EdgeKey(d.HallwayCell, d.HallwayCell + d.Direction));
+        }
+
+        static (Vector3Int, Vector3Int) EdgeKey(Vector3Int a, Vector3Int b)
+        {
+            // Normalised so a door blocks passage in both directions from one entry.
+            bool aFirst = a.x != b.x ? a.x < b.x : a.y != b.y ? a.y < b.y : a.z < b.z;
+            return aFirst ? (a, b) : (b, a);
+        }
+
+        /// <summary>
+        /// Cells reachable on foot from <paramref name="from"/>, minus the blocked passages.
+        ///
+        /// CONSERVATIVE ON PURPOSE. Ladders are included (they exist to keep an elevated entrance
+        /// TWO-WAY), but a ladderless drop-in is NOT — it is one-way, and counting it would
+        /// OVERSTATE reachability, which is the dangerous direction: it would let a near lever be
+        /// sited somewhere the player cannot actually get to. Understating only ever costs a gate.
+        ///
+        /// CRAWLWAYS ARE EXCLUDED, deliberately. A bore linking both sides means the gate is not
+        /// a true cut — and that is good: a sewer bypassing a portcullis is what the sewer system
+        /// is for, and extra routes can only ever help, never softlock.
+        /// </summary>
+        HashSet<Vector3Int> Reachable(Vector3Int from, HashSet<Vector3Int> blockedCells,
+                                      HashSet<(Vector3Int, Vector3Int)> blockedEdges)
+        {
+            var seen = new HashSet<Vector3Int>();
+            if (!Grid.InBounds(from) || Grid[from] == CellType.Empty) return seen;
+
+            var q = new Queue<Vector3Int>();
+            seen.Add(from);
+            q.Enqueue(from);
+
+            // Ladder columns as two-way vertical links, keyed by foot cell.
+            var ladderTop = new Dictionary<Vector3Int, Vector3Int>();
+            foreach (var lad in Ladders)
+            {
+                Vector3Int top = lad.BaseCell + Vector3Int.up * lad.HeightCells + lad.WallDir;
+                if (Grid.InBounds(top) && Grid[top] != CellType.Empty) ladderTop[lad.BaseCell] = top;
+            }
+
+            void TryStep(Vector3Int c, Vector3Int nb)
+            {
+                if (seen.Contains(nb) || !Grid.InBounds(nb) || Grid[nb] == CellType.Empty) return;
+                if (blockedCells.Contains(nb) || blockedCells.Contains(c)) return;
+                if (blockedEdges.Contains(EdgeKey(c, nb))) return;
+                seen.Add(nb);
+                q.Enqueue(nb);
+            }
+
+            while (q.Count > 0)
+            {
+                Vector3Int c = q.Dequeue();
+                foreach (var hd in HorizontalDirs) TryStep(c, c + hd);
+
+                CellType t = Grid[c];
+                Room roomHere = t == CellType.Room ? RoomAt(c) : null;
+                foreach (var vd in VerticalDirs)
+                {
+                    Vector3Int nb = c + vd;
+                    if (!Grid.InBounds(nb) || Grid[nb] == CellType.Empty) continue;
+                    CellType tn = Grid[nb];
+                    bool stairLink = t == CellType.StairLower || t == CellType.StairUpper ||
+                                     tn == CellType.StairLower || tn == CellType.StairUpper;
+                    bool sameRoom = roomHere != null && tn == CellType.Room && roomHere == RoomAt(nb);
+                    if (!stairLink && !sameRoom) continue;
+                    TryStep(c, nb);
+                }
+
+                if (ladderTop.TryGetValue(c, out var up)) TryStep(c, up);
+                foreach (var kv in ladderTop)
+                    if (kv.Value == c) TryStep(c, kv.Key);
+            }
+            return seen;
         }
 
         // ---------------- Regions: areas of influence over prop selection ----------------
@@ -3310,6 +3570,301 @@ namespace DungeonGen
                 var m = new CrawlwayManhole { BoreCell = bore };
                 net.Manholes.Add(m);
                 crawlManholes.Add(m.OpenCell);
+            }
+        }
+
+        /// <summary>
+        /// MST doors that could be locked. Loop-edge doors are excluded deliberately: the player
+        /// walks around them and never learns the lever mattered.
+        /// </summary>
+        void CollectLockedDoorCandidates(List<GateSpec> into, HashSet<Vector3Int> reachable)
+        {
+            for (int i = 0; i < Doors.Count; i++)
+            {
+                var d = Doors[i];
+                if (!d.HasDoor || d.OnLoopEdge) continue;
+                // An elevated threshold is served by an interior stair or a ladder column; a
+                // kinematic door in that space interacts badly with both.
+                if (d.IsElevated) continue;
+                if (!reachable.Contains(d.HallwayCell)) continue;
+
+                into.Add(new GateSpec
+                {
+                    Kind = GateKind.LockedDoor,
+                    DoorIndex = i,
+                    Cell = d.HallwayCell,
+                    Axis = d.Direction,
+                });
+            }
+        }
+
+        /// <summary>
+        /// Corridor cells a portcullis could stand in.
+        ///
+        /// THE GATE MUST SPAN THE WHOLE CORRIDOR, so both cells PERPENDICULAR to the run axis
+        /// must be solid rock. That one test does a lot of work: it excludes widened junction
+        /// plazas (a gate cannot span 2x2), junctions, and corners, without needing the plaza
+        /// registry — which is local to WidenJunctions and never kept.
+        ///
+        /// NO ROCK-ABOVE CHECK IS NEEDED, which is the quiet payoff of siting these mid-corridor
+        /// rather than in a doorway: HallwayPathfinder.SurroundingsOk already demands solid rock
+        /// ABOVE and BELOW every corridor cell (it is why pits are rooms-only), so the space the
+        /// gate raises into is guaranteed.
+        /// </summary>
+        void CollectPortcullisCandidates(List<GateSpec> into, HashSet<Vector3Int> reachable, int minRun)
+        {
+            var doorCells = new HashSet<Vector3Int>();
+            foreach (var d in Doors)
+            {
+                doorCells.Add(d.HallwayCell);
+                doorCells.Add(d.HallwayCell + d.Direction);
+            }
+            var ladderCells = new HashSet<Vector3Int>();
+            foreach (var lad in Ladders)
+                for (int i = 0; i <= lad.HeightCells; i++) ladderCells.Add(lad.BaseCell + Vector3Int.up * i);
+
+            for (int i = 0; i < Grid.Length; i++)
+            {
+                if (Grid[i] != CellType.Hallway) continue;
+                Vector3Int c = Grid.Position(i);
+
+                if (!reachable.Contains(c)) continue;
+                if (doorCells.Contains(c) || ladderCells.Contains(c)) continue;
+                if (IsAlcoveCell(c) || IsChamberCell(c)) continue;
+                if (crawlMouths.Contains(c)) continue;
+
+                foreach (var axis in HorizontalDirs)
+                {
+                    // One direction per axis pair is enough; +X and +Z cover both runs.
+                    if (axis.x < 0 || axis.z < 0) continue;
+
+                    Vector3Int perp = new Vector3Int(axis.z, 0, axis.x);
+                    if (Open(c + perp) || Open(c - perp)) continue;      // must be 1-wide here
+
+                    int run = StraightRun(c, axis, perp, out int before, out int after);
+                    if (run < minRun) continue;
+                    // Near the middle, so it divides a hallway rather than plugging its end.
+                    if (Mathf.Abs(before - after) > run / 3) continue;
+
+                    into.Add(new GateSpec { Kind = GateKind.Portcullis, Cell = c, Axis = axis });
+                    break;
+                }
+            }
+
+            bool Open(Vector3Int p) => Grid.InBounds(p) && Grid[p] != CellType.Empty;
+        }
+
+        /// <summary>Length of the 1-wide straight corridor run through `c` along `axis`.</summary>
+        int StraightRun(Vector3Int c, Vector3Int axis, Vector3Int perp, out int before, out int after)
+        {
+            bool Ok(Vector3Int p) =>
+                Grid.InBounds(p) && Grid[p] == CellType.Hallway &&
+                !(Grid.InBounds(p + perp) && Grid[p + perp] != CellType.Empty) &&
+                !(Grid.InBounds(p - perp) && Grid[p - perp] != CellType.Empty);
+
+            before = 0; after = 0;
+            for (Vector3Int p = c - axis; Ok(p); p -= axis) before++;
+            for (Vector3Int p = c + axis; Ok(p); p += axis) after++;
+            return before + after + 1;
+        }
+
+        /// <summary>
+        /// Put a lever on each side of a gate: one in the region still reachable from Start with
+        /// the gate closed, one in the region it cuts off.
+        ///
+        /// THE NEAR LEVER IS THE CORRECTNESS CONDITION and its absence drops the gate. The FAR
+        /// lever is optional — it exists for the one-way routes the dungeon already has, and for
+        /// a toggling portcullis it is what makes toggling safe, but a gate without one is still
+        /// perfectly playable.
+        /// </summary>
+        bool TrySiteLevers(GateSpec g, HashSet<Vector3Int> near, HashSet<Vector3Int> all, Random rng)
+        {
+            var profile = cfg.depthProfile;
+
+            // DISTANCE MUST BE MEASURED ON THE SIDE THE LEVER IS ON, with the gate SHUT.
+            // Measuring on the open graph would let a "four steps away" near lever actually be
+            // four steps THROUGH the gate and thirty around it — so the player, who cannot pass,
+            // faces a hike while the number claimed it was close. Same class of error as using
+            // straight-line distance: the metric has to match how the player travels.
+            var nearDist = RestrictedDistancesFrom(g.Cell, near);
+            var farDist = OpenDistancesFrom(g.Cell);   // far side: any route is fine, it is a proximity cue
+
+            bool Ok(Dictionary<Vector3Int, int> d, Vector3Int c) =>
+                d.TryGetValue(c, out int n) &&
+                n >= profile.leverMinDistance && n <= profile.leverMaxDistance;
+
+            var nearCells = new List<Vector3Int>();
+            var farCells = new List<Vector3Int>();
+            foreach (var c in all)
+            {
+                if (near.Contains(c)) { if (Ok(nearDist, c)) nearCells.Add(c); }
+                else if (Ok(farDist, c)) farCells.Add(c);
+            }
+
+            // SEVERAL CANDIDATES PER SIDE, not one. The generator cannot see which wall ASSET
+            // will land on a face — the registry does not exist until the kit emits — so the
+            // placer may reject the face it picks. Offering alternatives is what stops that
+            // rejection costing the whole lever.
+            AddLeverCandidates(nearCells, g, true, LeverCandidates);
+            AddLeverCandidates(farCells, g, false, LeverCandidates);
+
+            // THE NEAR SIDE MUST PRODUCE SOMETHING, so its distance floor is negotiable. A gate
+            // close to Start has a tiny near region — Start's own room (excluded for a
+            // portcullis) plus a few corridor cells, most of them inside leverMinDistance — and
+            // holding the floor there means no near lever, which means either a dropped gate or,
+            // worse, a gate the player cannot open. A lever nearer than intended is a small
+            // aesthetic loss; an unopenable gate on the only route out of Start ends the run.
+            for (int relax = profile.leverMinDistance - 1; relax >= 0 && CountNear(g) == 0; relax--)
+            {
+                var relaxed = new List<Vector3Int>();
+                foreach (var c in all)
+                    if (near.Contains(c) && nearDist.TryGetValue(c, out int n) &&
+                        n >= relax && n <= profile.leverMaxDistance) relaxed.Add(c);
+                AddLeverCandidates(relaxed, g, true, LeverCandidates);
+            }
+
+            // THE FAR SIDE GETS THE SAME RELAXATION, for a weaker but real reason. It is optional
+            // — a gate with only a near lever is perfectly playable — but the far one is what
+            // makes a TOGGLING portcullis safe from either side, and what covers arrival by a
+            // one-way route. Both are worth a lever standing closer to the gate than intended,
+            // and the far region is frequently just as cramped as the near one.
+            for (int relax = profile.leverMinDistance - 1; relax >= 0 && CountFar(g) == 0; relax--)
+            {
+                var relaxed = new List<Vector3Int>();
+                foreach (var c in all)
+                    if (!near.Contains(c) && farDist.TryGetValue(c, out int n) &&
+                        n >= relax && n <= profile.leverMaxDistance) relaxed.Add(c);
+                AddLeverCandidates(relaxed, g, false, LeverCandidates);
+            }
+
+            return CountNear(g) > 0;
+
+            int CountFar(GateSpec gate)
+            {
+                int n = 0;
+                foreach (var lv in gate.Levers) if (!lv.NearSide) n++;
+                return n;
+            }
+
+            int CountNear(GateSpec gate)
+            {
+                int n = 0;
+                foreach (var lv in gate.Levers) if (lv.NearSide) n++;
+                return n;
+            }
+        }
+
+        /// <summary>How many faces to offer the placer per side.</summary>
+        const int LeverCandidates = 4;
+
+        /// <summary>
+        /// Step distances from a cell, confined to <paramref name="allowed"/>.
+        ///
+        /// The start cell is seeded even when it is not in the set — a gate's own cell is the
+        /// thing being blocked, so it is excluded from the reachable side by construction, and
+        /// without seeding it there would be nothing to walk out from.
+        /// </summary>
+        Dictionary<Vector3Int, int> RestrictedDistancesFrom(Vector3Int start, HashSet<Vector3Int> allowed)
+        {
+            var dist = new Dictionary<Vector3Int, int> { [start] = 0 };
+            var q = new Queue<Vector3Int>();
+            q.Enqueue(start);
+            while (q.Count > 0)
+            {
+                Vector3Int c = q.Dequeue();
+                int nd = dist[c] + 1;
+                foreach (var hd in HorizontalDirs)
+                {
+                    Vector3Int nb = c + hd;
+                    if (dist.ContainsKey(nb) || !allowed.Contains(nb)) continue;
+                    dist[nb] = nd;
+                    q.Enqueue(nb);
+                }
+                foreach (var vd in VerticalDirs)
+                {
+                    Vector3Int nb = c + vd;
+                    if (dist.ContainsKey(nb) || !allowed.Contains(nb)) continue;
+                    dist[nb] = nd;
+                    q.Enqueue(nb);
+                }
+            }
+            return dist;
+        }
+
+        /// <summary>
+        /// Add up to <paramref name="max"/> legal wall faces for a lever on one side of a gate.
+        ///
+        /// Several rather than one, because the generator cannot see which wall ASSET the kit
+        /// will put on a face — a recessed window refuses a mounted lever, and that is only
+        /// knowable at placement. The placer walks these in order and takes the first that
+        /// survives; duplicates of a cell already offered are skipped so the alternatives are
+        /// genuinely different places, not four faces of one cell.
+        /// </summary>
+        void AddLeverCandidates(List<Vector3Int> cells, GateSpec g, bool nearSide, int max)
+        {
+            if (cells.Count == 0) return;
+            int added = 0;
+
+            // Hash-shuffled rather than scan order, so levers don't cluster toward one grid
+            // corner — the same reason capped wall assets are dealt onto shuffled faces.
+            int salt = 7727 + (nearSide ? 0 : 1);
+            cells.Sort((a, b) => DungeonKitPlacer.Hash(a, salt).CompareTo(DungeonKitPlacer.Hash(b, salt)));
+
+            var doorCells = new HashSet<Vector3Int>();
+            foreach (var d in Doors)
+            {
+                doorCells.Add(d.HallwayCell);
+                doorCells.Add(d.HallwayCell + d.Direction);
+            }
+
+            // A PORTCULLIS LEVER BELONGS IN A CORRIDOR OR A CELL, NEVER IN A ROOM.
+            //
+            // Field-reported: a lever on the wall of a large room that opens a gate somewhere
+            // down a corridor reads as unrelated to it, and rooms are big and dense with props,
+            // so the lever is easily missed entirely — which turns "seek out the lever" into
+            // "sweep every wall of every room", which is not a search, it is a chore.
+            //
+            // A corridor lever sits in the player's path at eye level with nothing competing for
+            // attention, and reads as belonging to the machinery of the passage it controls. A
+            // prison cell is small enough to take in at a glance and makes a good hiding place
+            // that is still fair.
+            //
+            // LOCKED DOORS ARE DELIBERATELY EXEMPT: their gate IS a room's doorway, so a lever in
+            // that room is both natural and findable — you are already standing at the thing it
+            // opens. The problem is specific to a gate you cannot see from the lever.
+            //
+            // Alcove cells pass this for free (they are typed Hallway) and are among the best
+            // spots the feature has. Sewer chambers are also Hallway-typed but can never appear
+            // here: they connect only through bores, which the reachability walk excludes, so
+            // they are absent from the candidate set already.
+            bool CellKindOk(Vector3Int c)
+            {
+                if (g.Kind != GateKind.Portcullis) return true;
+                CellType t = Grid[c];
+                return t == CellType.Hallway || t == CellType.Prison;
+            }
+
+            foreach (var c in cells)
+            {
+                if (added >= max) return;
+                if (!CellKindOk(c)) continue;
+                if (doorCells.Contains(c) || IsPitOpening(c)) continue;
+                if (Grid[c] == CellType.StairLower || Grid[c] == CellType.StairUpper) continue;
+
+                bool already = false;
+                foreach (var lv in g.Levers) if (lv.Cell == c) { already = true; break; }
+                if (already) continue;
+
+                foreach (var d in HorizontalDirs)
+                {
+                    Vector3Int wall = c + d;
+                    if (Grid.InBounds(wall) && Grid[wall] != CellType.Empty) continue;   // needs solid
+                    if (IsCrawlwayMouthFace(c, d)) continue;                             // that face is a grate
+
+                    g.Levers.Add(new LeverSpec { Cell = c, WallDir = d, NearSide = nearSide });
+                    added++;
+                    break;   // one face per cell — alternatives should be different PLACES
+                }
             }
         }
 

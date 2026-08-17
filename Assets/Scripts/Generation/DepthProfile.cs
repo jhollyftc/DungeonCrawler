@@ -208,6 +208,48 @@ namespace DungeonGen
             return legal;
         }
 
+        [Header("Gates (locked doors and portcullises)")]
+        [Tooltip("Run depth below which no door is locked. Gates are a 'you must find something' mechanic, so they read better once the player knows what an ordinary route costs.")]
+        public int lockedDoorMinDepth = 3;
+        [Tooltip("Locked doors at lockedDoorMinDepth. Small: every locked door is a detour the player MUST take, so several at once reads as a chore rather than a landmark.")]
+        public int lockedDoorBaseCount = 1;
+        [Tooltip("Extra locked doors per depth beyond the minimum. Fractional — 0.25 adds roughly one every four depths.")]
+        public float lockedDoorPerDepth = 0.25f;
+        [Tooltip("Hard ceiling on locked doors per run.")]
+        public int lockedDoorMaxCount = 3;
+
+        [Tooltip("Run depth below which no portcullis is placed. Separate from locked doors on purpose, so a portcullis can be introduced later as a distinct thing rather than arriving alongside them.")]
+        public int portcullisMinDepth = 4;
+        [Tooltip("Portcullises at portcullisMinDepth.")]
+        public int portcullisBaseCount = 1;
+        [Tooltip("Extra portcullises per depth beyond the minimum.")]
+        public float portcullisPerDepth = 0.2f;
+        [Tooltip("Hard ceiling on portcullises per run.")]
+        public int portcullisMaxCount = 2;
+        [Tooltip("A portcullis must stand in a STRAIGHT corridor run at least this many cells long, and near its middle — that is what makes it read as dividing a hallway rather than plugging a corner.\n\nThis is the aesthetic dial only. Whether the gate actually DIVIDES anything is decided by a cut test on the walkable network, not by length: a long corridor with a loop edge running parallel gates nothing however long it is.")]
+        public int portcullisMinRunLength = 7;
+
+        [Tooltip("Closest a lever may be to its gate, in PATH steps (not straight-line — five cells euclidean can be through a wall in another room). Keeps the lever out of sight of the thing it opens, so finding it is a small search.")]
+        public int leverMinDistance = 4;
+        [Tooltip("Furthest a lever may be from its gate, in path steps. Too far and the player never connects the lever to the sound they heard.")]
+        public int leverMaxDistance = 18;
+
+        /// <summary>Locked doors a run at this depth gets. 0 below <c>lockedDoorMinDepth</c>.</summary>
+        public int LockedDoorCountAt(int depth)
+        {
+            if (depth < lockedDoorMinDepth || lockedDoorMaxCount <= 0) return 0;
+            int n = lockedDoorBaseCount + Mathf.FloorToInt((depth - lockedDoorMinDepth) * lockedDoorPerDepth);
+            return Mathf.Clamp(n, 0, lockedDoorMaxCount);
+        }
+
+        /// <summary>Portcullises a run at this depth gets. 0 below <c>portcullisMinDepth</c>.</summary>
+        public int PortcullisCountAt(int depth)
+        {
+            if (depth < portcullisMinDepth || portcullisMaxCount <= 0) return 0;
+            int n = portcullisBaseCount + Mathf.FloorToInt((depth - portcullisMinDepth) * portcullisPerDepth);
+            return Mathf.Clamp(n, 0, portcullisMaxCount);
+        }
+
         [Header("Regions (areas of influence over prop selection)")]
         [Tooltip("Run depth below which the dungeon has NO regions at all and is entirely vanilla.\n\nABOVE 1 ON PURPOSE, and it is also the system's regression test: with no sites every influence is zero and every multiplier is 1, so depth 1 must place props bit-identically to a build without regions. That provable-inert state is what lets the plumbing ship before any content exists — the same property the crawlway bore has.")]
         public int regionMinDepth = 3;

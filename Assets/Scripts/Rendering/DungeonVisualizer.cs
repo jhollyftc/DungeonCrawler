@@ -101,6 +101,20 @@ namespace DungeonGen
             /// moment it is on. Appended at a NEW bit rather than inserted, so masks already
             /// saved on a visualizer keep meaning what they meant.</summary>
             Regions   = 1 << 12,
+            /// <summary>Locked doors, portcullises, and a line from each gate to its levers —
+            /// the fastest way to see whether the NEAR lever really is on the Start side.</summary>
+            Gates     = 1 << 13,
+            /// <summary>
+            /// The floor tint showing each gate's NEAR REGION — everything still reachable from
+            /// Start with that gate shut — plus the cell the reachability walk started from.
+            ///
+            /// SPLIT OFF FROM `Gates` BECAUSE IT COVERS THE FLOOR OF HALF THE DUNGEON and buries
+            /// the gate and lever markers it sits under. Kept rather than deleted: it is the only
+            /// view that answers "is the generator's idea of MY side the side I am standing on",
+            /// and it is what exposed a cut test that was passing gates severing nothing. Reach
+            /// for it whenever a lever appears on the wrong side.
+            /// </summary>
+            GateReach = 1 << 14,
             Everything = ~0,
         }
 
@@ -137,6 +151,7 @@ namespace DungeonGen
             "DungeonAlcoveProps", "DungeonPrisonProps",
             "DungeonBridges", "DungeonPitRims", "DungeonLintels",
             "DungeonKitSockets", "DungeonCrawlways", "DungeonChamberProps",
+            "DungeonPortcullises", "DungeonLevers",
         };
 
         void Awake()
@@ -401,6 +416,11 @@ namespace DungeonGen
                 RecessPropPlacer.BuildChambers(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
             }
 
+            // GATES BEFORE TORCHES, for the same reason recesses are: a lever occupies a wall
+            // face and must CLAIM it, or a sconce mounts over the one thing the player is meant
+            // to hunt for. It also needs the doors to exist, which BuildDoors has already done.
+            GatePlacer.Build(gen, kit, cellSize, transform, wallFaces);
+
             if (torches != null && torches.placeTorches)
                 TorchPlacer.Build(gen, torches, cellSize, transform, sharedInstancer, roomStyle, wallFaces);
 
@@ -639,6 +659,86 @@ namespace DungeonGen
                         $"{cw.Manholes.Count} manhole(s), " +
                         $"{cw.Chambers.Count} chamber(s) ({chamberCells} cells)" +
                         $"{(cw.BestDetour > 0 ? $" — longest walk it short-circuits: {cw.BestDetour}" : "")}");
+#endif
+                }
+            }
+
+            // ---- Gates: locked doors, portcullises, and the levers that drive them ----
+            //
+            // THE LINE FROM A GATE TO ITS LEVERS IS THE POINT. The softlock invariant is that the
+            // NEAR lever sits in the component still reachable from Start with the gate shut, and
+            // that is invisible in numbers but obvious as a line — you can see at a glance
+            // whether it runs back toward Start or off into the region the gate cuts off.
+            if (Show(GizmoLayers.Gates) && gen.Gates != null)
+            {
+                foreach (var g in gen.Gates)
+                {
+                    bool bars = g.Kind == GateKind.Portcullis;
+                    Color c = bars ? new Color(0.95f, 0.75f, 0.2f) : new Color(0.95f, 0.35f, 0.35f);
+                    Vector3 at = transform.position + (g.Cell + Vector3.one * 0.5f) * cellSize;
+
+                    Gizmos.color = c;
+                    Gizmos.DrawWireCube(at, Vector3.one * cellSize * 0.85f);
+
+                    // THE NEAR REGION, drawn flat. This is the generator's answer to "which side
+                    // is yours with the gate shut", and it is the single thing that decides
+                    // whether a gate is openable or a softlock — yet it is invisible in the log,
+                    // which reports "near 1" whether the judgement was right or wrong. Stand in
+                    // the dungeon and look: if the tinted floor is NOT the side you are on, the
+                    // reachability walk is wrong, not the labelling.
+                    //
+                    // The ORIGIN is marked too, because a near side computed from the wrong start
+                    // cell is perfectly self-consistent and the region alone cannot show it.
+                    if (Show(GizmoLayers.GateReach) && g.NearCells != null && g.NearCells.Count > 0)
+                    {
+                        Gizmos.color = new Color(c.r, c.g, c.b, 0.12f);
+                        foreach (var nc in g.NearCells)
+                            Gizmos.DrawCube(transform.position + (nc + Vector3.one * 0.5f) * cellSize,
+                                            new Vector3(0.85f, 0.05f, 0.85f) * cellSize);
+
+                        Gizmos.color = new Color(0.3f, 1f, 0.4f);
+                        Vector3 o = transform.position + (g.ReachOrigin + Vector3.one * 0.5f) * cellSize;
+                        Gizmos.DrawWireSphere(o, cellSize * 0.45f);
+                        Gizmos.DrawLine(o, o + Vector3.up * cellSize);
+                    }
+
+                    // PLACED LEVERS ONLY GET A LINE. The generator offers several CANDIDATE faces
+                    // per side — it cannot see which wall asset the kit will land on one — so
+                    // most entries here were never built. Drawing them all identically was
+                    // actively misleading: you follow a line to a cell, find bare wall, and
+                    // conclude the lever failed when it simply went to another candidate.
+                    int placedNear = 0, placedFar = 0;
+                    foreach (var lv in g.Levers)
+                    {
+                        Vector3 lp = transform.position + (lv.Cell + Vector3.one * 0.5f) * cellSize;
+
+                        if (!lv.Placed)
+                        {
+                            // A candidate that lost. Tiny and dim — visible when you are hunting
+                            // for why a lever went where it did, invisible the rest of the time.
+                            Gizmos.color = new Color(c.r, c.g, c.b, 0.18f);
+                            Gizmos.DrawWireCube(lp, Vector3.one * cellSize * 0.15f);
+                            continue;
+                        }
+
+                        if (lv.NearSide) placedNear++; else placedFar++;
+                        // Near solid, far dimmed — so which side is which reads without a label.
+                        Gizmos.color = lv.NearSide ? c : new Color(c.r, c.g, c.b, 0.35f);
+                        Gizmos.DrawLine(at, lp);
+                        Gizmos.DrawWireSphere(lp, cellSize * (lv.NearSide ? 0.3f : 0.22f));
+                    }
+
+#if UNITY_EDITOR
+                    if (Show(GizmoLayers.Labels))
+                    {
+                        UnityEditor.Handles.color = c;
+                        // PLACED counts, not candidate counts — "2 levers" meaning two of eight
+                        // faces got one is the number worth reading. A near count of 0 on a gate
+                        // that still exists is a bug worth seeing immediately.
+                        UnityEditor.Handles.Label(at + Vector3.up * cellSize * 0.5f,
+                            $"{g.Label} — near {placedNear}, far {placedFar} " +
+                            $"({g.Levers.Count} candidate faces), {g.DepthFromStart} from Start");
+                    }
 #endif
                 }
             }

@@ -68,6 +68,12 @@ namespace DungeonGen
             // where you'd stand to look into a niche hides the niche.
             foreach (var a in gen.Alcoves) reserved.Add(a.HallCell);
 
+            // A PORTCULLIS CELL IS A DOORWAY, and a moving one. A crate under a gate is a gate
+            // that cannot close — and unlike a door, which shoves obstructions aside with hinge
+            // torque, this one is kinematic and simply drives through or stops on top of them.
+            foreach (var g in gen.Gates)
+                if (g.Kind == GateKind.Portcullis) reserved.Add(g.Cell);
+
             // Every crawlway MOUTH, for the same reason and a stronger one — a grate is a
             // doorway you enter on your knees, so a crate in front of it doesn't clutter the
             // entrance, it seals it. All three kinds are covered: both ends of the bore, and the
