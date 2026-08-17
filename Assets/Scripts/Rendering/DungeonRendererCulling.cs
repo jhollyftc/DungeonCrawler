@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace DungeonGen
 {
@@ -42,6 +43,9 @@ namespace DungeonGen
         [Tooltip("Extra metres an object must come back INSIDE before it is drawn again. Without a band, anything sitting exactly at the boundary flickers on and off as you breathe — the same hysteresis NpcBrain's approach bands and TorchAudioPool's steal margin exist for.")]
         public float hysteresis = 6f;
 
+        [Tooltip("Metres beyond which a generated renderer stops CASTING shadows, while still drawing normally out to cullDistance.\n\nMUCH SHORTER THAN cullDistance, and for a different reason. cullDistance is sized to the fog, because that is where vanishing stops being visible. This is sized to the URP asset's Shadow Distance, because past that a cast shadow has nowhere to land — and a point light's shadows are a 6-face cubemap, so a caster in range of N shadow-casting torches is rasterized 6N extra times.\n\nDoors dominate the tracked set (190 at depth 20), so this is mostly a door dial. 0 disables the split and every renderer keeps its authored casting mode.")]
+        public float shadowDistance = 18f;
+
         [Tooltip("How many renderers to test per frame. THE SLICING IS NOT OPTIONAL: testing every renderer each frame is itself the CPU cost this exists to remove, and reading transform.position is a managed-to-native transition per access — the exact profile that made Separation() 58% of NpcLocomotion until it was batched. A few frames of latency on a cull decision is invisible; a per-frame sweep of 3000 renderers is not.")]
         public int checksPerFrame = 250;
 
@@ -56,6 +60,12 @@ namespace DungeonGen
         // a CHANGE keeps this off the native side almost entirely, and means a renderer some
         // other system switched off is not fought over every frame.
         readonly List<bool> lastVisible = new List<bool>();
+        // Casting is tracked separately from visibility because the two radii differ, and the
+        // AUTHORED mode is captured rather than assumed: a prefab may legitimately ship as Off
+        // or ShadowsOnly, and restoring everything to On would quietly turn casting ON for
+        // geometry an artist had deliberately excluded.
+        readonly List<ShadowCastingMode> authoredShadows = new List<ShadowCastingMode>();
+        readonly List<bool> lastCasting = new List<bool>();
 
         int cursor;
         int culledCount;
@@ -68,6 +78,8 @@ namespace DungeonGen
         {
             tracked.Clear();
             lastVisible.Clear();
+            authoredShadows.Clear();
+            lastCasting.Clear();
             cursor = 0;
             culledCount = 0;
 
@@ -86,6 +98,8 @@ namespace DungeonGen
                     if (r == null || !r.enabled) continue;
                     tracked.Add(r);
                     lastVisible.Add(true);
+                    authoredShadows.Add(r.shadowCastingMode);
+                    lastCasting.Add(true);
                 }
             }
 
@@ -130,6 +144,11 @@ namespace DungeonGen
             float on = (cullDistance - Mathf.Max(0f, hysteresis));
             on *= on;
 
+            bool splitShadows = shadowDistance > 0f;
+            float shadowOff = shadowDistance * shadowDistance;
+            float shadowOn = Mathf.Max(0f, shadowDistance - Mathf.Max(0f, hysteresis));
+            shadowOn *= shadowOn;
+
             int checks = Mathf.Min(checksPerFrame, tracked.Count);
             for (int i = 0; i < checks; i++)
             {
@@ -143,6 +162,8 @@ namespace DungeonGen
                     int last = tracked.Count - 1;
                     tracked[cursor] = tracked[last]; tracked.RemoveAt(last);
                     lastVisible[cursor] = lastVisible[last]; lastVisible.RemoveAt(last);
+                    authoredShadows[cursor] = authoredShadows[last]; authoredShadows.RemoveAt(last);
+                    lastCasting[cursor] = lastCasting[last]; lastCasting.RemoveAt(last);
                     continue;
                 }
 
@@ -155,6 +176,16 @@ namespace DungeonGen
                     r.enabled = visible;
                     lastVisible[cursor] = visible;
                     culledCount += visible ? -1 : 1;
+                }
+
+                if (splitShadows)
+                {
+                    bool casting = lastCasting[cursor] ? sq <= shadowOff : sq <= shadowOn;
+                    if (casting != lastCasting[cursor])
+                    {
+                        r.shadowCastingMode = casting ? authoredShadows[cursor] : ShadowCastingMode.Off;
+                        lastCasting[cursor] = casting;
+                    }
                 }
                 cursor++;
             }
@@ -170,8 +201,14 @@ namespace DungeonGen
         {
             for (int i = 0; i < tracked.Count; i++)
             {
-                if (tracked[i] != null) tracked[i].enabled = true;
+                if (tracked[i] != null)
+                {
+                    tracked[i].enabled = true;
+                    // Back to the AUTHORED mode, not to On — see authoredShadows.
+                    tracked[i].shadowCastingMode = authoredShadows[i];
+                }
                 lastVisible[i] = true;
+                lastCasting[i] = true;
             }
             culledCount = 0;
         }

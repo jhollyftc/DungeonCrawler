@@ -719,6 +719,65 @@ pass cost is geometry COUNT per cube face, not per-face quality — cull WHAT
 casts, not just how nicely. (Prison bars ride the shell path and also don't
 cast; deliberate scope line, revisit if their shadows are missed.)
 
+**`RenderParams.worldBounds` IS THE ONLY CULLING UNIT A `RenderMeshInstanced` CALL HAS, AND
+WITH NON-CHUNK-KEYED BATCHES THAT DEFEATS SHADOW CULLING OUTRIGHT.** Unity culls the call as a
+UNIT against `worldBounds`; there is no per-instance culling on the engine side — the
+`renderDistance` pack loop is us doing it ourselves, and only against the CAMERA. Batching here
+is deliberately not chunk-keyed (the fix for fragmented batches, above), so a batch's bounds
+span the WHOLE DUNGEON. A casting batch therefore intersects every torch's shadow volume and
+cannot be culled out of any of them, and a point light's shadows are a **6-face cubemap** — so
+at N shadow-casting torches the entire `renderDistance` set was rasterized **6N times**, against
+a URP Shadow Distance (15m) far shorter than `renderDistance` (45m). Most of those triangles are
+clipped, but the vertex cost is paid per face.
+Measured at depth 20 with 6 casters, before → after:
+
+| | before | after |
+|---|---|---|
+| Frametime | 9.7 ms | **4.9 ms** |
+| GPU | 9.5 ms | 3.9 ms |
+| Draw calls | 1673 | 669 |
+| `Standard Instanced` | 1479 draws / 21,427 inst | 462 / **6,234** |
+| Triangles | 166 M | **39.6 M** |
+
+**THE FIX IS TWO SUBMISSIONS PER CASTING BATCH, AND BOTH HALVES ARE LOAD-BEARING**: the lit set
+with casting OFF, plus a much smaller near-camera subset as `ShadowsOnly` **with tight
+recomputed bounds**. The short radius alone buys little — with whole-dungeon bounds the shadow
+draw is still handed to every face however few instances it holds. `shadowDistance` (18m) is
+sized to the URP asset's Shadow Distance plus margin, since past that a cast shadow has nowhere
+to land. Bounds are padded by a per-batch `MaxRadius` because `sMin`/`sMax` bound instance
+PIVOTS and a mesh straddles its own pivot; under-padding culls a caster whose shadow was still
+on screen, which reads as flickering contact shadows rather than as missing geometry.
+`DungeonRendererCulling` carries the same split for the GameObject set (doors dominate it — 190
+at depth 20), dropping `shadowCastingMode` at a shorter radius than `cullDistance` and restoring
+the **AUTHORED** mode rather than `On`, so a prefab that ships deliberately non-casting stays
+that way.
+
+**THE DISCRIMINATING TEST WAS A SETTING, NOT A CODE CHANGE.** Shadow cost splits into FILL
+(filter taps per shadow sample) and GEOMETRY (draws per cube face), and they want opposite
+fixes. Dropping the URP asset's `m_SoftShadowQuality` from High to Low moved 9.7ms → 9.4ms —
+**3%, i.e. nothing** — which ruled out filtering in one minute and pointed the whole effort at
+geometry submission. Reach for that before writing anything.
+**The stats-panel tell is INSTANCES PER DRAW CALL COLLAPSING while the instance count holds.**
+19,118 instances in 804 draws (36.8 per call) is healthy; 21,427 in 1479 (14.5) is the same
+geometry submitted three times over, and the panel counts shadow submissions inside "Draw Calls"
+(so does its triangle count — hence 166M against a 114M baseline). A rising draw count with a
+flat instance count is re-submission, not more content.
+
+**NEVER TUNE SHADOWS AGAINST AN EDITOR PROFILE.** `InstancedDungeonRenderer` and
+`TorchCullingManager` are both `[ExecuteAlways]`, and `Graphics.RenderMeshInstanced` submits to
+EVERY camera — so in the editor the Scene view renders the whole dungeon a second time, shadow
+passes included, with its own torch culling running off `SceneView.lastActiveSceneView`. That
+produced periodic ~25ms `RenderLoop` spikes (self time, zero GC alloc, 12 RenderLoop instances
+on the render thread) that **did not reproduce in a build at all**. `EditorLoop` sitting at
+21.3ms of a 30.7ms CPU frame is the tell that the profile is measuring the editor. Two fixes
+were scoped against those spikes — caster-selection hysteresis and a culling-slice change —
+before the build test showed there was nothing to fix; §12's discriminating-test rule, and the
+discriminator here was simply "does it happen in a build".
+**NB the live PIPELINE asset is `Assets/SourceFiles/Settings/PC_RPAsset.asset`** — GraphicsSettings
+points at its GUID — even though the note below about `SourceFiles/` being the dead Unity sample
+is true of the RENDERER. One folder, one live file and one dead one; check the GUID before
+editing either.
+
 **PropInstancer** — the general "how anything gets placed" system. Splits a
 prefab into MESH (→ instancer, batched) and FUNCTION (→ a GameObject with
 colliders/lights/logic). Four **PropTier**s:
@@ -865,7 +924,18 @@ accurate record of what was true then, and is kept because the diagnosis is stil
 But it is no longer the current state, and optimising against it now would be optimising the wrong
 half of the frame.
 
-**CONSEQUENCE: TRIANGLE COUNT IS THE LEVER NOW, NOT BATCHING.** LODs, lower-poly décor, and
+**THAT TABLE WAS MEASURED WITH TORCH SHADOWS EFFECTIVELY OFF, WHICH THE ENTRY DID NOT SAY.**
+Turning them on (6 casters) put the frame at 9.7ms / 166M triangles — so its "114M triangles,
+triangle count is the lever" conclusion was reading a number that shadow re-submission would
+soon dominate, and would have sent the next session to LODs when the actual fault was
+`worldBounds` defeating shadow culling (see the entry above). With the caster split in, a
+shadowed frame is **4.9ms / 39.6M / 669 draws** — comfortably better than this table's
+shadowless baseline. **State the shadow configuration beside any frame measurement**; it moves
+every number here by more than the optimisations being compared.
+
+**CONSEQUENCE: TRIANGLE COUNT IS THE LEVER NOW, NOT BATCHING** — but read the shadow correction
+above first, since a large share of the triangles that prompted this were shadow re-submissions
+rather than content. LODs, lower-poly décor, and
 `renderDistance`/`cullDistance` buy more than atlasing does. Roadmap 17/28 (atlas door materials)
 targets draw calls the frame is no longer short of — still worth doing eventually, no longer a
 priority. **Re-measure before the next optimisation** rather than trusting either table: this
@@ -3783,6 +3853,16 @@ Cosmetic-first; combat is far off ("get the world together first").
 28. ⏳ Atlas multi-material kit assets (walls/ceilings/arches → 1 material) —
     mostly Blender/texture work; toon shader packed-mask already ready. Duplicate of item 17;
     see there for why it is deprioritised (the frame is GPU-bound now, not submission-bound).
+28a. ✅ **Shadow-caster distance split** — torch shadows made affordable. `RenderParams.worldBounds`
+    is the only culling unit a `RenderMeshInstanced` call has, and non-chunk-keyed batches span the
+    whole dungeon, so every casting batch was rasterized into all 6 faces of all 6 casting torches.
+    Casting batches now submit separately as `ShadowsOnly` on a short radius with tight bounds, and
+    `DungeonRendererCulling` does the same for doors and FullGameObject props. 9.7ms → **4.9ms**
+    with shadows ON. §5 has the measurements, the one-minute discriminating test, and the
+    editor-profile trap. ⏳ open: **every prop still casts** (`PropInstancer`'s `castShadows`
+    defaults true with no per-entry authoring), so rubble and bones are in the cube faces inside
+    18m — a `castShadows` field on `PropEntry`, or blanket-off for `StaticDecor`, is the next trim
+    and touches `PropSet`, the drawer's `VisibleFields` and three placers.
 28b. ⏳ **Triangle budget** — the lever the re-measurement actually points at: 114M triangles
     against a 7.4ms GPU frame. LODs on the kit and on décor, lower-poly scatter meshes, and
     `renderDistance`/`cullDistance` tuning. Nothing here is designed yet; it replaces atlasing
