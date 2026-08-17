@@ -132,7 +132,13 @@ namespace DungeonGen
                     }
                     // On the SAME object as the PhysicsDoor, not the marker's root: DoorLock
                     // requires it, and it subscribes to that door's rattle event.
-                    gates[i] = pd.gameObject.AddComponent<DoorLock>();
+                    var doorLock = pd.gameObject.AddComponent<DoorLock>();
+                    // Configure AFTER AddComponent but explicitly, because AddComponent already
+                    // ran Awake — assigning the fields alone would be too late for the standoff,
+                    // which is built from them.
+                    doorLock.Configure(kit.lockedDoorNpcStandoff, kit.lockedDoorStandoffLayer,
+                                       kit.lockedDoorMessage);
+                    gates[i] = doorLock;
                 }
                 else
                 {

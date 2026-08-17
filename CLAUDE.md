@@ -2186,6 +2186,15 @@ Formula-driven with authored override points (the user's explicit choice).
   NOT taken (disagrees with our tested `false`, and community consensus on that
   flag is split) — a lesson in verifying AI-sourced advice against ground truth
   instead of applying it wholesale.
+  **TWO DOOR LAYERS EXIST AND THEIR MEANING LIVES ONLY IN THE PHYSICS MATRIX** — no script
+  references either, so grepping finds nothing and both are easy to co-opt by accident:
+  - **`DoorJam`** limits the SWING. It stops a shove driving the leaf past its hinge limits, and
+    it is the physical half of the same problem `jamOnOpposingPush` handles in code.
+  - **`DoorStandoff`** holds NPCs back from a LOCKED door so their mesh does not clip through it
+    (`DoorLock.standoffLayer`). It must collide with the NPC layer and NOTHING else — the player
+    has to reach the door to learn it is locked.
+  Neither is interchangeable, and a layer whose only definition is a matrix row is exactly the
+  kind of setup that gets reused for the wrong thing. Record any further ones here.
   **STANDOFF JAM — a door shoved from BOTH sides goes briefly kinematic** (real
   field bug): with a player one side and NPCs the other, the pusher could WARP
   THROUGH to the far side, or wedge between door and frame and get driven UP into

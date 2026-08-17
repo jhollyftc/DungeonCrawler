@@ -149,6 +149,13 @@ namespace DungeonGen
         [Tooltip("Nudge for the portcullis in its OWN frame: Z along the corridor, X across it, Y up.")]
         public Vector3 portcullisOffset;
 
+        [Tooltip("Metres an NPC is held back from a LOCKED door, so its mesh stops short of clipping through. 0 disables the standoff and NPCs press against the leaf.\n\nA weapon held forward will still reach whatever this is — that wants lowering the weapon at idle, not a bigger number here.\n\nAUTHORED HERE because DoorLock is added at RUNTIME by GatePlacer: there is no prefab to put it on, so a field on the component alone could only be seen mid-play and never set.")]
+        public float lockedDoorNpcStandoff = 0.18f;
+        [Tooltip("Layer for that standoff collider. MUST collide with the NPC layer and NOTHING else — the player has to reach the door to learn it is locked.\n\nNOT 'DoorJam', which already limits the door's SWING; the two are not interchangeable.")]
+        public string lockedDoorStandoffLayer = "DoorStandoff";
+        [Tooltip("Shown when the player shoves a locked door.")]
+        public string lockedDoorMessage = "It's locked.";
+
         [Tooltip("Metres of rock a crawlway tube leaves CLEAR at a cell face. A wall asset whose Rock Depth exceeds this is not offered on a face backing onto a bore, and that face takes a flat wall instead.\n\n0 IS CORRECT FOR THIS KIT and is why the setting exists: a cross and a tee run their arms all the way to the cell face so they can meet the neighbouring piece, so there is no clearance at all and a recess of any depth clips. Raise it only if the tube pieces are re-authored to stop short of the face.")]
         public float crawlwayWallClearance = 0f;
         [Tooltip("Nudge for a blank plate in its OWN frame: Z = further into the tube / back into the rock, Y = up, X = along the face. Rotated with the piece, so one value is correct on all four faces (the ladderOffset lesson).")]
