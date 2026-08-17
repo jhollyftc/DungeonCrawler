@@ -27,6 +27,11 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
+      name: cobweb_material.004
+    second: {fileID: 2100000, guid: 0649ed14de5854e4dbd1ee20e9a9dc6f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
       name: dark gray stone.002
     second: {fileID: 2100000, guid: 0a41120931dd6864eaa47be662b6ffd6, type: 2}
   materials:

@@ -426,6 +426,9 @@ MonoBehaviour:
   slamTolerance: 3
   slamMinSpeed: 1.5
   logSwingTelemetry: 0
+  lockedRattleAngle: 1.6
+  lockedRattleTime: 0.18
+  lockedRattleInterval: 0.55
 --- !u!82 &5310196877476623849
 AudioSource:
   m_ObjectHideFlags: 0
@@ -438,7 +441,7 @@ AudioSource:
   OutputAudioMixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 0}
-  m_PlayOnAwake: 1
+  m_PlayOnAwake: 0
   m_Volume: 1
   m_Pitch: 1
   Loop: 0

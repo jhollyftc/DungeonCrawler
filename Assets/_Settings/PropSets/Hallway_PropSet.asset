@@ -160,43 +160,6 @@ MonoBehaviour:
     allowCenter: 0
   - label: 
     prefabs:
-    - {fileID: 919132149155446097, guid: 186bd0098e0ea1a4fb0333b20d1544a8, type: 3}
-    - {fileID: 919132149155446097, guid: dd92f70b08e777043845b00551f46e05, type: 3}
-    anchor: 0
-    tier: 0
-    featurePositionMode: 0
-    featureWallSide: 0
-    featureSpot: 0
-    featureFacing: 0
-    featureYaw: 0
-    hostLabel: 
-    chancePerHost: 0.6
-    minSpacing: 0
-    tintToRoomPalette: 0
-    tintMaterial: {fileID: 0}
-    tintIntensity: 1
-    guaranteed: 0
-    count: 0
-    chancePerCell: 0.65
-    maxPerRoom: 0
-    preferredZones: -1
-    facing: 0
-    yawRange: {x: 0, y: 180}
-    subCellJitter: 1
-    snapToWall: 1
-    snapToInsideCorner: 0
-    sharesTile: 1
-    wallGap: 0.35
-    mountHeight: 0
-    mountHeightJitter: 0
-    ceilingLayout: 0
-    gridStride: 0
-    snapToCeilingWall: 0
-    avoidEntranceCell: 0
-    minRoomHeightCells: 0
-    allowCenter: 0
-  - label: 
-    prefabs:
     - {fileID: 919132149155446097, guid: 22d6de01cc9cdb34199f790cfcc91de9, type: 3}
     - {fileID: 919132149155446097, guid: 71a00bd9a7a5a4545bd802e051122d76, type: 3}
     anchor: 0
@@ -293,6 +256,43 @@ MonoBehaviour:
     yawRange: {x: 0, y: 180}
     subCellJitter: 1
     snapToWall: 0
+    snapToInsideCorner: 0
+    sharesTile: 1
+    wallGap: 0.35
+    mountHeight: 0
+    mountHeightJitter: 0
+    ceilingLayout: 0
+    gridStride: 0
+    snapToCeilingWall: 0
+    avoidEntranceCell: 0
+    minRoomHeightCells: 0
+    allowCenter: 0
+  - label: 
+    prefabs:
+    - {fileID: 919132149155446097, guid: 186bd0098e0ea1a4fb0333b20d1544a8, type: 3}
+    - {fileID: 919132149155446097, guid: dd92f70b08e777043845b00551f46e05, type: 3}
+    anchor: 0
+    tier: 0
+    featurePositionMode: 0
+    featureWallSide: 0
+    featureSpot: 0
+    featureFacing: 0
+    featureYaw: 0
+    hostLabel: 
+    chancePerHost: 0.6
+    minSpacing: 0
+    tintToRoomPalette: 0
+    tintMaterial: {fileID: 0}
+    tintIntensity: 1
+    guaranteed: 0
+    count: 0
+    chancePerCell: 0.65
+    maxPerRoom: 0
+    preferredZones: -1
+    facing: 0
+    yawRange: {x: 0, y: 180}
+    subCellJitter: 1
+    snapToWall: 1
     snapToInsideCorner: 0
     sharesTile: 1
     wallGap: 0.35

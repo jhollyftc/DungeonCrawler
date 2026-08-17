@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 5355993579393565675}
   - component: {fileID: 1023281145020194340}
   m_Layer: 0
-  m_Name: Audio Source
+  m_Name: LeverAudio
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -166,23 +166,23 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: c8112cfa85f08eb4ca6a9d38e5b274e5, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0.92699
+      value: 2.6940587
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c8112cfa85f08eb4ca6a9d38e5b274e5, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: 0.000000080734395
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c8112cfa85f08eb4ca6a9d38e5b274e5, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0.3392
+      value: 0.00633367
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c8112cfa85f08eb4ca6a9d38e5b274e5, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.7071067
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c8112cfa85f08eb4ca6a9d38e5b274e5, type: 3}
       propertyPath: m_LocalRotation.x
-      value: -0.7071068
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c8112cfa85f08eb4ca6a9d38e5b274e5, type: 3}
       propertyPath: m_LocalRotation.y
@@ -190,7 +190,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c8112cfa85f08eb4ca6a9d38e5b274e5, type: 3}
       propertyPath: m_LocalRotation.z
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c8112cfa85f08eb4ca6a9d38e5b274e5, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -227,7 +227,7 @@ PrefabInstance:
       addedObject: {fileID: 8838985859822262407}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c8112cfa85f08eb4ca6a9d38e5b274e5, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 8301910275712551280}
+      addedObject: {fileID: 6684044460759770577}
   m_SourcePrefab: {fileID: 100100000, guid: c8112cfa85f08eb4ca6a9d38e5b274e5, type: 3}
 --- !u!4 &246515687603829360 stripped
 Transform:
@@ -260,7 +260,7 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.0044586184, y: 0.005686111, z: 0.0033566658}
   m_Center: {x: -0.00000061036553, y: 0.000023935103, z: 0.0016783329}
---- !u!114 &8301910275712551280
+--- !u!114 &6684044460759770577
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -269,18 +269,20 @@ MonoBehaviour:
   m_GameObject: {fileID: 585498852465811658}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1338275800e035a4cb8ddeed4c95faac, type: 3}
+  m_Script: {fileID: 11500000, guid: 4819d523ccd0f004cb97a2e07153123c, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ChestHinge
-  lid: {fileID: 2903107734084168836}
-  rotationAxis: 0
-  openAngle: 85
-  rotationSpeed: 70
-  startOpen: 0
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.Lever
+  gateBehaviour: {fileID: 0}
+  handle: {fileID: 2903107734084168836}
+  throwAngle: 85
+  handleAxis: {x: 1, y: 0, z: 0}
+  throwTime: 1
   audioSource: {fileID: 1023281145020194340}
   mixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
   openClip: {fileID: 8300000, guid: e3ed40df487962049ab71a3b067eb02d, type: 3}
   closeClip: {fileID: 8300000, guid: 803c6cdb86546474ba2ee3082b57cfd8, type: 3}
+  audioMaxDistance: 15
+  debugLever: 0
 --- !u!1001 &3441682944299354991
 PrefabInstance:
   m_ObjectHideFlags: 0

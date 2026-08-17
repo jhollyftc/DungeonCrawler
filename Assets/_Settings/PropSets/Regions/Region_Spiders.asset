@@ -15,6 +15,6 @@ MonoBehaviour:
   displayName: Test Prop 1
   props: {fileID: 11400000, guid: 63b5f10fa02644e4fad327a0f4431d75, type: 2}
   radiusRange: {x: 10, y: 16}
-  falloffPower: 2
-  strength: 1
+  falloffPower: 0.8
+  strength: 0.5
   gizmoColor: {r: 0.6, g: 0.9, b: 0.5, a: 1}

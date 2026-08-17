@@ -96,6 +96,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 2
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -107,6 +108,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 2
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -118,6 +120,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 1
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: Fireplace
@@ -129,6 +132,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 0
       allowPropsInFront: 1
+      allowWallMounted: 1
       allowTorch: 1
       rockDepth: 0
       featureLabel: 
@@ -140,6 +144,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 0
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -151,6 +156,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 7
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -162,6 +168,7 @@ MonoBehaviour:
       top: 1
       maxPerRoom: 0
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -173,6 +180,7 @@ MonoBehaviour:
       top: 1
       maxPerRoom: 0
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -184,6 +192,7 @@ MonoBehaviour:
       top: 1
       maxPerRoom: 0
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -195,6 +204,7 @@ MonoBehaviour:
       top: 1
       maxPerRoom: 0
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -206,6 +216,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 2
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -219,6 +230,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 0
       allowPropsInFront: 1
+      allowWallMounted: 1
       allowTorch: 1
       rockDepth: 0
       featureLabel: 
@@ -230,6 +242,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 2
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -243,6 +256,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 0
       allowPropsInFront: 1
+      allowWallMounted: 1
       allowTorch: 1
       rockDepth: 0
       featureLabel: 
@@ -254,6 +268,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 6
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -265,6 +280,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 1
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -276,6 +292,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 1
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -287,6 +304,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 1
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -300,6 +318,7 @@ MonoBehaviour:
       top: 1
       maxPerRoom: 0
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -313,6 +332,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 0
       allowPropsInFront: 1
+      allowWallMounted: 1
       allowTorch: 1
       rockDepth: 0
       featureLabel: 
@@ -326,6 +346,7 @@ MonoBehaviour:
       top: 1
       maxPerRoom: 0
       allowPropsInFront: 1
+      allowWallMounted: 1
       allowTorch: 1
       rockDepth: 0
       featureLabel: 
@@ -337,6 +358,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 3
       allowPropsInFront: 0
+      allowWallMounted: 1
       allowTorch: 0
       rockDepth: 0
       featureLabel: 
@@ -350,6 +372,7 @@ MonoBehaviour:
       top: 0
       maxPerRoom: 0
       allowPropsInFront: 1
+      allowWallMounted: 1
       allowTorch: 1
       rockDepth: 0
       featureLabel: 
@@ -534,6 +557,7 @@ MonoBehaviour:
     top: 0
     maxPerRoom: 0
     allowPropsInFront: 1
+    allowWallMounted: 0
     allowTorch: 0
     rockDepth: 1.5
     featureLabel: 
@@ -545,6 +569,7 @@ MonoBehaviour:
     top: 0
     maxPerRoom: 0
     allowPropsInFront: 1
+    allowWallMounted: 0
     allowTorch: 0
     rockDepth: 0
     featureLabel: 
@@ -556,6 +581,7 @@ MonoBehaviour:
     top: 0
     maxPerRoom: 0
     allowPropsInFront: 1
+    allowWallMounted: 1
     allowTorch: 1
     rockDepth: 0
     featureLabel: 
@@ -596,6 +622,7 @@ MonoBehaviour:
     top: 0
     maxPerRoom: 1
     allowPropsInFront: 1
+    allowWallMounted: 0
     allowTorch: 0
     rockDepth: 0
     featureLabel: 
@@ -607,6 +634,7 @@ MonoBehaviour:
     top: 0
     maxPerRoom: 1
     allowPropsInFront: 1
+    allowWallMounted: 0
     allowTorch: 0
     rockDepth: 0
     featureLabel: 
@@ -618,6 +646,7 @@ MonoBehaviour:
     top: 0
     maxPerRoom: 1
     allowPropsInFront: 1
+    allowWallMounted: 0
     allowTorch: 0
     rockDepth: 0
     featureLabel: 
@@ -629,6 +658,7 @@ MonoBehaviour:
     top: 0
     maxPerRoom: 1
     allowPropsInFront: 0
+    allowWallMounted: 0
     allowTorch: 0
     rockDepth: 0
     featureLabel: 
@@ -640,6 +670,7 @@ MonoBehaviour:
     top: 0
     maxPerRoom: 0
     allowPropsInFront: 1
+    allowWallMounted: 1
     allowTorch: 1
     rockDepth: 0
     featureLabel: 
@@ -665,6 +696,7 @@ MonoBehaviour:
     top: 0
     maxPerRoom: 0
     allowPropsInFront: 0
+    allowWallMounted: 1
     allowTorch: 1
     rockDepth: 0
     featureLabel: 
@@ -676,6 +708,7 @@ MonoBehaviour:
     top: 1
     maxPerRoom: 0
     allowPropsInFront: 1
+    allowWallMounted: 1
     allowTorch: 1
     rockDepth: 0
     featureLabel: 
@@ -699,6 +732,7 @@ MonoBehaviour:
     top: 1
     maxPerRoom: 0
     allowPropsInFront: 0
+    allowWallMounted: 1
     allowTorch: 0
     rockDepth: 0
     featureLabel: 
