@@ -24,7 +24,8 @@ namespace DungeonGen
     /// </summary>
     public class WallFaceRegistry
     {
-        readonly HashSet<long> noProps = new HashSet<long>();
+        readonly HashSet<long> noProps = new HashSet<long>();     // no FLOOR prop in front
+        readonly HashSet<long> noWallProps = new HashSet<long>(); // nothing MOUNTED on the face
         readonly HashSet<long> noTorch = new HashSet<long>();
         readonly HashSet<long> claimed = new HashSet<long>();
         // Faces that got a LABELED feature wall asset (fireplace, altar wall) —
@@ -38,14 +39,30 @@ namespace DungeonGen
             return (long)cellIndex * 4 + di;
         }
 
-        public void Record(int cellIndex, Vector3Int dir, bool allowProps, bool allowTorch)
+        /// <summary>
+        /// Record what a face refuses.
+        ///
+        /// FLOOR-IN-FRONT AND WALL-MOUNTED ARE SEPARATE QUESTIONS, and they were one flag until
+        /// a real asset needed the distinction (§7 said to split it exactly then). A wall that is
+        /// not FLAT — a recessed window, a candle niche, barred relief — has nothing wrong with
+        /// the floor tile in front of it, so debris and crates there are fine; what it cannot
+        /// take is something MOUNTED on it, which ends up floating over a recess or buried in
+        /// relief. Collapsing the two meant clearing one forced you to clear the other.
+        /// </summary>
+        public void Record(int cellIndex, Vector3Int dir, bool allowProps, bool allowWallProps, bool allowTorch)
         {
             long key = Key(cellIndex, dir);
             if (!allowProps) noProps.Add(key);
+            if (!allowWallProps) noWallProps.Add(key);
             if (!allowTorch) noTorch.Add(key);
         }
 
+        /// <summary>May a FLOOR prop stand against this face (snapped scatter, NearWallAsset)?</summary>
         public bool PropsAllowed(int cellIndex, Vector3Int dir) => !noProps.Contains(Key(cellIndex, dir));
+
+        /// <summary>May something MOUNT on this face (banner, shield, lever, torch bracket)?</summary>
+        public bool WallPropsAllowed(int cellIndex, Vector3Int dir) => !noWallProps.Contains(Key(cellIndex, dir));
+
         public bool TorchAllowed(int cellIndex, Vector3Int dir) => !noTorch.Contains(Key(cellIndex, dir));
 
         /// <summary>Mark a face as occupied by a torch or wall-mounted prop.</summary>

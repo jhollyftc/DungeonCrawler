@@ -279,7 +279,7 @@ namespace DungeonGen
                         foreach (var d in HDirs)
                         {
                             if (Open(c + d)) continue;
-                            if (wallFaces != null && (!wallFaces.PropsAllowed(grid.Index(c), d) || wallFaces.IsClaimed(grid.Index(c), d))) continue;
+                            if (wallFaces != null && (!wallFaces.WallPropsAllowed(grid.Index(c), d) || wallFaces.IsClaimed(grid.Index(c), d))) continue;
                             faces.Add((c, d));
                         }
                     }

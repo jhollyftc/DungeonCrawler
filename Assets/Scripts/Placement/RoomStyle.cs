@@ -191,8 +191,10 @@ namespace DungeonGen
             public bool top = true;
             [Tooltip("Max placements of this asset per room. 0 = unlimited. A fireplace: 1. A banner wall: maybe 2.")]
             public int maxPerRoom = 0;
-            [Tooltip("Floor props (snapToWall scatter/features) may sit against this wall. Turn OFF for walls whose face must stay visible — recessed niches, murals, wall fountains.")]
+            [Tooltip("FLOOR props may sit against this wall — snapToWall scatter, NearWallAsset. Turn OFF for walls whose face must stay visible: a fountain snapped in front of a mural hides the mural.\n\nThis is about the FLOOR TILE in front. Whether something may MOUNT on the face is the separate flag below.")]
             public bool allowPropsInFront = true;
+            [Tooltip("Things may MOUNT on this face — banners, shields, levers, wall décor. Turn OFF for any wall that is not FLAT: a recessed window, a candle niche, barred or heavy relief. A mounted prop on one of those floats over the recess or buries itself in the relief.\n\nSEPARATE FROM 'Allow Props In Front' ON PURPOSE. They were one flag until a real asset needed the distinction: a recessed window has nothing wrong with the floor tile in front of it, so clearing the face should not also forbid rubble on the ground there.\n\nNB TORCHES have their own flag below — a sconce is authored separately because a niche often WANTS a candle in it while refusing a banner.")]
+            public bool allowWallMounted = true;
             [Tooltip("Torches may mount on this wall. Turn OFF for walls with their own light sources or busy relief where a sconce reads wrong.")]
             public bool allowTorch = true;
             [Tooltip("How far this asset protrudes BEHIND the wall plane, in metres — the depth of a recessed niche, a barred window's reveal, a shrine cut into the masonry. 0 = flat, which is every ordinary wall and the default.\n\nWHAT IT IS FOR: a wall's outward neighbour used to be solid rock WITHOUT EXCEPTION — that is what made it a wall — so a recess could cut as deep as it liked and nobody ever had to say so. A sewer bore is the first thing that ever occupies that cell, and a tube piece runs its arms all the way to the cell FACE so it can meet its neighbours, so a cross or a tee parked behind a recessed window pushes straight through it.\n\nAn asset deeper than the clearance behind a face is simply not offered there and the face takes a flat wall instead. Only ever consulted where something IS behind the wall; against ordinary rock every asset fits.")]
@@ -507,7 +509,7 @@ namespace DungeonGen
         /// WallAsset — i.e. per list — so they must be read back per list too.</summary>
         public enum WallContext { Room, Hallway, Prison, Pit, Chamber }
 
-        Dictionary<(GameObject prefab, int ctx), (bool props, bool torch)> wallFlagCache;
+        Dictionary<(GameObject prefab, int ctx), (bool props, bool wall, bool torch)> wallFlagCache;
 
         // Room contexts are offset past the non-room ones so a room type can never collide with
         // Hallway/Prison/Pit.
@@ -530,11 +532,11 @@ namespace DungeonGen
         /// context has one effective rule there, and the restrictive reading is the safe one.
         /// </summary>
         public void WallFlagsFor(GameObject prefab, WallContext ctx, RoomType roomType,
-                                 out bool allowProps, out bool allowTorch)
+                                 out bool allowProps, out bool allowWallProps, out bool allowTorch)
         {
             if (wallFlagCache == null)
             {
-                wallFlagCache = new Dictionary<(GameObject, int), (bool, bool)>();
+                wallFlagCache = new Dictionary<(GameObject, int), (bool props, bool wall, bool torch)>();
                 void Add(List<WallAsset> list, int key)
                 {
                     if (list == null) return;
@@ -543,9 +545,9 @@ namespace DungeonGen
                         if (w.prefab == null) continue;
                         var k = (w.prefab, key);
                         if (wallFlagCache.TryGetValue(k, out var f))
-                            wallFlagCache[k] = (f.props && w.allowPropsInFront, f.torch && w.allowTorch);
+                            wallFlagCache[k] = (f.props && w.allowPropsInFront, f.wall && w.allowWallMounted, f.torch && w.allowTorch);
                         else
-                            wallFlagCache[k] = (w.allowPropsInFront, w.allowTorch);
+                            wallFlagCache[k] = (w.allowPropsInFront, w.allowWallMounted, w.allowTorch);
                     }
                 }
                 foreach (var set in roomWalls) Add(set.walls, ContextKey(WallContext.Room, set.type));
@@ -560,11 +562,13 @@ namespace DungeonGen
             if (wallFlagCache.TryGetValue((prefab, ContextKey(ctx, roomType)), out var flags))
             {
                 allowProps = flags.props;
+                allowWallProps = flags.wall;
                 allowTorch = flags.torch;
             }
             else
             {
                 allowProps = true;
+                allowWallProps = true;
                 allowTorch = true;
             }
         }

@@ -692,7 +692,7 @@ namespace DungeonGen
                     {
                         if (wallFaces != null)
                         {
-                            wallFaces.Record(i, d, allowProps: false, allowTorch: false);
+                            wallFaces.Record(i, d, allowProps: false, allowWallProps: false, allowTorch: false);
                             wallFaces.Claim(i, d);
                         }
                         continue;
@@ -838,9 +838,9 @@ namespace DungeonGen
                         if (wallFaces != null && style != null && placedWall != null)
                         {
                             style.WallFlagsFor(placedWall, wallCtx, wallCtxType,
-                                               out bool allowProps, out bool allowTorch);
-                            if (!allowProps || !allowTorch)
-                                wallFaces.Record(i, d, allowProps, allowTorch);
+                                               out bool allowProps, out bool allowWallProps, out bool allowTorch);
+                            if (!allowProps || !allowWallProps || !allowTorch)
+                                wallFaces.Record(i, d, allowProps, allowWallProps, allowTorch);
                         }
                     }
 

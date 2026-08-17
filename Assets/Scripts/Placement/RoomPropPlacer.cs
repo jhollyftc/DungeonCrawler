@@ -604,7 +604,7 @@ namespace DungeonGen
                         {
                             if (Open(c + d)) continue; // need a solid wall
                             if (wallFaces != null &&
-                                (!wallFaces.PropsAllowed(grid.Index(c), d) || wallFaces.IsClaimed(grid.Index(c), d)))
+                                (!wallFaces.WallPropsAllowed(grid.Index(c), d) || wallFaces.IsClaimed(grid.Index(c), d)))
                                 continue;
                             list.Add((c, d));
                         }
