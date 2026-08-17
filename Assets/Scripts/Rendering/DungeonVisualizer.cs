@@ -48,6 +48,9 @@ namespace DungeonGen
         [Tooltip("Muffles and quietens sounds with geometry between them and the listener. Applied to the runtime AudioOcclusion manager at generation, so it is authorable HERE rather than on an object that only exists in play mode — the same reason FogSettings lives here and not on DungeonFogController.")]
         public OcclusionSettings occlusion = new OcclusionSettings();
 
+        [Tooltip("Cull radius and shadow-caster radius for the instanced geometry. Applied to the runtime DungeonInstanced renderer at generation, for the same reason as the occlusion settings above — that component is created with AddComponent every generate, so before this existed its dials were C# defaults that no inspector edit could survive.")]
+        public InstancedSettings instanced = new InstancedSettings();
+
         public enum GeometryMode { GeneratedMesh, PrefabKit, InstancedKit }
 
         [Header("═══ DEBUG VIEW (gizmos only) ═══")]
@@ -259,6 +262,57 @@ namespace DungeonGen
                 BuildMesh();
         }
 
+#if UNITY_EDITOR
+        /// <summary>
+        /// Push InstancedSettings to the live renderer whenever the inspector changes.
+        ///
+        /// WITHOUT THIS THE DIALS ONLY LAND AT GENERATION, which is fine for `renderDistance`
+        /// and actively bad for a diagnostic: measuring one Mesh LOD level against another meant
+        /// regenerating between readings, and a value typed but not regenerated reads as "the
+        /// setting does nothing" — the exact failure mode this whole investigation kept hitting.
+        /// Editor-only; at runtime generation is still the one place settings are applied.
+        /// </summary>
+        void OnValidate()
+        {
+            foreach (var ir in GetComponentsInChildren<InstancedDungeonRenderer>(true))
+                instanced.ApplyTo(ir);
+        }
+#endif
+
+        /// Forwarded from the runtime renderer, which is created by BuildMesh and so cannot be
+        /// found in the scene until a dungeon exists — the reason the report looked like it was
+        /// logging nowhere.
+        [ContextMenu("Log Geometry Cost Report")]
+        public void LogGeometryCostReport()
+        {
+            // ALL of them, not the first. ClearGenerated uses deferred Destroy in play mode, so
+            // during a regenerate the previous generation's renderer is still alive — and
+            // GetComponentInChildren would hand back whichever sits first in hierarchy order,
+            // which is not reliably the live one. Reporting every candidate with its batch count
+            // makes "found nothing" and "found the wrong one" distinguishable instead of both
+            // arriving as an empty report.
+            var found = GetComponentsInChildren<InstancedDungeonRenderer>(true);
+            if (found.Length == 0)
+            {
+                Debug.LogWarning($"[Instanced] No DungeonInstanced renderer under this visualizer. " +
+                                 $"geometryMode is {geometryMode} (the renderer only exists in " +
+                                 $"InstancedKit), isPlaying={Application.isPlaying}.", this);
+                return;
+            }
+
+            InstancedDungeonRenderer live = found[0];
+            var sb = new System.Text.StringBuilder();
+            foreach (var c in found)
+            {
+                sb.Append($"\n  {c.gameObject.name}: {c.BatchCount} batches, {c.InstanceCount} instances");
+                if (c.BatchCount > live.BatchCount) live = c;
+            }
+            Debug.LogWarning($"[Instanced] {found.Length} renderer(s), geometryMode={geometryMode}, " +
+                             $"isPlaying={Application.isPlaying}:{sb}", this);
+
+            live.LogGeometryCostReport();
+        }
+
         [ContextMenu("Build Mesh")]
         public void BuildMesh()
         {
@@ -326,6 +380,11 @@ namespace DungeonGen
                 var irGo = new GameObject("DungeonInstanced");
                 irGo.transform.SetParent(transform, false);
                 var ir = irGo.AddComponent<InstancedDungeonRenderer>();
+                // BEFORE anything else touches it. AddComponent runs Awake synchronously, and
+                // more to the point this component is rebuilt on every generate — so without
+                // this push its dials are C# defaults and an inspector edit lasts until the
+                // next F1. Same shape as the occlusion and fog settings above.
+                instanced.ApplyTo(ir);
                 sharedInstancer = ir;
 
                 // Holds the collider GameObjects for mesh-instanced pieces that

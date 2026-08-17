@@ -303,10 +303,92 @@ namespace DungeonGen
                         worldBounds = tight,
                         shadowCastingMode = ShadowCastingMode.ShadowsOnly,
                         receiveShadows = false,
+                        // NO `forceMeshLod` HERE, AND IT IS NOT AN OVERSIGHT — MESH LOD DOES NOT
+                        // WORK ON THIS PATH. A shadow caster would be the ideal place to spend
+                        // coarse geometry, and Unity's docs list RenderMeshInstanced as taking
+                        // `forceMeshLod` since it gets no automatic screen-size selection. It is
+                        // range-checked and then ignored: a mesh whose LOD 7 is visibly decimated
+                        // in the Inspector renders identically at forceMeshLod 7, with no GPU
+                        // time change across half the dungeon's geometry — while an out-of-range
+                        // value makes geometry vanish, which is what proves the field is READ.
+                        // The docs' other line, that "GPU instancing" always uses LOD0, is the
+                        // one that governs. See §5 before trying this again.
                     };
                     DrawChunked(rp, b, b.ShadowScratch, casting);
                 }
             }
+        }
+
+        /// <summary>
+        /// Rank the meshes THIS RENDERER ACTUALLY DRAWS by their total geometry cost
+        /// (vertices x instances) — the targeting tool for roadmap 28b.
+        ///
+        /// IT MEASURES WHAT IS DRAWN, NOT WHAT IS IN THE PROJECT, and that is the point:
+        /// `BuildProto` harvests `MeshFilter.sharedMesh` off the kit prefabs, and cost is
+        /// per-instance detail MULTIPLIED BY how often the generator places it — which no
+        /// inspection of the Project window can tell you. The first run found a ceiling tile at
+        /// 24,749 verts x 1006 instances, i.e. 38% of the dungeon's geometry on the surface
+        /// players look at least, which nobody had suspected.
+        ///
+        /// IT ALSO SURFACES DUPLICATE MESHES. Two entries with an identical vertex count and a
+        /// Blender `.001` suffix are one mesh imported twice — and since `BatchKey` includes the
+        /// mesh, duplicates can NEVER merge, so that is two batches drawing the same thing.
+        ///
+        /// `lodCount` is reported for information only. Mesh LOD does not work on this path
+        /// (see the shadow submission above), so a mesh carrying LODs gains nothing here today.
+        /// </summary>
+        [ContextMenu("Log Geometry Cost Report")]
+        public void LogGeometryCostReport()
+        {
+            if (batches.Count == 0)
+            {
+                // NOT NECESSARILY "you forgot to generate". `batches` is a plain field and is
+                // NOT serialized, so a script recompile's domain reload empties it while the
+                // GameObject survives — the component is found, holds nothing, and the instanced
+                // geometry stops drawing. That is this class's standing "regenerate after a
+                // recompile" note arriving as a diagnostic, and it is the common case while
+                // iterating on the renderer itself.
+                Debug.LogWarning("[Instanced] This renderer holds no batches. If the dungeon LOOKS " +
+                                 "generated, a script recompile has since wiped them (batches are not " +
+                                 "serialized) — regenerate and run this again. Otherwise generate " +
+                                 "first, and check geometryMode is InstancedKit.", this);
+                return;
+            }
+
+            // Instances are summed PER MESH, not per batch: one mesh split across several
+            // materials or submeshes is several batches, and a per-batch listing would divide its
+            // true cost between rows and hide the worst offender.
+            var instancesOf = new Dictionary<Mesh, int>();
+            foreach (var b in batches)
+            {
+                if (b.Mesh == null) continue;
+                instancesOf.TryGetValue(b.Mesh, out int n);
+                instancesOf[b.Mesh] = n + b.All.Count;
+            }
+
+            // vertexCount rather than triangles.Length: `triangles` needs the mesh to be
+            // Read/Write Enabled, which most kit pieces are not (§10's build-only navmesh trap is
+            // the same import flag), and a diagnostic that throws on the assets it was written to
+            // inspect is worse than one reporting a proxy.
+            var rows = new List<(Mesh mesh, int instances, long cost)>();
+            long total = 0;
+            foreach (var kv in instancesOf)
+            {
+                long cost = (long)kv.Key.vertexCount * kv.Value;
+                total += cost;
+                rows.Add((kv.Key, kv.Value, cost));
+            }
+            rows.Sort((a, z) => z.cost.CompareTo(a.cost));
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"[Instanced] Geometry cost, worst first — {rows.Count} distinct mesh(es), " +
+                      $"{total / 1000000f:0.0}M verts across the dungeon:");
+            foreach (var r in rows)
+                sb.Append($"\n  {r.cost / 1000000f,6:0.00}M  {100f * r.cost / Mathf.Max(1, total),5:0.0}%  " +
+                          $"{r.mesh.name}  ({r.mesh.vertexCount} verts x {r.instances}" +
+                          $"{(r.mesh.lodCount > 1 ? $", lodCount {r.mesh.lodCount}" : "")})");
+
+            Debug.LogWarning(sb.ToString(), this);
         }
 
         static void DrawChunked(in RenderParams rp, Batch b, Matrix4x4[] buffer, int count)
@@ -322,6 +404,39 @@ namespace DungeonGen
             float sy = ((Vector3)m.GetColumn(1)).magnitude;
             float sz = ((Vector3)m.GetColumn(2)).magnitude;
             return Mathf.Max(sx, Mathf.Max(sy, sz));
+        }
+    }
+
+    /// <summary>
+    /// Authoring for <see cref="InstancedDungeonRenderer"/>, held on `DungeonVisualizer`.
+    ///
+    /// IT LIVES THERE BECAUSE THE RENDERER ONLY EXISTS IN PLAY MODE. `DungeonVisualizer` builds
+    /// `DungeonInstanced` with `AddComponent` during generation, so the component takes its C#
+    /// defaults on EVERY generate and there is no serialized row anywhere to author. Anything
+    /// typed into that inspector is lost on the next F1 — which made every dial here effectively
+    /// a compile-time constant, and made an inspector-driven experiment silently test nothing.
+    /// Same reason `FogSettings` and `OcclusionSettings` sit on the visualizer rather than on the
+    /// runtime component they configure; `TorchSettings` → `TorchCullingManager` is the pattern
+    /// this copies.
+    /// </summary>
+    [System.Serializable]
+    public class InstancedSettings
+    {
+        [Tooltip("True cull radius in metres for instanced geometry. Pair with fog fading to dark before this distance. 0 = draw everything.")]
+        public float renderDistance = 45f;
+
+        [Tooltip("Spatial grid cell for culling queries, metres. Only affects cull cost, not batching.")]
+        public float cullCellSize = 16f;
+
+        [Tooltip("Radius within which instanced geometry may CAST shadows. Much shorter than renderDistance: a point light's shadows are a 6-face cubemap, so a caster in range of N shadow-casting torches is rasterized 6N times. Size it to the URP asset's Shadow Distance plus a margin. 0 = casters are not distance-limited.")]
+        public float shadowDistance = 18f;
+
+        public void ApplyTo(InstancedDungeonRenderer ir)
+        {
+            if (ir == null) return;
+            ir.renderDistance = renderDistance;
+            ir.cullCellSize = cullCellSize;
+            ir.shadowDistance = shadowDistance;
         }
     }
 }
