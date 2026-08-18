@@ -817,10 +817,28 @@ on the render thread) that **did not reproduce in a build at all**. `EditorLoop`
 were scoped against those spikes — caster-selection hysteresis and a culling-slice change —
 before the build test showed there was nothing to fix; §12's discriminating-test rule, and the
 discriminator here was simply "does it happen in a build".
-**NB the live PIPELINE asset is `Assets/SourceFiles/Settings/PC_RPAsset.asset`** — GraphicsSettings
-points at its GUID — even though the note below about `SourceFiles/` being the dead Unity sample
-is true of the RENDERER. One folder, one live file and one dead one; check the GUID before
-editing either.
+**`SourceFiles/Settings/` IS NOT ALL DEAD SAMPLE — THREE LIVE FILES HIDE IN IT.** §1 says
+`SourceFiles/` is the Unity Starter Assets sample and not ours, which is true of most of it and
+false in the place it costs most:
+- **`PC_RPAsset.asset` is the LIVE pipeline asset** (GraphicsSettings points at its GUID). Shadow
+  quality, atlas size and shadow distance are all edited HERE.
+- **`UniversalRenderPipelineGlobalSettings.asset` is live**, and names the default volume profile.
+- **`DefaultVolumeProfile.asset` is live** — the global post-processing baseline, so Bloom and
+  Tonemapping (which §6's emissives depend on) come from a file in the "don't touch" folder.
+`Mobile_RPAsset` / `Mobile_Renderer` in the same folder really are dead — nothing references
+them. **Check the GUID against GraphicsSettings before assuming any file there is inert**, in
+either direction. The live RENDERER is `Assets/PC_Renderer.asset` at the root, which is what the
+original version of this note was about.
+**`DefaultVolumeProfile.asset` shipped with NINE ORPHANED TEST COMPONENTS** — `CopyPasteTestComponent1/2/3`,
+`VolumeComponentSupportedEverywhere`, `VolumeComponentSupportedOnAnySRP`, `TestVolume`,
+`TestAnimationCurveVolumeComponent`, `OutlineVolumeComponent`, `OasisFogVolumeComponent` — copied
+out of a Unity test project. They produced "The referenced script (Unknown) on this Behaviour is
+missing!" on every load and were **unfindable by selecting anything**, because a VolumeProfile's
+overrides are sub-assets of a ScriptableObject rather than components on a GameObject. Removed by
+editing the YAML with Unity CLOSED (§12's asset rule). They were not even in the profile's
+`components:` list, so the fix touched no real override. **If that warning returns, it is a
+sub-asset somewhere and the way to find it is to scan every `m_Script` GUID in the project
+against every `.meta` GUID — nothing in the editor UI will show you.**
 
 **PropInstancer** — the general "how anything gets placed" system. Splits a
 prefab into MESH (→ instancer, batched) and FUNCTION (→ a GameObject with
