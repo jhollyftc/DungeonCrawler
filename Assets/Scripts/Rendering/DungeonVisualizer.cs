@@ -313,6 +313,50 @@ namespace DungeonGen
             live.LogGeometryCostReport();
         }
 
+        /// <summary>
+        /// Names of content passes that threw during the last BuildMesh. Empty is the normal case.
+        /// Read by the dev overlay, because an error in the Console is one you meet again in six
+        /// months on a different seed.
+        /// </summary>
+        public readonly List<string> FailedPasses = new List<string>();
+
+        /// <summary>
+        /// Run one content pass so that a throw inside it cannot delete every pass after it.
+        ///
+        /// WHY THIS EXISTS: `GatePlacer` NullReferenced on a seed where two gates resolved to one
+        /// door, which aborted BuildMesh partway — so torches and all three prop passes silently
+        /// never ran. The visible symptom was "props stopped generating", which is about as far
+        /// from the cause as a symptom gets, and it cost hours. In a BUILD the same throw is a
+        /// silent content failure with no Console to read.
+        ///
+        /// PLACERS ONLY, NEVER `DungeonGenerator.Generate()`. The generator decides rooms,
+        /// corridors, doors and connectivity, and a half-built grid is genuinely corrupt — an
+        /// unreachable Exit, or gates whose reachability invariant (§4) was computed against half
+        /// a dungeon. Continuing there would produce a dungeon that is subtly wrong instead of
+        /// obviously broken, which is worse. Placers are additive, own their own roots, and
+        /// already follow a degrade-gracefully philosophy everywhere else (§7).
+        ///
+        /// PER PASS, NOT ONE BLOCK AROUND ALL OF THEM — one try/catch would just move the
+        /// boundary, and a gate throw would still take out the prop passes behind it.
+        ///
+        /// Known and accepted: a pass that throws midway may leave shared state part-written (a
+        /// half-claimed WallFaceRegistry, partial occupancy). That is §12's decide-before-mutating
+        /// shape, but those are cosmetic inconsistencies — connectivity lives in the generator,
+        /// which this never wraps.
+        /// </summary>
+        void RunPass(string passName, System.Action pass)
+        {
+            try { pass(); }
+            catch (System.Exception e)
+            {
+                FailedPasses.Add(passName);
+                Debug.LogError(
+                    $"[Dungeon] PASS FAILED: {passName} — seed {seed}, depth {config.depth}.\n" +
+                    $"Later passes STILL RAN, so this dungeon is missing only what {passName} " +
+                    $"places. Set that seed and depth to reproduce it exactly.\n{e}", this);
+            }
+        }
+
         [ContextMenu("Build Mesh")]
         public void BuildMesh()
         {
@@ -324,6 +368,7 @@ namespace DungeonGen
 
             // Replace any previous geometry (any mode), torches, props, fog.
             ClearGenerated();
+            FailedPasses.Clear();
 
             // MAY A CRAWLWAY MOUTH SUPPRESS ITS WALL? Only if something will replace it.
             // Opening a mouth removes the greybox's whole 3m face (a quad is all-or-nothing),
@@ -437,14 +482,14 @@ namespace DungeonGen
 
                 // Doors stay full GameObjects (they move). Archways split:
                 // mesh -> instancer, collider -> GameObject.
-                DungeonKitPlacer.BuildDoors(gen, kit, cellSize, transform, roomStyle);
-                DungeonKitPlacer.BuildArchways(gen, kit, cellSize, transform, ir, roomStyle);
-                DungeonKitPlacer.BuildInteriorColumns(gen, kit, cellSize, transform, ir);
-                DungeonKitPlacer.BuildLadders(gen, kit, cellSize, transform, ir);
-                DungeonKitPlacer.BuildBridges(gen, kit, cellSize, transform, ir);
-                DungeonKitPlacer.BuildPitRims(gen, kit, cellSize, transform, ir);
-                DungeonKitPlacer.BuildLintels(gen, kit, cellSize, transform, roomStyle, ir);
-                DungeonKitPlacer.BuildCrawlways(gen, kit, cellSize, transform, ir);
+                RunPass("Doors", () => DungeonKitPlacer.BuildDoors(gen, kit, cellSize, transform, roomStyle));
+                RunPass("Archways", () => DungeonKitPlacer.BuildArchways(gen, kit, cellSize, transform, ir, roomStyle));
+                RunPass("InteriorColumns", () => DungeonKitPlacer.BuildInteriorColumns(gen, kit, cellSize, transform, ir));
+                RunPass("Ladders", () => DungeonKitPlacer.BuildLadders(gen, kit, cellSize, transform, ir));
+                RunPass("Bridges", () => DungeonKitPlacer.BuildBridges(gen, kit, cellSize, transform, ir));
+                RunPass("PitRims", () => DungeonKitPlacer.BuildPitRims(gen, kit, cellSize, transform, ir));
+                RunPass("Lintels", () => DungeonKitPlacer.BuildLintels(gen, kit, cellSize, transform, roomStyle, ir));
+                RunPass("Crawlways", () => DungeonKitPlacer.BuildCrawlways(gen, kit, cellSize, transform, ir));
 
                 ir.Commit(); // idempotent — bakes kit + archway instances together
 
@@ -461,7 +506,7 @@ namespace DungeonGen
             // AND enter TorchPlacer's spacing buckets before any computed torch is chosen, or a
             // deliberately-placed sconce gets a computed twin a metre away.
             if (roomStyle != null)
-                KitSocketPlacer.Build(gen, kit, socketSites, cellSize, transform, sharedInstancer, roomStyle, wallFaces, torches);
+                RunPass("KitSockets", () => KitSocketPlacer.Build(gen, kit, socketSites, cellSize, transform, sharedInstancer, roomStyle, wallFaces, torches));
 
             // RECESSES next, before torches. §8's most-constrained-first rule taken to its
             // conclusion: an alcove or prison cell has about three wall faces and one authored
@@ -470,23 +515,23 @@ namespace DungeonGen
             // TorchSettings.torchesInPrisons is on). Everything after this honours those claims.
             if (roomStyle != null)
             {
-                RecessPropPlacer.BuildAlcoves(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
-                RecessPropPlacer.BuildPrisons(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
-                RecessPropPlacer.BuildChambers(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
+                RunPass("AlcoveProps", () => RecessPropPlacer.BuildAlcoves(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces));
+                RunPass("PrisonProps", () => RecessPropPlacer.BuildPrisons(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces));
+                RunPass("ChamberProps", () => RecessPropPlacer.BuildChambers(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces));
             }
 
             // GATES BEFORE TORCHES, for the same reason recesses are: a lever occupies a wall
             // face and must CLAIM it, or a sconce mounts over the one thing the player is meant
             // to hunt for. It also needs the doors to exist, which BuildDoors has already done.
-            GatePlacer.Build(gen, kit, cellSize, transform, wallFaces);
+            RunPass("Gates", () => GatePlacer.Build(gen, kit, cellSize, transform, wallFaces));
 
             if (torches != null && torches.placeTorches)
-                TorchPlacer.Build(gen, torches, cellSize, transform, sharedInstancer, roomStyle, wallFaces);
+                RunPass("Torches", () => TorchPlacer.Build(gen, torches, cellSize, transform, sharedInstancer, roomStyle, wallFaces));
 
             if (roomStyle != null)
             {
-                RoomPropPlacer.Build(gen, kit, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
-                HallwayPropPlacer.Build(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces);
+                RunPass("RoomProps", () => RoomPropPlacer.Build(gen, kit, roomStyle, cellSize, transform, sharedInstancer, wallFaces));
+                RunPass("HallwayProps", () => HallwayPropPlacer.Build(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces));
             }
 
             // Push the authored occlusion settings into the runtime manager. Done at
@@ -519,6 +564,15 @@ namespace DungeonGen
 
             // Keep the edit-mode preview out of the saved scene.
             MarkNotPersisted();
+
+            // ONE SUMMARY LINE AT THE END, on top of each pass's own error. A throw scrolls out
+            // of the Console behind everything the later passes log, and this dungeon is now
+            // MISSING CONTENT while looking broadly fine — the state that has to be impossible
+            // to walk past. The overlay carries it too, for the same reason.
+            if (FailedPasses.Count > 0)
+                Debug.LogError($"[Dungeon] {FailedPasses.Count} pass(es) FAILED on seed {seed} " +
+                               $"depth {config.depth}: {string.Join(", ", FailedPasses)}. This " +
+                               "dungeon is missing their content — scroll up for the stack traces.", this);
         }
 
         void OnDrawGizmos()

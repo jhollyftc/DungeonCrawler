@@ -4173,6 +4173,28 @@ Cosmetic-first; combat is far off ("get the world together first").
   the alcove tally and the crowd-jitter hunt already recorded, with a sharper edge: **render what
   the code BELIEVES, not what it produced.** Counts and labels stay self-consistent while being
   wrong; a region drawn in the world cannot.
+- **A PLACER THAT THROWS MUST NOT DELETE EVERY PASS AFTER IT (`DungeonVisualizer.RunPass`).**
+  One NullReference in `GatePlacer` aborted `BuildMesh`, so torches and all three prop passes
+  silently never ran — the symptom was "props stopped generating", hours away from the cause. In
+  a BUILD the same throw is a silent content failure with no Console to read. Every content pass
+  now runs inside `RunPass`, which logs the pass name **with seed and depth** so the failure is
+  reproducible rather than anecdotal.
+  **PLACERS ONLY, NEVER THE GENERATOR — that boundary is the whole design.** `Generate()` decides
+  rooms, corridors, doors and connectivity, so a half-built grid is genuinely corrupt (an
+  unreachable Exit, or gates whose reachability invariant was computed against half a dungeon).
+  Continuing there yields a dungeon that is SUBTLY wrong instead of obviously broken, which is
+  worse than failing hard. Placers are additive, own their own roots, and already degrade
+  gracefully everywhere else (§7). The main kit shell build is on the generator's side of the
+  line for the same reason: a dungeon with no walls is not worth proceeding from.
+  **PER PASS, NOT ONE BLOCK** — a single try/catch around all of them just moves the boundary, and
+  a gate throw would still take out the prop passes behind it.
+  **AND THE FAILURE IS SHOWN ON SCREEN** (`FailedPasses` → the dev overlay, beside the seed), not
+  only logged: a Console error scrolls away behind everything the later passes print, and this
+  project has now lost several rounds to output the Console silently hid. §12's own rule — the fix
+  is never better documentation, it is removing the manual step or making the failure announce
+  itself. Accepted residual risk: a pass throwing midway can leave shared state part-written (a
+  half-claimed `WallFaceRegistry`, partial occupancy), which is the decide-before-mutating shape
+  below — but those are cosmetic, and connectivity lives in the generator, which this never wraps.
 - **Two unrelated fixes in one file still get two commits.** Stage one, commit,
   restore the other, commit again — the history is what makes a field lesson findable
   later, and a combined commit buries one of them.

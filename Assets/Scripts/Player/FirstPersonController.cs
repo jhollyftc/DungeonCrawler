@@ -600,6 +600,14 @@ namespace DungeonGen
                 : "";
             if (health != null)
                 header += $"HP: {health.Current:0}/{health.max:0}\n";
+            // A FAILED PASS IS SHOWN HERE, NOT LEFT TO THE CONSOLE. A generation error scrolls
+            // away behind whatever the later passes log, and the dungeon it produced looks
+            // broadly fine while silently missing all of one pass's content — which is exactly
+            // how a GatePlacer NullReference read as "props stopped generating" for hours. On
+            // screen beside the seed, it cannot be walked past, and the seed and depth needed to
+            // reproduce it are already right there.
+            if (dungeon != null && dungeon.FailedPasses.Count > 0)
+                header += $"!! GENERATION FAILED: {string.Join(", ", dungeon.FailedPasses)}\n";
             if (header.Length > 0) header += "\n";
 
             string text = header +
