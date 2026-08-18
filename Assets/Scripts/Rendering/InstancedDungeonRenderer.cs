@@ -388,7 +388,20 @@ namespace DungeonGen
                           $"{r.mesh.name}  ({r.mesh.vertexCount} verts x {r.instances}" +
                           $"{(r.mesh.lodCount > 1 ? $", lodCount {r.mesh.lodCount}" : "")})");
 
+            // FILE AS WELL AS CONSOLE. The Console's log-level toggles and search filter both
+            // hide output silently, and a report that never appears is indistinguishable from a
+            // method that never ran — which has cost this project several rounds. A file cannot
+            // be filtered.
             Debug.LogWarning(sb.ToString(), this);
+            try
+            {
+                string path = System.IO.Path.Combine(Application.dataPath, "..", "GeometryCostReport.txt");
+                System.IO.File.WriteAllText(path, sb.ToString());
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[Instanced] Could not write report file: {e.Message}", this);
+            }
         }
 
         static void DrawChunked(in RenderParams rp, Batch b, Matrix4x4[] buffer, int count)
