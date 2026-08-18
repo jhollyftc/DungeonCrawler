@@ -1192,6 +1192,29 @@ textures too; we only want to band the *lighting*). Passes: ForwardLit, Outline
   So the 0.015 default is a 1.5cm shell, which is proportionate on a wall and completely
   swallows a 2cm-thick chain link. On small or thin props the outline usually wants turning
   off rather than turning down.
+- **`_ShadowSoftness` — THE SHADER DECIDES HOW SOFT A CAST SHADOW LOOKS, NOT THE URP SETTING,
+  and for a long time it silently threw the URP setting away.** `ShadeLight` remapped
+  `light.shadowAttenuation` through a hardcoded `smoothstep(0.25, 0.45)`, i.e. a 0.2-wide window
+  — so however wide a penumbra URP's PCF filter produced, nearly all of it was crushed back to a
+  hard edge. **The tell was measuring Soft Shadow Quality High vs Low at a 3% frametime
+  difference with NO visible change**: paying for filter taps the shader discards. Now a
+  0..1 property (half-width around a midpoint of 0.35), where **0.2 reproduces the old behaviour
+  exactly** and 0.7 is the authored look.
+  **IT IS A SHADER DEFAULT, NOT A PER-MATERIAL VALUE** — 132 materials use ToonLit and none
+  serialize it, so the default governs all of them. Note the standard Unity drift: once a
+  material is re-serialized it BAKES the current default, so materials touched after a default
+  change keep the old number. Check `grep -rl _ShadowSoftness Assets --include=*.mat` before
+  assuming a later change reached everything.
+  **DISTINCT FROM `_BandSoftness`**, which softens the DIFFUSE terminator on a lit surface. Both
+  contribute to "harsh" and they are independent; a shadow edge problem is this one.
+  **URP HAS NO SOURCE RADIUS AND NO CONTACT HARDENING — the Unreal mental model does not port.**
+  Soft Shadows here is a fixed-width PCF blur in shadowmap TEXEL space, so the penumbra widens
+  with LOWER shadowmap resolution rather than with distance from the caster. Consequently a
+  softer look and a cleaner look pull in opposite directions: the additional-light atlas is 2048
+  split across 6 casters (~341px per cube face), so pushing softness further eventually reads as
+  mushy, and the fix there is a 4096 atlas, not more slider.
+  No new keywords, so the variant count is unmoved and the preloaded collections need no
+  recapture — the same constraint the emission feature was built under.
 - **Banded specular glint** — toon highlight, gated by the light's banded
   diffuse.
 - **Packed PBR mask** (`_MaskMap`: G=roughness, B=metallic) modulates the glint
