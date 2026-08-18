@@ -636,6 +636,7 @@ namespace DungeonGen
                 "P - Path to Exit\n" +
                 "F3 - NPC Awareness  F4/F5 - Sight/Hearing off\n" +
                 "F6 - Melee Reticle  F7 - Audio Voices\n" +
+                "F8 - Torch Shadows on/off\n" +
                 "K / L - Damage Nearest NPC / Self\n" +
                 "Esc - Quit";
 

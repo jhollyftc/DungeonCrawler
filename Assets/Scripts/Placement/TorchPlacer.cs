@@ -50,6 +50,8 @@ namespace DungeonGen
         public bool disciplinedShadows = true;
         [Tooltip("Max torches casting shadows at once. 2-4 looks dramatic and stays cheap.")]
         public int maxShadowCasters = 3;
+        [Tooltip("Runtime toggle for ALL torch shadows, for A/B-ing the look against the cost without regenerating. None disables the key.\n\nThe state is STATIC and survives a regenerate — the same choice NpcPerceptionDebug's F4/F5 make, and for the same reason: a debug switch you have to re-press after every F1 gets used once and then abandoned.")]
+        public KeyCode shadowToggleKey = KeyCode.F8;
 
         [Header("Visual (optional)")]
         [Tooltip("Sconce/torch model, forward axis pointing away from the wall. If the prefab contains its own Light, no extra light is added.")]
@@ -102,6 +104,7 @@ namespace DungeonGen
                 culler.disciplinedShadows = s.disciplinedShadows && s.shadows != LightShadows.None;
                 culler.maxShadowCasters = s.maxShadowCasters;
                 culler.shadowMode = s.shadows;
+                culler.shadowToggleKey = s.shadowToggleKey;
             }
 
             // The crackle pool. Independent of the culler on purpose: torch AUDIO should work
@@ -529,6 +532,23 @@ namespace DungeonGen
         public LightShadows shadowMode = LightShadows.Soft;
         [Tooltip("How often (seconds) to recompute which torches cast shadows.")]
         public float shadowUpdateInterval = 0.2f;
+        [Tooltip("Set by TorchPlacer. None disables the runtime toggle.")]
+        public KeyCode shadowToggleKey = KeyCode.F8;
+
+        /// <summary>
+        /// Runtime master switch for every torch shadow in the dungeon.
+        ///
+        /// STATIC, so it survives a regenerate — the manager is rebuilt with the dungeon on every
+        /// F1, and a per-instance flag would silently revert the moment you made a new one, which
+        /// is exactly how a debug switch stops being used. `NpcPerceptionDebug`'s sight/hearing
+        /// switches are static for the same reason, and carry the same play-mode reset: a static
+        /// keeps its value across fast-enter-playmode, so without one the editor would come up
+        /// with shadows still off from the last session and nothing on screen saying why.
+        /// </summary>
+        public static bool ShadowsEnabled = true;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() => ShadowsEnabled = true;
 
         struct Entry
         {
@@ -556,9 +576,22 @@ namespace DungeonGen
             entries.Add(new Entry { Light = light, Flicker = flicker, Pos = light.transform.position });
         }
 
+        // Sentinel rather than a bool: the FIRST Update must always apply, because TorchPlacer
+        // assigns each light's shadow mode as it spawns it. Regenerating with the toggle off
+        // would otherwise bring a fresh dungeon back with shadows on and the switch still
+        // reading "off".
+        int appliedShadowState = -1;
+
         void Update()
         {
             if (entries.Count == 0) return;
+
+            if (Application.isPlaying && shadowToggleKey != KeyCode.None
+                && Input.GetKeyDown(shadowToggleKey))
+            {
+                ShadowsEnabled = !ShadowsEnabled;
+                PlayerMessage.Show(ShadowsEnabled ? "Torch shadows ON" : "Torch shadows OFF");
+            }
 
             Vector3 camPos;
             bool haveCam = false;
@@ -589,9 +622,18 @@ namespace DungeonGen
 #endif
             }
 
+            // The master switch is applied on CHANGE only, so the ordinary path costs one int
+            // compare per frame and nothing is written to a Light that is already correct.
+            int want = ShadowsEnabled ? 1 : 0;
+            if (appliedShadowState != want)
+            {
+                appliedShadowState = want;
+                ApplyShadowMaster(camPos, haveCam);
+            }
+
             // Disciplined shadows: throttled, picks the nearest N enabled
             // torches to cast; all others stay shadowless.
-            if (haveCam && disciplinedShadows)
+            if (haveCam && ShadowsEnabled && disciplinedShadows)
             {
                 shadowTimer -= Time.deltaTime;
                 if (shadowTimer <= 0f)
@@ -600,6 +642,39 @@ namespace DungeonGen
                     UpdateShadowCasters(camPos);
                 }
             }
+        }
+
+        /// <summary>
+        /// Push the master switch onto every torch.
+        ///
+        /// Turning shadows back ON has to route through whichever selection is in force, not
+        /// simply restore `shadowMode` everywhere: under disciplined shadows only the nearest N
+        /// may cast, and blanket-restoring would put every torch in the dungeon into the shadow
+        /// atlas at once — the exact cost the discipline exists to prevent, arriving as "the
+        /// toggle tanked my framerate" rather than as an obvious mistake.
+        /// </summary>
+        void ApplyShadowMaster(Vector3 camPos, bool haveCam)
+        {
+            if (!ShadowsEnabled)
+            {
+                for (int i = 0; i < entries.Count; i++)
+                    if (entries[i].Light != null) entries[i].Light.shadows = LightShadows.None;
+                currentCasters.Clear();
+                return;
+            }
+
+            if (disciplinedShadows)
+            {
+                // Immediately, not on the next tick — a toggle that takes up to
+                // shadowUpdateInterval to show reads as not having worked.
+                shadowTimer = shadowUpdateInterval;
+                if (haveCam) UpdateShadowCasters(camPos);
+                return;
+            }
+
+            for (int i = 0; i < entries.Count; i++)
+                if (entries[i].Light != null && entries[i].Light.enabled)
+                    entries[i].Light.shadows = shadowMode;
         }
 
         void UpdateShadowCasters(Vector3 camPos)
@@ -686,6 +761,15 @@ namespace DungeonGen
                 {
                     e.Light.shadows = LightShadows.None;
                     currentCasters.Remove(e.Light);
+                }
+                // UNDISCIPLINED lights are set once at spawn and never revisited, so a torch
+                // that was out of range when the master switch flipped would keep whatever it
+                // had — coming back shadowless after a toggle ON, or casting after a toggle OFF.
+                // The switch has to be re-applied wherever a light re-enters range.
+                else if (on && !disciplinedShadows)
+                {
+                    LightShadows want = ShadowsEnabled ? shadowMode : LightShadows.None;
+                    if (e.Light.shadows != want) e.Light.shadows = want;
                 }
             }
         }
