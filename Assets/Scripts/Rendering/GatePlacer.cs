@@ -130,9 +130,40 @@ namespace DungeonGen
                                          "rigidbody state; a scripted HingedDoor would need its own adapter.");
                         continue;
                     }
-                    // On the SAME object as the PhysicsDoor, not the marker's root: DoorLock
-                    // requires it, and it subscribes to that door's rattle event.
-                    var doorLock = pd.gameObject.AddComponent<DoorLock>();
+                    // TWO GATES CAN RESOLVE TO ONE DOOR, and the failure was silent and fatal.
+                    // `DoorLock` is [DisallowMultipleComponent], and AddComponent RETURNS NULL
+                    // rather than throwing when the component is already there — so the second
+                    // gate NullReferenced on the very next line, aborting BuildMesh partway.
+                    // Everything placed before gates survived and everything after (torches, ALL
+                    // the prop passes) silently did not, which reads as "props stopped
+                    // generating" rather than as a gate bug. Seed-specific, because it needs two
+                    // gates to land on one door — so it survives restarts and vanishes the moment
+                    // you change depth, which is what made it look like stale runtime state.
+                    //
+                    // THE DUPLICATE IS DROPPED, NOT SHARED. The door is already locked by the
+                    // earlier gate and that gate's near lever already satisfies the reachability
+                    // invariant (§4); pointing a second gate's levers at the same lock would
+                    // instead put a lever in the world that opens something the player has no
+                    // way to associate with it. Same disposal as a gate that cannot site a near
+                    // lever: not registered in `gates`, so pass 2 skips its levers too.
+                    var doorLock = pd.GetComponent<DoorLock>();
+                    if (doorLock != null)
+                    {
+                        Debug.LogWarning($"[Gates] Gate {i} at {g.Cell} facing {g.Axis} resolved to a door " +
+                                         $"already locked by an earlier gate ('{pd.name}'). Dropping the " +
+                                         "duplicate — a doorway spans TWO cells (§12), so two gate specs " +
+                                         "can share one spawned door.");
+                        continue;
+                    }
+
+                    doorLock = pd.gameObject.AddComponent<DoorLock>();
+                    if (doorLock == null)
+                    {
+                        Debug.LogWarning($"[Gates] Could not add DoorLock to '{pd.name}' for the gate at " +
+                                         $"{g.Cell}. Skipping it rather than locking nothing.");
+                        continue;
+                    }
+
                     // Configure AFTER AddComponent but explicitly, because AddComponent already
                     // ran Awake — assigning the fields alone would be too late for the standoff,
                     // which is built from them.

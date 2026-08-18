@@ -2366,6 +2366,20 @@ Formula-driven with authored override points (the user's explicit choice).
   - **The lever prompt says only "Pull lever".** It read "(opens)"/"(closes)", which gave away
     that a gate existed, that it was shut, and that this was the answer — before the player had
     found any of it.
+  - **`AddComponent` RETURNS NULL — IT DOES NOT THROW — WHEN THE COMPONENT IS ALREADY THERE,**
+    and `DoorLock` is `[DisallowMultipleComponent]`. **TWO GATES CAN RESOLVE TO ONE DOOR**,
+    because a doorway spans TWO cells (§12) so two gate specs can find the same spawned door
+    through `GetComponentInChildren<PhysicsDoor>`. The second `AddComponent` therefore returned
+    null and the next line NullReferenced — **aborting `BuildMesh` partway, so torches and all
+    three prop passes silently never ran**. The visible symptom was "props stopped generating",
+    which is about as far from the cause as a symptom gets, and it needed two gates on one door
+    so it reproduced forever on ONE (seed, depth) and vanished when either changed — which made
+    it look like stale runtime state rather than a generator fault. **That it was
+    seed-reproducible was the observation that solved it**; everything before that was chasing
+    play-mode state. The duplicate is now DROPPED rather than sharing the lock: the door is
+    already locked and the first gate's near lever already satisfies the reachability invariant,
+    whereas a second gate's levers pointing at the same lock would put a lever in the world
+    opening something the player cannot associate with it.
   - **Components reached from a spawned prefab need `GetComponentInChildren`, not
     `GetComponent`.** Kit prefabs here are consistently a FRAME plus a moving child, so
     `PhysicsDoor` sits on the leaf while `DungeonDoorMarker` lands on the root. `GetComponent`
