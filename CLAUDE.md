@@ -1087,6 +1087,55 @@ that does.
   advice were reasoned from. That single number was why "torches behind me still cast" and every
   explanation for it disagreed with what was on screen.
 
+**NOTHING ON THE INSTANCED PATH IS CULLED BY THE ENGINE — DISTANCE, FRUSTUM AND OCCLUSION ARE ALL
+OURS TO DO.** Unity culls a `RenderMeshInstanced` call as a UNIT against `RenderParams.worldBounds`,
+and batching here is deliberately not chunk-keyed, so a batch's bounds span the WHOLE DUNGEON and
+reject nothing, ever. This is the same root cause as the shadow re-submission above and it is
+worth stating once as a property of the path rather than rediscovering per feature.
+- **FRUSTUM CULLING WAS ABSENT, NOT WEAK.** Every instance inside `renderDistance` was submitted
+  whether or not it sat behind the camera — which is why the radius had to be sized for the
+  longest sightline while paying for a full SPHERE of geometry in every view. A per-instance
+  sphere-vs-planes test with an early-out fixed it; plane components are unpacked to flat floats
+  once per frame because the inner loop runs over ~20k instances on the frame's busier thread.
+- **OCCLUSION COMES FROM THE GRID, BECAUSE UNITY'S CANNOT WORK HERE — twice over.** Baked
+  occlusion (Umbra) needs static scene data and the dungeon does not exist until `Generate()`
+  runs; Unity 6's GPU Occlusion Culling needs the GPU Resident Drawer, which does not drive
+  `RenderMeshInstanced`. `DungeonVisibility` instead floods out from the player's cell through
+  OPEN cells only: **a cell 30m away in a straight line but seventy cells away through corridor is
+  behind walls by definition.** Path distance, never euclidean — `DungeonMapper`'s "the dungeon is
+  ALREADY the map", and the same reasoning the crawlway detour ratio uses.
+- **THE DILATION IS NOT PADDING — WITHOUT IT THE WALLS OF A VISIBLE ROOM DISAPPEAR.** A wall's
+  position sits ON THE FACE between two cells (which is why `PlaceCallback` carries the owning
+  cell), so flooring it lands on the solid or the open side depending which way the face points.
+  Half a room's walls would test as hidden and you would look into rooms through missing walls.
+  26-neighbour, not 6, because corner posts sit at cell CORNERS. It runs as a separate pass: doing
+  it inline would enqueue solid cells and let the flood escape through rock.
+- **EVERY RULE FAILS OPEN, DELIBERATELY.** Off-grid instances, a set never built, and standing in
+  a cell the grid calls solid (real — the camera is at eye height, and a crawlway bore is `Empty`)
+  all report VISIBLE. The error is one-directional: drawing something hidden costs triangles,
+  culling something visible is a hole in the world.
+- **COST IS PAID ON CELL CHANGE, NOT PER FRAME**, and that split is what makes it affordable — by
+  the time it was built the main thread was already the frame's floor, so a per-frame visibility
+  solve would have cost more than the geometry it saved. Instance cells resolve ONCE at
+  `AddInstance`; the per-frame test is one array index. `DungeonVisibility.CellOf` uses the same
+  world-to-cell conversion as `AudioSpace`, per §10's one-conversion rule.
+- **Both culls apply to the LIT set only.** A caster behind the camera, or behind a wall, still
+  throws its shadow into view — so the shadow subset is distance-only and is no longer nested
+  inside the lit set.
+
+Measured at depth 20, corridor view (the worst case, and the one `renderDistance` was sized for):
+
+| | distance only | + frustum | + occlusion |
+|---|---:|---:|---:|
+| Frametime | — | 5.7 ms | **4.7 ms** |
+| GPU | — | 3.6 ms | **2.9 ms** |
+| Triangles | 39.6 M | 18.6 M | **8.05 M** |
+
+Facing a wall went 5.5M triangles / 2.2ms GPU, from numbers indistinguishable from the corridor
+before frustum culling existed. **CPU main and GPU are now both ~3ms, i.e. balanced**, so further
+culling has little room to show — the next real win is main-thread profiling, not more geometry
+rejection.
+
 **Torch culling (TorchCullingManager)** — sliced per-frame distance cull of torch
 lights + **disciplined shadows**: only the nearest `maxShadowCasters` (default 3)
 torches cast shadows; the rest are shadowless fill. **Point-light shadows are a

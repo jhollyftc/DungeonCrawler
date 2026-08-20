@@ -425,6 +425,14 @@ namespace DungeonGen
                 var irGo = new GameObject("DungeonInstanced");
                 irGo.transform.SetParent(transform, false);
                 var ir = irGo.AddComponent<InstancedDungeonRenderer>();
+                // BEFORE any placer runs. AddInstance resolves each instance's grid cell through
+                // this, so a renderer that gets it late has a dungeon's worth of instances already
+                // tagged -1 — which fails OPEN, so the symptom would be occlusion culling quietly
+                // doing nothing rather than anything visibly wrong.
+                ir.visibility = new DungeonVisibility(gen, cellSize, transform.position)
+                {
+                    maxSteps = Mathf.CeilToInt(instanced.renderDistance / Mathf.Max(0.01f, cellSize)) + 2
+                };
                 // BEFORE anything else touches it. AddComponent runs Awake synchronously, and
                 // more to the point this component is rebuilt on every generate — so without
                 // this push its dials are C# defaults and an inspector edit lasts until the

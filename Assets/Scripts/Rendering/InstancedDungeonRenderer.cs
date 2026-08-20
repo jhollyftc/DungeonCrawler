@@ -11,10 +11,18 @@ namespace DungeonGen
     ///   - Instances are grouped into big batches by (mesh, submesh, material)
     ///     only — NOT by chunk — so draw submissions consolidate (few large
     ///     RenderMeshInstanced calls instead of thousands of ~25-instance ones).
-    ///   - Culling is per-instance each frame via a coarse spatial grid: only
-    ///     instances within renderDistance of the camera are packed into a
-    ///     reusable scratch array and drawn. No chunk-boundary slop, so the
-    ///     render distance is a true radius.
+    ///   - Culling is per-instance each frame by DISTANCE and FRUSTUM: visible
+    ///     instances are packed into a reusable scratch array and drawn. No
+    ///     chunk-boundary slop, so the render distance is a true radius.
+    ///     (It is a linear scan, not a spatial grid — an earlier version of this
+    ///     comment claimed a grid and a `cullCellSize` field was plumbed through
+    ///     for one, but neither ever existed. Removed rather than left to be
+    ///     believed; a spatial grid is still the right move if the scan ever
+    ///     shows up in a profile.)
+    ///   - BOTH culls are ours to do. Unity culls a RenderMeshInstanced call as a
+    ///     UNIT against RenderParams.worldBounds, and batches here are deliberately
+    ///     not chunk-keyed, so those bounds span the whole dungeon and never reject
+    ///     anything. Nothing is culled by the engine on this path.
     ///
     /// Usage unchanged: AddInstance(prefab, matrix) repeatedly, then Commit()
     /// (idempotent/additive — call after each placement pass).
@@ -31,8 +39,17 @@ namespace DungeonGen
         [Tooltip("Radius within which instances are allowed to CAST shadows, in meters. Much shorter than renderDistance on purpose — a point light's shadows are a 6-face cubemap, so every casting instance is rasterized six times per shadow-casting torch.\n\nSize it to the URP asset's Shadow Distance plus a small margin: past that nothing it casts can land anywhere visible. 0 = casters are not distance-limited (the old behaviour).")]
         public float shadowDistance = 18f;
 
-        [Tooltip("Spatial grid cell for culling queries, meters. Only affects cull cost, not batching. ~12-24 is fine.")]
-        public float cullCellSize = 16f;
+        [Tooltip("Skip instances outside the camera frustum.\n\nThis path gets NO frustum culling from Unity: RenderMeshInstanced culls per DRAW against worldBounds, and batches here span the whole dungeon, so everything within renderDistance was submitted whether or not it was behind you. Off = that old behaviour.\n\nShadow casters are deliberately exempt — one behind the camera still throws its shadow into view.")]
+        public bool frustumCull = true;
+
+        [Tooltip("Skip instances in cells you cannot reach without walking a long way — occlusion culling, computed from the GRID rather than from geometry. In a corridor the frustum is far wider than what you can actually see, and almost everything in it is behind a wall.\n\nOff restores frustum + distance only.")]
+        public bool occlusionCull = true;
+
+        /// <summary>
+        /// Set by DungeonVisualizer at generation. Null = occlusion culling is inert, which is the
+        /// correct behaviour rather than a failure: it fails OPEN and everything draws.
+        /// </summary>
+        [System.NonSerialized] public DungeonVisibility visibility;
 
         class Batch
         {
@@ -42,6 +59,8 @@ namespace DungeonGen
             public bool CastShadows = true;                       // receiveShadows stays true for ALL batches
             public List<Matrix4x4> All = new List<Matrix4x4>();  // every instance
             public List<Vector3> Positions = new List<Vector3>(); // parallel, for culling
+            /// <summary>Flat grid cell per instance, resolved ONCE at AddInstance. -1 = off-grid.</summary>
+            public List<int> Cells = new List<int>();
             public Matrix4x4[] Scratch;                           // per-frame visible set
             public Matrix4x4[] ShadowScratch;                     // per-frame CASTING subset
             public Bounds Bounds;
@@ -70,6 +89,12 @@ namespace DungeonGen
                 ^ (CastShadows ? 0x10000 : 0);
             public override bool Equals(object o) => o is BatchKey k && Equals(k);
         }
+
+        // Reused: CalculateFrustumPlanes(Camera) allocates a fresh array per call, and the plane
+        // components are unpacked into flats so the inner loop touches no struct properties.
+        readonly Plane[] frustumPlanes = new Plane[6];
+        readonly float[] planeNX = new float[6], planeNY = new float[6],
+                         planeNZ = new float[6], planeD = new float[6];
 
         readonly List<Batch> batches = new List<Batch>();
         readonly Dictionary<GameObject, Proto> protoCache = new Dictionary<GameObject, Proto>();
@@ -123,6 +148,9 @@ namespace DungeonGen
                 Vector3 p = m.GetColumn(3);
                 b.All.Add(m);
                 b.Positions.Add(p);
+                // Resolved once, here, rather than per frame: the world-to-cell conversion is a
+                // divide and three floors, which is nothing once and ~20k times a frame is not.
+                b.Cells.Add(visibility != null ? visibility.IndexOf(p) : -1);
 
                 float r = part.mesh.bounds.extents.magnitude * MaxScale(m) + 0.5f;
                 if (r > b.MaxRadius) b.MaxRadius = r;
@@ -183,20 +211,52 @@ namespace DungeonGen
         {
             Vector3 camPos = Vector3.zero;
             bool haveCam = false;
+            Camera cam = null;
             if (Application.isPlaying)
             {
                 var mc = Camera.main;
-                if (mc != null) { camPos = mc.transform.position; haveCam = true; }
+                if (mc != null) { cam = mc; camPos = mc.transform.position; haveCam = true; }
             }
 #if UNITY_EDITOR
             else
             {
                 var sv = UnityEditor.SceneView.lastActiveSceneView;
-                if (sv != null && sv.camera != null) { camPos = sv.camera.transform.position; haveCam = true; }
+                if (sv != null && sv.camera != null)
+                { cam = sv.camera; camPos = sv.camera.transform.position; haveCam = true; }
             }
 #endif
             bool cull = haveCam && renderDistance > 0f;
             float maxSq = renderDistance * renderDistance;
+
+            // PER-INSTANCE FRUSTUM CULLING, WHICH THIS PATH OTHERWISE GETS NONE OF.
+            //
+            // Unity frustum-culls a RenderMeshInstanced call as a UNIT against
+            // RenderParams.worldBounds. Batching here is deliberately not chunk-keyed, so those
+            // bounds span the WHOLE DUNGEON and always intersect the frustum — meaning every
+            // instance inside renderDistance was submitted regardless of whether it sat behind
+            // the camera. Not "poorly culled": not culled at all. Same root cause as the shadow
+            // re-submission above, and the reason renderDistance had to be generous enough for
+            // the longest sightline while paying for a full sphere of geometry in every view.
+            //
+            // The plane components are unpacked into flat floats once per frame rather than
+            // calling Plane.GetDistanceToPoint per instance: this runs over ~20k instances every
+            // frame on the main thread, which is already the busier half of the frame.
+            // Rebuilt only when the viewer crosses a cell boundary — RefreshFor early-outs
+            // otherwise, so this is a Vector3Int compare on the frames it does nothing.
+            bool occlude = haveCam && occlusionCull && visibility != null;
+            if (occlude) visibility.RefreshFor(camPos);
+
+            bool frustum = haveCam && frustumCull && cam != null;
+            if (frustum)
+            {
+                GeometryUtility.CalculateFrustumPlanes(cam, frustumPlanes);
+                for (int p = 0; p < 6; p++)
+                {
+                    Vector3 n = frustumPlanes[p].normal;
+                    planeNX[p] = n.x; planeNY[p] = n.y; planeNZ[p] = n.z;
+                    planeD[p] = frustumPlanes[p].distance;
+                }
+            }
 
             // SHADOW CASTING IS SUBMITTED SEPARATELY, ON A SHORTER RADIUS, WITH ITS OWN
             // TIGHT BOUNDS — and both halves of that are load-bearing.
@@ -243,7 +303,7 @@ namespace DungeonGen
                 int visible = 0, casting = 0;
                 Vector3 sMin = Vector3.zero, sMax = Vector3.zero;
 
-                if (!cull && !splitThis)
+                if (!cull && !splitThis && !frustum && !occlude)
                 {
                     visible = total;
                     b.All.CopyTo(b.Scratch);
@@ -252,6 +312,7 @@ namespace DungeonGen
                 {
                     var positions = b.Positions;
                     var all = b.All;
+                    var cells = b.Cells;
                     for (int k = 0; k < total; k++)
                     {
                         Vector3 p = positions[k];
@@ -259,8 +320,13 @@ namespace DungeonGen
                         float dsq = d.x * d.x + d.y * d.y + d.z * d.z;
                         if (cull && dsq > maxSq) continue;
 
-                        b.Scratch[visible++] = all[k];
-
+                        // SHADOW CASTERS ARE PACKED BEFORE THE FRUSTUM TEST AND ARE NEVER SUBJECT
+                        // TO IT. A caster standing behind the camera still throws a shadow INTO
+                        // view — that is most of what a torch behind you is doing — so frustum
+                        // culling the shadow set would delete shadows whose casters simply happen
+                        // to be off screen, which reads as objects losing their shadow when you
+                        // turn. The two subsets are therefore no longer nested: shadow is
+                        // distance-only, lit is distance AND frustum.
                         if (splitThis && dsq <= shadowSq)
                         {
                             b.ShadowScratch[casting] = all[k];
@@ -268,6 +334,29 @@ namespace DungeonGen
                             else { sMin = Vector3.Min(sMin, p); sMax = Vector3.Max(sMax, p); }
                             casting++;
                         }
+
+                        // OCCLUSION BEFORE FRUSTUM, because it is one array index against up to
+                        // six plane tests, and in a corridor it rejects the larger share. Like the
+                        // frustum test it applies to the LIT set only — a caster behind a wall can
+                        // still throw a shadow through a doorway into view.
+                        if (occlude && !visibility.IsVisible(cells[k])) continue;
+
+                        // Sphere test against the six planes, early-out on the first that rejects
+                        // — and most rejections come from the near plane on the first iteration,
+                        // which is what keeps this affordable at instance counts like these.
+                        if (frustum)
+                        {
+                            float r = b.MaxRadius;
+                            bool outside = false;
+                            for (int q = 0; q < 6; q++)
+                            {
+                                if (planeNX[q] * p.x + planeNY[q] * p.y + planeNZ[q] * p.z
+                                    + planeD[q] < -r) { outside = true; break; }
+                            }
+                            if (outside) continue;
+                        }
+
+                        b.Scratch[visible++] = all[k];
                     }
                 }
 
@@ -438,8 +527,11 @@ namespace DungeonGen
         [Tooltip("True cull radius in metres for instanced geometry. Pair with fog fading to dark before this distance. 0 = draw everything.")]
         public float renderDistance = 45f;
 
-        [Tooltip("Spatial grid cell for culling queries, metres. Only affects cull cost, not batching.")]
-        public float cullCellSize = 16f;
+        [Tooltip("Skip instances outside the camera frustum. This path gets none from Unity — RenderMeshInstanced culls per DRAW against bounds that span the whole dungeon — so everything within renderDistance was drawn whether or not it was behind you.\n\nShadow casters stay exempt: one behind the camera still throws its shadow into view.")]
+        public bool frustumCull = true;
+
+        [Tooltip("Occlusion culling from the GRID: skip instances in cells you could not walk to without going a long way round, which is what 'behind a wall' means in a cell dungeon. Unity's own occlusion culling cannot help here — baked occlusion needs a static scene, and GPU occlusion needs the Resident Drawer, which does not drive RenderMeshInstanced.\n\nIn a corridor the frustum is far wider than what you can see, so this is where the remaining geometry goes.")]
+        public bool occlusionCull = true;
 
         [Tooltip("Radius within which instanced geometry may CAST shadows. Much shorter than renderDistance: a point light's shadows are a 6-face cubemap, so a caster in range of N shadow-casting torches is rasterized 6N times. Size it to the URP asset's Shadow Distance plus a margin. 0 = casters are not distance-limited.")]
         public float shadowDistance = 18f;
@@ -448,7 +540,8 @@ namespace DungeonGen
         {
             if (ir == null) return;
             ir.renderDistance = renderDistance;
-            ir.cullCellSize = cullCellSize;
+            ir.frustumCull = frustumCull;
+            ir.occlusionCull = occlusionCull;
             ir.shadowDistance = shadowDistance;
         }
     }
