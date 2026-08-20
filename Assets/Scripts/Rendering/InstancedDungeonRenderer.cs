@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -89,6 +90,20 @@ namespace DungeonGen
                 ^ (CastShadows ? 0x10000 : 0);
             public override bool Equals(object o) => o is BatchKey k && Equals(k);
         }
+
+        // NAMED MARKERS BECAUSE THE TWO HALVES OF Update() ANSWER DIFFERENT QUESTIONS AND A
+        // SINGLE TIMING CANNOT SEPARATE THEM. "Cull" is the per-instance scan whose cost decides
+        // whether a spatial grid is worth building; "Submit" is the RenderMeshInstanced calls,
+        // which are bounded by batch count rather than instance count. Without the split you get
+        // one number for InstancedDungeonRenderer.Update and no way to act on it.
+        //
+        // They exist so the question can be answered WITHOUT deep profiling, which inflates every
+        // managed call and made a List indexer look like 0.73ms across 19k calls — a measurement
+        // dominated by the act of measuring. These cost a few nanoseconds when nothing is
+        // recording, so they can stay in permanently.
+        static readonly ProfilerMarker s_Cull = new ProfilerMarker("Instanced.Cull");
+        static readonly ProfilerMarker s_Submit = new ProfilerMarker("Instanced.Submit");
+        static readonly ProfilerMarker s_Visibility = new ProfilerMarker("Instanced.VisibilityFill");
 
         // Reused: CalculateFrustumPlanes(Camera) allocates a fresh array per call, and the plane
         // components are unpacked into flats so the inner loop touches no struct properties.
@@ -244,7 +259,16 @@ namespace DungeonGen
             // Rebuilt only when the viewer crosses a cell boundary — RefreshFor early-outs
             // otherwise, so this is a Vector3Int compare on the frames it does nothing.
             bool occlude = haveCam && occlusionCull && visibility != null;
-            if (occlude) visibility.RefreshFor(camPos);
+            if (occlude)
+            {
+                // Its own marker because it is SPIKY, not steady: it does nothing on most frames
+                // and runs a whole flood fill on the ones where you cross a cell boundary. Averaged
+                // into the cull scan it would look like noise; on its own, a hitch every few
+                // metres of walking is visible as exactly that.
+                s_Visibility.Begin();
+                visibility.RefreshFor(camPos);
+                s_Visibility.End();
+            }
 
             bool frustum = haveCam && frustumCull && cam != null;
             if (frustum)
@@ -303,6 +327,7 @@ namespace DungeonGen
                 int visible = 0, casting = 0;
                 Vector3 sMin = Vector3.zero, sMax = Vector3.zero;
 
+                s_Cull.Begin();
                 if (!cull && !splitThis && !frustum && !occlude)
                 {
                     visible = total;
@@ -359,7 +384,9 @@ namespace DungeonGen
                         b.Scratch[visible++] = all[k];
                     }
                 }
+                s_Cull.End();
 
+                s_Submit.Begin();
                 if (visible > 0)
                 {
                     var rp = new RenderParams(b.Material)
@@ -405,6 +432,7 @@ namespace DungeonGen
                     };
                     DrawChunked(rp, b, b.ShadowScratch, casting);
                 }
+                s_Submit.End();
             }
         }
 

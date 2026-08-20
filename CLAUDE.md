@@ -1132,9 +1132,27 @@ Measured at depth 20, corridor view (the worst case, and the one `renderDistance
 | Triangles | 39.6 M | 18.6 M | **8.05 M** |
 
 Facing a wall went 5.5M triangles / 2.2ms GPU, from numbers indistinguishable from the corridor
-before frustum culling existed. **CPU main and GPU are now both ~3ms, i.e. balanced**, so further
-culling has little room to show — the next real win is main-thread profiling, not more geometry
-rejection.
+before frustum culling existed.
+
+**THE PER-INSTANCE SCAN COSTS 0.18ms AND A SPATIAL GRID IS NOT WORTH BUILDING** — measured in a
+build with `Instanced.Cull` / `Instanced.Submit` / `Instanced.VisibilityFill`, which is why those
+markers are permanent. Cull 0.18ms, Submit 0.03ms, the visibility flood fill 0.00ms even on the
+frames it runs. Bucketing instances by coarse cell could save a fraction of 0.18ms and would cost
+real complexity; the idea is closed unless instance counts change by an order of magnitude.
+**DEEP PROFILING INFLATED THAT SAME NUMBER BY ~15x** (`InstancedDungeonRenderer.Update` reading
+3.43ms deep against 0.23ms real, with a `List` indexer appearing to cost 0.73ms across 19k calls).
+Deep profiling answers WHICH METHOD, never HOW MUCH — and here it would have justified building
+the wrong thing. Use named markers and leave deep profiling off.
+**AND THE FRAME IS NOT MAIN-THREAD BOUND, WHICH THE STATS PANEL IMPLIES AND THE PROFILER DENIES.**
+"CPU Main Thread vs Render Thread 63% / 36%" is a split of CPU time between threads, NOT a share
+of the frame, and reading it as the latter produced a confident and wrong conclusion that the main
+thread was the floor. In the real profile `ScriptRunBehaviourUpdate` is **0.60ms for every script
+in the game** while `WaitForLastPresentationAndUpdateTime` is **1.89ms, i.e. 42% of the frame
+spent idle**. Interrogate that panel's percentages before optimising against them; §12's rule
+applied to a metric that looks like a frame breakdown and is not.
+Remaining headroom is therefore GPU-side: triangle count (§28b — `Ceiling_Plain` at 24,749 verts
+x 1006 instances is still 38% of the dungeon's geometry) and material count (399 set-pass calls
+against 472 draws).
 
 **Torch culling (TorchCullingManager)** — sliced per-frame distance cull of torch
 lights + **disciplined shadows**: only the nearest `maxShadowCasters` (default 3)
