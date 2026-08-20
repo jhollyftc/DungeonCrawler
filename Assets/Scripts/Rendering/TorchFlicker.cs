@@ -108,6 +108,22 @@ namespace DungeonGen
             driveFlame = flame.HasVector4(flameColorId);
         }
 
+        /// <summary>
+        /// Distance fade for the FLAME, kept separate from the authored base colour.
+        ///
+        /// A SEPARATE MULTIPLIER RATHER THAN SCALING `flameBaseColor` DIRECTLY, because the base is
+        /// the room's palette and overwriting it would lose the hue the moment a torch faded once.
+        /// Same relationship `SetBaseIntensity` has with the light, and the same reason this has to
+        /// live here at all: Update rewrites the flame colour every frame from the base, so
+        /// anything else assigning it is discarded a frame later with no error (§5).
+        ///
+        /// Without it the flame pops to FULL brightness at the cull edge while its light is still
+        /// faded to nothing — a bright dot appearing in a dark corridor with no light pool under
+        /// it, which is more conspicuous than the un-faded torch the fade was added to fix.
+        /// </summary>
+        public void SetFlameFade(float fade) => flameFade = Mathf.Max(0f, fade);
+        float flameFade = 1f;
+
         void Update()
         {
             if (li == null && !driveFlame) return;
@@ -124,7 +140,7 @@ namespace DungeonGen
                 // Scale the HDR colour. Its MAGNITUDE is what the flame's brightness and its
                 // bloom both read (§7), so scaling it pulses the fire without touching its hue
                 // — the room's palette survives, which a lerp toward black would not do.
-                float k = Mathf.Max(0f, 1f + swing * amount * flameAmount);
+                float k = Mathf.Max(0f, 1f + swing * amount * flameAmount) * flameFade;
                 flame.SetVector4(flameColorId, flameBaseColor * k);
             }
         }

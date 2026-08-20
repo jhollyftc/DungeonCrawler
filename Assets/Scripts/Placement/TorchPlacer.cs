@@ -493,7 +493,14 @@ namespace DungeonGen
                 {
                     light.enabled = false;
                     if (flicker != null) flicker.enabled = false;
-                    culler.Register(light, flicker);
+                    // THE FLAME IS REGISTERED TOO, or it outlives everything else on the torch.
+                    // The sconce MESH goes through the instanced path (renderDistance, frustum and
+                    // occlusion) while the VFX is a plain GameObject renderer on
+                    // DungeonRendererCulling's much longer radius — so one torch had three
+                    // different cull distances and you got a flame with no light, then a flame
+                    // with no sconce. The culler already owns "this torch is too far to matter",
+                    // which makes it the only place the three can be made to agree.
+                    culler.Register(light, flicker, flame);
                 }
 
                 // Register the torch's WORLD POSITION for the crackle pool. Registered from
@@ -585,6 +592,8 @@ namespace DungeonGen
             public Light Light;
             public Behaviour Flicker; // may be null
             public TorchFlicker Flick; // same component, typed, for SetBaseIntensity
+            /// <summary>The flame, culled WITH the light so the two cannot disagree.</summary>
+            public VisualEffect Flame;
             public Vector3 Pos;
             /// <summary>Light range, cached so the frustum test needn't touch the native object.</summary>
             public float Range;
@@ -616,7 +625,7 @@ namespace DungeonGen
         readonly System.Collections.Generic.List<Light> nextCasters
             = new System.Collections.Generic.List<Light>();
 
-        public void Register(Light light, Behaviour flicker)
+        public void Register(Light light, Behaviour flicker, VisualEffect flame = null)
         {
             // The authored intensity is READ HERE, which is only correct because TorchPlacer has
             // already assigned light.intensity AND pushed it through SetBaseIntensity by the time
@@ -627,6 +636,7 @@ namespace DungeonGen
                 Light = light,
                 Flicker = flicker,
                 Flick = flicker as TorchFlicker,
+                Flame = flame,
                 Pos = light.transform.position,
                 Range = light.range,
                 FullIntensity = light.intensity,
@@ -965,7 +975,14 @@ namespace DungeonGen
             if (on && !Mathf.Approximately(fade, e.LastFade))
             {
                 float want = e.FullIntensity * fade;
-                if (e.Flick != null) e.Flick.SetBaseIntensity(want);
+                if (e.Flick != null)
+                {
+                    e.Flick.SetBaseIntensity(want);
+                    // The flame fades with its light, so the two arrive together. Only possible
+                    // through the flicker: it rewrites the flame's colour every frame from a
+                    // cached base, so anything else setting it is discarded (§5).
+                    e.Flick.SetFlameFade(fade);
+                }
                 else e.Light.intensity = want;
                 e.LastFade = fade;
                 entries[index] = e;
@@ -975,6 +992,12 @@ namespace DungeonGen
             {
                 e.Light.enabled = on;
                 if (e.Flicker != null) e.Flicker.enabled = on;
+                // THE FLAME GOES WITH THE LIGHT, not with its own renderer's distance. Which way
+                // round matters: a flame surviving past its light is a bright emissive object
+                // burning in a dark corridor casting nothing, which is the most conspicuous thing
+                // on screen. The sconce mesh outliving the flame is the mild version of the same
+                // mismatch — an unlit sconce at 20m is nearly invisible anyway.
+                if (e.Flame != null) e.Flame.enabled = on;
                 // A disciplined light leaving range drops its caster status so
                 // it re-enters shadowless and the slot frees for a nearer torch.
                 if (!on && disciplinedShadows && e.Light.shadows != LightShadows.None)
