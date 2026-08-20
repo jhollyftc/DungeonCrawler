@@ -388,6 +388,17 @@ namespace DungeonGen
 
             InstancedDungeonRenderer sharedInstancer = null;
 
+            // BUILT REGARDLESS OF GEOMETRY MODE, because both consumers need it and only one of
+            // them is mode-specific: the instanced renderer exists in InstancedKit alone, while
+            // DungeonRendererCulling manages doors, FullGameObject props and carryables in every
+            // mode. Created HERE so it exists before anything registers with it — cells are
+            // resolved once at registration, and a consumer handed this late would have everything
+            // tagged -1, which fails open and shows up as occlusion culling quietly doing nothing.
+            var visibility = new DungeonVisibility(gen, cellSize, transform.position)
+            {
+                maxSteps = Mathf.CeilToInt(instanced.renderDistance / Mathf.Max(0.01f, cellSize)) + 2
+            };
+
             // Per-face restrictions from RoomStyle.WallAsset flags. Filled by
             // the kit placer as walls emit, queried by the torch and prop
             // placers below (empty in GeneratedMesh mode = no restrictions).
@@ -429,10 +440,7 @@ namespace DungeonGen
                 // this, so a renderer that gets it late has a dungeon's worth of instances already
                 // tagged -1 — which fails OPEN, so the symptom would be occlusion culling quietly
                 // doing nothing rather than anything visibly wrong.
-                ir.visibility = new DungeonVisibility(gen, cellSize, transform.position)
-                {
-                    maxSteps = Mathf.CeilToInt(instanced.renderDistance / Mathf.Max(0.01f, cellSize)) + 2
-                };
+                ir.visibility = visibility;
                 // BEFORE anything else touches it. AddComponent runs Awake synchronously, and
                 // more to the point this component is rebuilt on every generate — so without
                 // this push its dials are C# defaults and an inspector edit lasts until the
@@ -568,7 +576,16 @@ namespace DungeonGen
             // AFTER every placer, because it collects what they produced. Rebuilt per generate
             // rather than kept across one: ClearGenerated destroys the old roots, so a list held
             // over would be full of nulls and missing everything new.
-            GetComponent<DungeonRendererCulling>()?.Rebuild();
+            var rendererCulling = GetComponent<DungeonRendererCulling>();
+            if (rendererCulling != null)
+            {
+                // BEFORE Rebuild, not after: Rebuild resolves each renderer's cell through this,
+                // so assigning it afterwards leaves a whole dungeon's worth tagged -1 — which
+                // fails open, so the symptom is occlusion silently doing nothing rather than
+                // anything visibly wrong. Same ordering trap as the instanced renderer's.
+                rendererCulling.visibility = visibility;
+                rendererCulling.Rebuild();
+            }
 
             // Keep the edit-mode preview out of the saved scene.
             MarkNotPersisted();

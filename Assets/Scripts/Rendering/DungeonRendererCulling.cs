@@ -67,6 +67,25 @@ namespace DungeonGen
         readonly List<ShadowCastingMode> authoredShadows = new List<ShadowCastingMode>();
         readonly List<bool> lastCasting = new List<bool>();
 
+        // OCCLUSION IS TRACKED SEPARATELY FROM DISTANCE because the two are decided on different
+        // schedules — distance by the sliced sweep a few hundred renderers per frame, occlusion
+        // for ALL of them at once whenever the visibility set is rebuilt. `enabled` is the AND of
+        // the two, so each needs its own remembered answer or the pass that runs second would
+        // undo the pass that ran first.
+        readonly List<int> cells = new List<int>();
+        readonly List<bool> lastUnoccluded = new List<bool>();
+        readonly List<bool> lastInRange = new List<bool>();
+
+        /// <summary>
+        /// NO FRUSTUM TEST HERE, DELIBERATELY. Unity already frustum-culls a real Renderer every
+        /// frame, natively and off the main thread — that is exactly what
+        /// `InstancedDungeonRenderer` does NOT get, because RenderMeshInstanced opts out of engine
+        /// culling by construction and needed a hand-rolled test. Adding one here would duplicate
+        /// native work in C#. Occlusion is the half Unity genuinely cannot do for us: baked
+        /// occlusion needs a static scene, and the dungeon does not exist until Generate() runs.
+        /// </summary>
+        [System.NonSerialized] public DungeonVisibility visibility;
+
         int cursor;
         int culledCount;
         Transform cam;
@@ -80,6 +99,9 @@ namespace DungeonGen
             lastVisible.Clear();
             authoredShadows.Clear();
             lastCasting.Clear();
+            cells.Clear();
+            lastUnoccluded.Clear();
+            lastInRange.Clear();
             cursor = 0;
             culledCount = 0;
 
@@ -100,6 +122,14 @@ namespace DungeonGen
                     lastVisible.Add(true);
                     authoredShadows.Add(r.shadowCastingMode);
                     lastCasting.Add(true);
+                    // Resolved ONCE, here. These renderers never move — a door swings about its
+                    // hinge and a carryable can be picked up, but neither leaves its cell, and a
+                    // prop that did would simply be culled by the cell it was born in. Cheaper
+                    // than a transform read per renderer per sweep, which is the cost this whole
+                    // component exists to avoid.
+                    cells.Add(visibility != null ? visibility.IndexOf(r.transform.position) : -1);
+                    lastUnoccluded.Add(true);
+                    lastInRange.Add(true);
                 }
             }
 
@@ -139,6 +169,38 @@ namespace DungeonGen
                 cam = main.transform;
             }
 
+            // OCCLUSION IS SWEPT WHOLE, NOT SLICED, AND ONLY WHEN THE ANSWER CHANGES.
+            //
+            // The slice exists because reading `transform.position` is a managed-to-native call
+            // per renderer — that is the cost this component was written to avoid. Occlusion needs
+            // NO transform read: the cell was resolved once at Rebuild, so the whole set is a
+            // couple of array lookups each and is affordable in one go.
+            //
+            // And it has to be whole, because slicing it would show. Rounding a corner changes the
+            // answer for hundreds of renderers at once, and at 250 a frame a door would fade in
+            // several frames after the wall stopped hiding it. Distance tolerates that latency
+            // because it changes gradually and has a hysteresis band; occlusion changes all at
+            // once, at exactly the moment you are looking.
+            if (visibility != null && visibility.RefreshFor(cam.position))
+            {
+                for (int i = 0; i < tracked.Count; i++)
+                {
+                    var rr = tracked[i];
+                    if (rr == null) continue;
+                    bool unoccluded = visibility.IsVisible(cells[i]);
+                    if (unoccluded == lastUnoccluded[i]) continue;
+
+                    lastUnoccluded[i] = unoccluded;
+                    bool nowVisible = unoccluded && lastInRange[i];
+                    if (nowVisible != lastVisible[i])
+                    {
+                        rr.enabled = nowVisible;
+                        lastVisible[i] = nowVisible;
+                        culledCount += nowVisible ? -1 : 1;
+                    }
+                }
+            }
+
             Vector3 eye = cam.position;
             float off = cullDistance * cullDistance;
             float on = (cullDistance - Mathf.Max(0f, hysteresis));
@@ -164,13 +226,18 @@ namespace DungeonGen
                     lastVisible[cursor] = lastVisible[last]; lastVisible.RemoveAt(last);
                     authoredShadows[cursor] = authoredShadows[last]; authoredShadows.RemoveAt(last);
                     lastCasting[cursor] = lastCasting[last]; lastCasting.RemoveAt(last);
+                    cells[cursor] = cells[last]; cells.RemoveAt(last);
+                    lastUnoccluded[cursor] = lastUnoccluded[last]; lastUnoccluded.RemoveAt(last);
+                    lastInRange[cursor] = lastInRange[last]; lastInRange.RemoveAt(last);
                     continue;
                 }
 
                 // Squared distance, and the transform read is the reason this is sliced.
                 float sq = (r.transform.position - eye).sqrMagnitude;
-                bool visible = lastVisible[cursor] ? sq <= off : sq <= on;
+                bool inRange = lastInRange[cursor] ? sq <= off : sq <= on;
+                lastInRange[cursor] = inRange;
 
+                bool visible = inRange && lastUnoccluded[cursor];
                 if (visible != lastVisible[cursor])
                 {
                     r.enabled = visible;
@@ -209,6 +276,8 @@ namespace DungeonGen
                 }
                 lastVisible[i] = true;
                 lastCasting[i] = true;
+                lastUnoccluded[i] = true;
+                lastInRange[i] = true;
             }
             culledCount = 0;
         }
