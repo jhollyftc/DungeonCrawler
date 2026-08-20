@@ -116,17 +116,22 @@ Material:
     - _DstBlend: 0
     - _DstBlendAlpha: 0
     - _EnvironmentReflections: 1
+    - _FlickerAmount: 0
+    - _FlickerCellSize: 0
+    - _FlickerSpeed: 1.5
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _Metallic: 0
     - _OcclusionStrength: 1
+    - _OutlineEnabled: 1
     - _OutlineWidth: 0.0134
     - _Parallax: 0.005
     - _QueueOffset: 0
     - _ReceiveShadows: 1
     - _RimAmount: 0
     - _RimThreshold: 0.72
+    - _ShadowSoftness: 0.7
     - _Smoothness: 0.5
     - _SmoothnessTextureChannel: 0
     - _SpecPower: 22.8

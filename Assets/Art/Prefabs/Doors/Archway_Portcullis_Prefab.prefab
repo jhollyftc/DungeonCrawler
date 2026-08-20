@@ -353,8 +353,8 @@ MonoBehaviour:
   gate: {fileID: 4504375326487615823}
   travelSpace: 0
   travelDirection: {x: 0, y: 1, z: 0}
-  raiseHeight: 0.012
-  travelTime: 1.7
+  raiseHeight: 0.0095
+  travelTime: 3.8
   stopEase: 0.6
   drawTravelGizmo: 1
   startOpen: 0
@@ -375,8 +375,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.GateAudio
   source: {fileID: 4033002069348391335}
   mixerGroup: {fileID: 5146522473124394012, guid: 1aedd87fda2f4a640a0996f7671fbf59, type: 2}
-  openClips: []
-  closeClips: []
+  openClips:
+  - {fileID: 8300000, guid: 8dac78c4866f6ba4ea04b789b04369a2, type: 3}
+  closeClips:
+  - {fileID: 8300000, guid: 8dac78c4866f6ba4ea04b789b04369a2, type: 3}
   rattleClips: []
   maxDistance: 60
   minDistance: 4

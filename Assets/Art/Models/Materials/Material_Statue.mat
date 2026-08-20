@@ -45,6 +45,7 @@ Material:
     - _Bands: 2
     - _BumpScale: 1
     - _OutlineWidth: 0.0068
+    - _ShadowSoftness: 0.7
     - _SpecPower: 12.5
     - _SpecSoftness: 0.3
     m_Colors:
