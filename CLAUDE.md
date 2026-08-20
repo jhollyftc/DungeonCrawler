@@ -511,6 +511,23 @@ in a quiet corner and hear something heavy move in the distance.
   into "sweep every wall of every room". Alcoves qualify for free (typed Hallway) and are among
   the best spots. Locked doors are exempt: their gate IS a room's doorway, so a lever in that room
   is both natural and findable.
+- **A LEVER MUST BE ON A FLOOR YOU CAN STAND ON, AND NOTHING CHECKED THAT** — so in a tall room
+  levers sited three storeys up in open air. `BuildFootprint` writes a room's cells at EVERY Y in
+  its bounds, so `Grid[c] == Room` is true in mid air and every "is this a room cell" test says
+  yes; §12's pit-opening lesson in a different costume, a subset of a category carrying a property
+  nobody wrote down — here "has a floor under it". `StoreysAboveFloor` is the check, and it reads
+  NEGATIVE for a pit interior, which is standable, so only positive values are ever rejected.
+  **THE NEAR SIDE IS GROUND-ONLY AND THAT IS THE SOFTLOCK INVARIANT, not ergonomics.** `Reachable`
+  walks open CELLS, and every storey of a tall room is open, so it happily reports a lever floating
+  in mid air as reachable from Start — it cannot tell a climb from a walk. An elevated near lever
+  is therefore a gate that READS as openable and may not be, and if the props that made it
+  climbable fail to spawn on some seed the run is dead behind that door.
+  **The FAR side may sit ONE storey up** (`LeverMaxStoreysFar`), mounted lower
+  (`kit.leverMountHeightElevated`) because you reach it standing on a crate rather than on the
+  floor and the usual eye-height mount lands above your head. Reaching it by stacking the room's
+  own props is emergent and worth keeping, and a far lever is redundancy rather than the thing the
+  run depends on. Portcullis levers are unaffected either way — corridors and prison cells are one
+  storey by construction.
 - **THE GENERATOR OFFERS SEVERAL CANDIDATE FACES PER SIDE** because it cannot see which wall ASSET
   the kit will land on one — `WallFaceRegistry` does not exist until the kit emits. The placer
   takes the first that survives. A corridor cell has only TWO solid faces, so one wall refusing

@@ -3800,6 +3800,37 @@ namespace DungeonGen
         /// survives; duplicates of a cell already offered are skipped so the alternatives are
         /// genuinely different places, not four faces of one cell.
         /// </summary>
+        /// <summary>
+        /// Storeys between a cell and the floor you actually walk on there. 0 = standable.
+        ///
+        /// A TALL ROOM SPANS SEVERAL Y BUT YOU WALK ONE (§4): `BuildFootprint` writes a room's
+        /// cells at EVERY Y in its bounds, so `Grid[c] == Room` is true three storeys up in mid
+        /// air, and every "is this a room cell" test says yes. That is the pit-opening trap from
+        /// §12 in a different costume — a subset of a category with a property nobody wrote down,
+        /// here "has a floor under it".
+        ///
+        /// Corridors, prisons and alcoves are always 0: `SurroundingsOk` demands solid rock below
+        /// every corridor cell, which is the same rule that makes pits rooms-only. A pit interior
+        /// reads NEGATIVE (it sits below its room's floor) and is standable, so only positive
+        /// values are ever rejected.
+        /// </summary>
+        int StoreysAboveFloor(Vector3Int c)
+        {
+            Room r = RoomAt(c);
+            return r == null ? 0 : c.y - r.Bounds.yMin;
+        }
+
+        /// <summary>
+        /// How many storeys above the floor a FAR lever may sit. Near levers are ground-only and
+        /// that is not tunable — see the reachability argument in AddLeverCandidates.
+        ///
+        /// 1 rather than 0 deliberately: a lever on the second storey of a tall room can be
+        /// reached by climbing the room's own props, which is emergent and worth keeping. It is
+        /// only safe on the FAR side, where a lever that proves unreachable costs redundancy
+        /// rather than the run.
+        /// </summary>
+        const int LeverMaxStoreysFar = 1;
+
         void AddLeverCandidates(List<Vector3Int> cells, GateSpec g, bool nearSide, int max)
         {
             if (cells.Count == 0) return;
@@ -3851,6 +3882,24 @@ namespace DungeonGen
                 if (doorCells.Contains(c) || IsPitOpening(c)) continue;
                 if (Grid[c] == CellType.StairLower || Grid[c] == CellType.StairUpper) continue;
 
+                // A LEVER MUST BE ON A FLOOR THE PLAYER CAN STAND ON, and nothing here checked
+                // that — so in a tall room levers were siting three storeys up in open air.
+                //
+                // THE NEAR SIDE IS GROUND-ONLY AND THAT IS THE SOFTLOCK INVARIANT (§4), not
+                // ergonomics. The reachability walk operates on open CELLS, and every storey of a
+                // tall room is open, so it happily reports a lever in mid air as "reachable from
+                // Start" — the walk cannot see that you would have to climb to it. An elevated
+                // NEAR lever is therefore a gate that reads as openable and may not be, which is
+                // exactly the state the whole gate design exists to make unrepresentable.
+                //
+                // The FAR side may sit one storey up, because reaching it by stacking the room's
+                // own props is emergent and worth keeping, and a far lever is redundancy (a
+                // safety valve for one-way routes) rather than the thing the run depends on.
+                // Portcullis levers are unaffected either way — they are corridor and prison
+                // cells only, which are one storey by construction.
+                int storeys = StoreysAboveFloor(c);
+                if (storeys > (nearSide ? 0 : LeverMaxStoreysFar)) continue;
+
                 bool already = false;
                 foreach (var lv in g.Levers) if (lv.Cell == c) { already = true; break; }
                 if (already) continue;
@@ -3861,7 +3910,8 @@ namespace DungeonGen
                     if (Grid.InBounds(wall) && Grid[wall] != CellType.Empty) continue;   // needs solid
                     if (IsCrawlwayMouthFace(c, d)) continue;                             // that face is a grate
 
-                    g.Levers.Add(new LeverSpec { Cell = c, WallDir = d, NearSide = nearSide });
+                    g.Levers.Add(new LeverSpec { Cell = c, WallDir = d, NearSide = nearSide,
+                                                 Elevated = storeys > 0 });
                     added++;
                     break;   // one face per cell — alternatives should be different PLACES
                 }

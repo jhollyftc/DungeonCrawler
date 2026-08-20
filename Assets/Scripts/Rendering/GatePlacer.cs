@@ -265,8 +265,11 @@ namespace DungeonGen
                     Vector3 face = new Vector3(spec.Cell.x + 0.5f + wallDir.x * 0.5f,
                                                spec.Cell.y,
                                                spec.Cell.z + 0.5f + wallDir.z * 0.5f) * cellSize;
+                    // An elevated lever is reached from ON TOP OF A PROP, not from the floor, so
+                    // the usual eye-height mount lands above the head of whoever climbed up.
+                    float mount = spec.Elevated ? kit.leverMountHeightElevated : kit.leverMountHeight;
                     Vector3 pos = face
-                                + Vector3.up * kit.leverMountHeight
+                                + Vector3.up * mount
                                 - (Vector3)wallDir * kit.leverWallGap
                                 + parent.position;
 

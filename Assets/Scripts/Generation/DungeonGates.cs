@@ -28,6 +28,16 @@ namespace DungeonGen
         public bool NearSide;
 
         /// <summary>
+        /// Sitting above the floor of a tall room, so it has to be climbed to.
+        ///
+        /// Only ever true on the FAR side (the near side is ground-only — see
+        /// AddLeverCandidates). The placer mounts these LOWER on the wall, because the player
+        /// reaches them standing on a prop rather than on the floor, and the usual eye-height
+        /// mount is then above the head of someone balanced on a crate.
+        /// </summary>
+        public bool Elevated;
+
+        /// <summary>
         /// Did a lever actually get BUILT here?
         ///
         /// The generator offers several candidate faces per side, because it cannot see which

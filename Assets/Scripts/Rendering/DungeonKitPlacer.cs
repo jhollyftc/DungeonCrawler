@@ -144,6 +144,8 @@ namespace DungeonGen
         public GameObject leverPrefab;
         [Tooltip("Height above the floor the lever mounts at, in metres.")]
         public float leverMountHeight = 1.35f;
+        [Tooltip("Mount height for a lever on an UPPER STOREY of a tall room, in metres. Lower than the normal one on purpose: the player reaches these standing on a crate or a table rather than on the floor, so an eye-height mount ends up above the head of whoever climbed up to it.\n\nOnly ever applies to FAR-side levers — a near lever is always sited on the floor, because the reachability walk cannot tell a climb from a walk and an unreachable near lever is a softlock.")]
+        public float leverMountHeightElevated = 0.85f;
         [Tooltip("Gap from the wall plane, in metres. Same role as a WallMounted prop's wallGap — the greybox collision is inset by wallMargin, so this needs to clear that too.")]
         public float leverWallGap = 0.12f;
         [Tooltip("Nudge for the portcullis in its OWN frame: Z along the corridor, X across it, Y up.")]
