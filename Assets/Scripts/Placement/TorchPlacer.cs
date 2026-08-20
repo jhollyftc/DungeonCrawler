@@ -48,8 +48,18 @@ namespace DungeonGen
         [Header("Disciplined shadows")]
         [Tooltip("Only the N torches nearest the camera cast shadows; the rest are shadowless fill lights. Point-light shadows are a 6-face cubemap each, so keep this small.")]
         public bool disciplinedShadows = true;
-        [Tooltip("Max torches casting shadows at once. 2-4 looks dramatic and stays cheap.")]
+        [Tooltip("Max torches casting shadows at once. 2-4 looks dramatic and stays cheap.\n\nWith 'View biased' on below you can run roughly HALF what you would otherwise need, because no slot is spent on a torch whose shadows land behind you.")]
         public int maxShadowCasters = 3;
+        [Tooltip("Give the caster slots to torches whose light can reach what you are LOOKING AT, rather than simply the nearest ones.\n\nWalking a corridor, about half the nearest torches are behind you and their shadows land where nobody can see them — with six slots that is half the budget on nothing, and each slot is a 6-face cubemap. This does not make shadows cheaper by itself; it lets you halve maxShadowCasters for the same perceived quality, which does.\n\nTested against the light's RADIUS, not its position, so a sconce just behind you still qualifies — that one is throwing your own shadow down the corridor ahead.\n\nSHADOWS ONLY. The lights themselves stay radius-culled: a torch behind you really does light the wall in front of you, and view-culling it would darken visible surfaces and pop as you turn.")]
+        public bool viewBiasedShadows = true;
+        [Tooltip("How much better a torch must score before it takes a caster slot from the one holding it. Needed because view bias makes the selection depend on where you are LOOKING, and turning on the spot reshuffles the ranking far faster than walking does — without a margin, two torches either side of the screen edge swap every update and their shadows blink.")]
+        [Range(0f, 0.5f)] public float shadowStealMargin = 0.15f;
+        [Tooltip("Fraction of a torch's light range used when asking whether it can reach what you are looking at — in practice, HOW FAR BEHIND YOU A TORCH MAY STILL HOLD A SHADOW SLOT.\n\nThe full radius is far too generous. Measured at range 12, it kept a torch 4m BEHIND the player ranked above one 10m in front: everything within 12m of the view counted as in-view, so the ranking silently collapsed back to nearest-first, which is what view bias was supposed to replace.\n\n0.35 of a 12m range means only torches within about 4m behind still qualify — enough to keep the one throwing your shadow down the corridor ahead, not enough to spend the budget on the room you just left. 1 restores the too-generous behaviour; lower values bias harder toward what is in front of you.")]
+        [Range(0.05f, 1f)] public float shadowViewRadiusFactor = 0.35f;
+        [Tooltip("How strongly to prefer torches IN FRONT of you when handing out caster slots. A torch is penalised by the square of how far behind the camera it sits.\n\nThe frustum test above is a CLIFF: once a torch passes it, ranking falls back to raw distance — measured, two torches ~3m BEHIND took both slots while one 4.8m in FRONT missed out, all three counting as in-view. This is the smooth version of the same intent, and it is what stops you re-tuning the radius factor every time room geometry changes.\n\nSquared, so it stays gentle for a sconce just off your shoulder — still throwing your shadow down the corridor ahead — and rises quickly for one you have walked well past. 0 disables it and leaves only the frustum cliff.")]
+        [Range(0f, 8f)] public float shadowFrontBias = 2f;
+        [Tooltip("Log the ranked shadow-caster selection every update: distance, camera-space Z (negative = BEHIND you), the light range the frustum test uses, whether it counted as in-view, and the final score. This is the view that separates \"the flag is off\" from \"the range is so large everything passes\" from \"it is working and that shadow is another torch\".")]
+        public bool debugShadowCasters;
         [Tooltip("Runtime toggle for ALL torch shadows, for A/B-ing the look against the cost without regenerating. None disables the key.\n\nThe state is STATIC and survives a regenerate — the same choice NpcPerceptionDebug's F4/F5 make, and for the same reason: a debug switch you have to re-press after every F1 gets used once and then abandoned.")]
         public KeyCode shadowToggleKey = KeyCode.F8;
 
@@ -71,6 +81,8 @@ namespace DungeonGen
         [Tooltip("Only torch lights within this distance of the camera are enabled. Sconce meshes are never hidden — only the lights and flicker toggle.")]
         public bool cullTorchLights = true;
         public float cullDistance = 30f;
+        [Tooltip("Metres over which a torch fades up from black to its full intensity as it comes into range, ending at cullDistance.\n\nTHIS IS WHAT LETS cullDistance COME IN. A hard on/off pop is what forces a generous cull radius; once the boundary is invisible the radius can be much shorter, which is the actual saving — every live torch is a Forward+ light and the nearest few are 6-face shadow cubemaps.\n\nDistance-driven rather than timed, so pacing back and forth across the edge stays smooth and it needs no hysteresis of its own. 0 restores the old hard cut.")]
+        public float cullFadeDistance = 6f;
         [Tooltip("Torches checked per frame, round-robin. Keeps the per-frame cost flat and tiny regardless of how many torches exist.")]
         public int cullChecksPerFrame = 750;
 
@@ -100,9 +112,15 @@ namespace DungeonGen
             {
                 culler = root.AddComponent<TorchCullingManager>();
                 culler.cullDistance = s.cullDistance;
+                culler.fadeDistance = s.cullFadeDistance;
                 culler.checksPerFrame = s.cullChecksPerFrame;
                 culler.disciplinedShadows = s.disciplinedShadows && s.shadows != LightShadows.None;
                 culler.maxShadowCasters = s.maxShadowCasters;
+                culler.viewBiasedShadows = s.viewBiasedShadows;
+                culler.shadowStealMargin = s.shadowStealMargin;
+                culler.shadowViewRadiusFactor = s.shadowViewRadiusFactor;
+                culler.shadowFrontBias = s.shadowFrontBias;
+                culler.debugShadowCasters = s.debugShadowCasters;
                 culler.shadowMode = s.shadows;
                 culler.shadowToggleKey = s.shadowToggleKey;
             }
@@ -524,6 +542,8 @@ namespace DungeonGen
     public class TorchCullingManager : MonoBehaviour
     {
         public float cullDistance = 30f;
+        [Tooltip("Set by TorchPlacer. Metres over which a torch fades in as it enters cull range.")]
+        public float fadeDistance = 6f;
         public int checksPerFrame = 750;
 
         [Tooltip("Set by TorchPlacer.")]
@@ -532,6 +552,16 @@ namespace DungeonGen
         public LightShadows shadowMode = LightShadows.Soft;
         [Tooltip("How often (seconds) to recompute which torches cast shadows.")]
         public float shadowUpdateInterval = 0.2f;
+        [Tooltip("Set by TorchPlacer. Bias the caster slots toward torches whose light can reach what you are looking at.")]
+        public bool viewBiasedShadows = true;
+        [Tooltip("Set by TorchPlacer. How much better a challenger must score to steal a caster slot.")]
+        public float shadowStealMargin = 0.15f;
+        [Tooltip("Set by TorchPlacer. Fraction of light range used by the frustum test.")]
+        public float shadowViewRadiusFactor = 0.35f;
+        [Tooltip("Set by TorchPlacer. How strongly to prefer torches in front of the camera.")]
+        public float shadowFrontBias = 2f;
+        [Tooltip("Set by TorchPlacer. Log the ranked caster selection each update.")]
+        public bool debugShadowCasters;
         [Tooltip("Set by TorchPlacer. None disables the runtime toggle.")]
         public KeyCode shadowToggleKey = KeyCode.F8;
 
@@ -554,7 +584,14 @@ namespace DungeonGen
         {
             public Light Light;
             public Behaviour Flicker; // may be null
+            public TorchFlicker Flick; // same component, typed, for SetBaseIntensity
             public Vector3 Pos;
+            /// <summary>Light range, cached so the frustum test needn't touch the native object.</summary>
+            public float Range;
+            /// <summary>Authored intensity at registration — what a fade of 1 restores.</summary>
+            public float FullIntensity;
+            /// <summary>Last fade applied, so an unchanged value writes nothing.</summary>
+            public float LastFade;
         }
 
         readonly System.Collections.Generic.List<Entry> entries
@@ -566,6 +603,14 @@ namespace DungeonGen
         // Reused scratch for the nearest-N shadow selection.
         readonly System.Collections.Generic.List<int> shadowCandidates
             = new System.Collections.Generic.List<int>();
+        readonly System.Collections.Generic.List<float> shadowScores
+            = new System.Collections.Generic.List<float>();
+        // Reused, because CalculateFrustumPlanes(Camera) allocates a fresh array every call and
+        // this runs several times a second.
+        readonly Plane[] frustumPlanes = new Plane[6];
+        // The camera the sweep last resolved. Held rather than re-fetched so the caster pass and
+        // the cull pass cannot disagree about which camera they are reasoning from.
+        Camera activeCam;
         readonly System.Collections.Generic.HashSet<Light> currentCasters
             = new System.Collections.Generic.HashSet<Light>();
         readonly System.Collections.Generic.List<Light> nextCasters
@@ -573,7 +618,20 @@ namespace DungeonGen
 
         public void Register(Light light, Behaviour flicker)
         {
-            entries.Add(new Entry { Light = light, Flicker = flicker, Pos = light.transform.position });
+            // The authored intensity is READ HERE, which is only correct because TorchPlacer has
+            // already assigned light.intensity AND pushed it through SetBaseIntensity by the time
+            // it registers. Reading it any earlier would capture the prefab's value instead of
+            // the room's palette — the same ordering trap that made intensityScale look dead.
+            entries.Add(new Entry
+            {
+                Light = light,
+                Flicker = flicker,
+                Flick = flicker as TorchFlicker,
+                Pos = light.transform.position,
+                Range = light.range,
+                FullIntensity = light.intensity,
+                LastFade = 1f,
+            });
         }
 
         // Sentinel rather than a bool: the FIRST Update must always apply, because TorchPlacer
@@ -600,6 +658,7 @@ namespace DungeonGen
             {
                 Camera cam = Camera.main;
                 if (cam == null) return;
+                activeCam = cam;
                 camPos = cam.transform.position;
                 haveCam = true;
                 SlicedSweep(camPos);
@@ -610,6 +669,7 @@ namespace DungeonGen
 #if UNITY_EDITOR
                 var sv = UnityEditor.SceneView.lastActiveSceneView;
                 if (sv == null || sv.camera == null) return;
+                activeCam = sv.camera;
                 camPos = sv.camera.transform.position;
                 haveCam = true;
                 if ((camPos - lastEditorCamPos).sqrMagnitude >= 4f)
@@ -682,29 +742,136 @@ namespace DungeonGen
             // Collect enabled torches within cull range, then keep the nearest
             // maxShadowCasters as casters. A partial selection sort avoids a
             // full sort of hundreds of lights.
+            // SLOTS GO TO TORCHES WHOSE LIGHT CAN REACH WHAT YOU ARE LOOKING AT.
+            //
+            // Ranking by raw distance alone spent slots on torches BEHIND the player, whose
+            // shadows land where nobody can see them — with six slots that was routinely half the
+            // budget, and each slot is a 6-face cubemap. Reallocating is free (same count, same
+            // cost); the SAVING comes from then being able to run fewer casters for the same
+            // perceived quality.
+            //
+            // THE TEST IS THE INFLUENCE SPHERE, NOT THE TORCH POSITION, and that distinction is
+            // what stops this being a regression. A sconce two metres behind you is out of frame
+            // but its 7m radius very much is not — it is what throws YOUR shadow down the corridor
+            // ahead, one of the better effects the dungeon produces. Testing position alone would
+            // discard exactly that. Only torches whose lit volume cannot touch the frustum at all
+            // are demoted.
+            //
+            // NB THIS IS FOR SHADOWS ONLY. The same test must never gate the LIGHTS: a torch
+            // behind you genuinely illuminates the wall in front of you, and culling by view
+            // would both darken visible surfaces and pop as you turn — which the distance fade
+            // cannot smooth, being driven by distance rather than angle.
+            bool useFrustum = viewBiasedShadows && activeCam != null;
+            Vector3 camForward = useFrustum ? activeCam.transform.forward : Vector3.forward;
+            if (useFrustum) GeometryUtility.CalculateFrustumPlanes(activeCam, frustumPlanes);
+
+            // Big enough that ANY in-view torch outranks EVERY out-of-view one, rather than
+            // merely being nudged ahead of it.
+            float outOfView = cullDistance * cullDistance * 4f;
+
             shadowCandidates.Clear();
+            shadowScores.Clear();
             float sq = cullDistance * cullDistance;
             for (int i = 0; i < entries.Count; i++)
             {
                 var e = entries[i];
                 if (e.Light == null || !e.Light.enabled) continue;
-                if ((e.Pos - camPos).sqrMagnitude <= sq)
-                    shadowCandidates.Add(i);
+                float dsq = (e.Pos - camPos).sqrMagnitude;
+                if (dsq > sq) continue;
+
+                // THE TEST RADIUS IS A FRACTION OF THE LIGHT RANGE, NOT THE WHOLE THING, and that
+                // fraction is the entire usefulness of this feature. Measured with a range of 12m,
+                // the full radius kept a torch 4m BEHIND the player ranked ahead of one 10m in
+                // front — it passed the sphere test comfortably, took no penalty, and then won on
+                // raw distance. Every torch within ~12m of the frustum was "in view", so the
+                // ranking silently collapsed back to nearest-first, which is what it was supposed
+                // to replace. Only at 12.3m behind did anything finally fail.
+                //
+                // A torch's light REACHES a long way; the question here is narrower — does enough
+                // of its influence land on screen to be worth a cubemap. The fraction is the
+                // answer to that, and it is authored because it depends on range, corridor width
+                // and how much of the shadow-thrown-forward effect you want to keep.
+                float score = dsq;
+                float testRadius = e.Range * Mathf.Clamp01(shadowViewRadiusFactor);
+                if (useFrustum && !SphereInFrustum(e.Pos, testRadius)) score += outOfView;
+
+                // A GRADED PENALTY FOR BEING BEHIND YOU, because the frustum test alone is a
+                // CLIFF. Once a torch passes it, ranking falls back to raw distance — so measured
+                // here, two torches 3.2m and 3.1m BEHIND took both slots while one 4.8m in FRONT
+                // missed out, all three "in view". Tightening the radius factor fixes one such
+                // case and leaves you re-tuning a threshold every time room geometry changes,
+                // because the question was never really "is it in the frustum" but "how much of
+                // this torch's usefulness is in front of me".
+                //
+                // Squared, so it is gentle for a sconce just off your shoulder — which is still
+                // throwing your shadow down the corridor ahead and worth a slot — and rises
+                // quickly for one you have walked well past. Dot against camera forward rather
+                // than InverseTransformPoint: same number, no managed-to-native call per
+                // candidate, and this runs over every torch in range several times a second.
+                if (useFrustum && shadowFrontBias > 0f)
+                {
+                    float behind = -Vector3.Dot(e.Pos - camPos, camForward);
+                    if (behind > 0f) score += behind * behind * shadowFrontBias;
+                }
+
+                // INCUMBENT BONUS — hysteresis, and it became necessary the moment selection
+                // started depending on camera ROTATION as well as position. §10b recorded that
+                // shadow casters need no steal margin where torch audio does; that was true while
+                // ranking was position-only, and turning on the spot reshuffles the set far faster
+                // than walking ever did. Without it, two torches either side of the frustum edge
+                // trade a slot every update and their shadows blink.
+                if (currentCasters.Contains(e.Light)) score *= (1f - Mathf.Clamp01(shadowStealMargin));
+
+                shadowCandidates.Add(i);
+                shadowScores.Add(score);
             }
 
             int keep = Mathf.Min(maxShadowCasters, shadowCandidates.Count);
 
-            // Selection-sort the nearest `keep` to the front.
+            // Partial selection sort: best `keep` to the front, avoiding a full sort of hundreds.
             for (int a = 0; a < keep; a++)
             {
                 int best = a;
-                float bestSq = Sq(shadowCandidates[a], camPos);
+                float bestScore = shadowScores[a];
                 for (int b = a + 1; b < shadowCandidates.Count; b++)
-                {
-                    float s = Sq(shadowCandidates[b], camPos);
-                    if (s < bestSq) { best = b; bestSq = s; }
-                }
+                    if (shadowScores[b] < bestScore) { best = b; bestScore = shadowScores[b]; }
+
                 (shadowCandidates[a], shadowCandidates[best]) = (shadowCandidates[best], shadowCandidates[a]);
+                (shadowScores[a], shadowScores[best]) = (shadowScores[best], shadowScores[a]);
+            }
+
+            // WHY A DEBUG THAT PRINTS THE RANKING RATHER THAN THE RESULT. "Torches behind me are
+            // casting" has several causes that look identical from the screen — the flag off, the
+            // wrong camera, a light range so large that everything passes the sphere test, or the
+            // selection working and the shadow belonging to a different torch. `z` is the torch
+            // in CAMERA SPACE, so negative is behind you: that one column separates "the test
+            // says in-view" from "it is actually in front of me", which is the disagreement at
+            // the heart of every one of those causes.
+            if (debugShadowCasters)
+            {
+                var dbg = new System.Text.StringBuilder();
+                dbg.Append($"[Torch] casters: viewBias={viewBiasedShadows} " +
+                           $"cam={(activeCam != null ? activeCam.name : "<null>")} " +
+                           $"useFrustum={useFrustum} keep={keep}/{shadowCandidates.Count} " +
+                           $"margin={shadowStealMargin} cull={cullDistance}");
+                int show = Mathf.Min(shadowCandidates.Count, keep + 4);
+                for (int a = 0; a < show; a++)
+                {
+                    var e = entries[shadowCandidates[a]];
+                    float d = Vector3.Distance(e.Pos, camPos);
+                    // THE SAME RADIUS THE SCORE USED, not the full range. Reporting the raw range
+                    // here once made the log contradict the ranking it was explaining — inView
+                    // read true beside a score that plainly carried the out-of-view penalty. Same
+                    // discipline as ComputeZones backing both the placer and its gizmo: a debug
+                    // view that can disagree with the code will, and then it costs a round.
+                    float testR = e.Range * Mathf.Clamp01(shadowViewRadiusFactor);
+                    bool inView = !useFrustum || SphereInFrustum(e.Pos, testR);
+                    float z = activeCam != null
+                        ? activeCam.transform.InverseTransformPoint(e.Pos).z : 0f;
+                    dbg.Append($"\n  {(a < keep ? "CAST" : "  - ")} d={d,5:0.0}m  z={z,6:0.0}  " +
+                               $"testR={testR:0.0}  inView={inView,-5}  score={shadowScores[a]:0}");
+                }
+                Debug.Log(dbg.ToString(), this);
             }
 
             // Apply: the front `keep` cast, and anything that was casting but
@@ -725,32 +892,85 @@ namespace DungeonGen
                 currentCasters.Add(nextCasters[a]);
         }
 
-        float Sq(int entryIndex, Vector3 camPos) =>
-            (entries[entryIndex].Pos - camPos).sqrMagnitude;
+        /// <summary>
+        /// Can a light at <paramref name="c"/> with radius <paramref name="r"/> touch the view?
+        /// Sphere against the six frustum planes — outside if it is fully behind any one of them.
+        /// </summary>
+        bool SphereInFrustum(Vector3 c, float r)
+        {
+            for (int i = 0; i < 6; i++)
+                if (frustumPlanes[i].GetDistanceToPoint(c) < -r) return false;
+            return true;
+        }
 
         void SlicedSweep(Vector3 camPos)
         {
-            float sq = cullDistance * cullDistance;
             int n = Mathf.Min(checksPerFrame, entries.Count);
             for (int k = 0; k < n; k++)
             {
                 cursor++;
                 if (cursor >= entries.Count) cursor = 0;
-                Apply(entries[cursor], camPos, sq);
+                Apply(cursor, camPos);
             }
         }
 
         void FullSweep(Vector3 camPos)
         {
-            float sq = cullDistance * cullDistance;
             for (int i = 0; i < entries.Count; i++)
-                Apply(entries[i], camPos, sq);
+                Apply(i, camPos);
         }
 
-        void Apply(in Entry e, Vector3 camPos, float sqDistance)
+        /// <summary>
+        /// Distance fade for a torch entering or leaving cull range.
+        ///
+        /// DISTANCE-DRIVEN, NOT A TIMER, and that is what makes it robust. A timed fade restarts
+        /// awkwardly when you cross the boundary twice — pace back and forth at the edge and it
+        /// stutters — whereas a fade derived from distance is monotonic, needs no per-entry clock,
+        /// and is symmetric in both directions for free. It is also its own hysteresis, which is
+        /// why there is no separate margin here the way DungeonRendererCulling needs one.
+        ///
+        /// IT MUST GO THROUGH `SetBaseIntensity`, NEVER `Light.intensity`. TorchFlicker captures
+        /// its base once and rewrites the light from that base EVERY Update, so it is a write-only
+        /// owner of that property (§5) and a direct assignment here would be discarded a frame
+        /// later with no error. Torches with no flicker are written directly, which is the only
+        /// case where that is correct.
+        ///
+        /// The payoff is being able to cull CLOSER: a hard pop is what forces a generous
+        /// cullDistance, and once the boundary is invisible the radius can come in.
+        /// </summary>
+        float FadeAt(in Entry e, Vector3 camPos)
         {
+            float dsq = (e.Pos - camPos).sqrMagnitude;
+            float cull = cullDistance;
+            if (dsq >= cull * cull) return 0f;
+            if (fadeDistance <= 0f) return 1f;
+
+            // Square-space early-out first, so the sqrt only runs for torches actually inside the
+            // fade shell — a thin band, against a sweep that visits hundreds of entries a frame.
+            float inner = Mathf.Max(0f, cull - fadeDistance);
+            if (dsq <= inner * inner) return 1f;
+            return Mathf.Clamp01((cull - Mathf.Sqrt(dsq)) / fadeDistance);
+        }
+
+        void Apply(int index, Vector3 camPos)
+        {
+            Entry e = entries[index];
             if (e.Light == null) return;
-            bool on = (e.Pos - camPos).sqrMagnitude < sqDistance;
+
+            float fade = FadeAt(e, camPos);
+            bool on = fade > 0f;
+
+            // Written only on a real change: at fade 1, which is nearly every torch in range,
+            // this costs one float compare rather than a managed-to-native property write.
+            if (on && !Mathf.Approximately(fade, e.LastFade))
+            {
+                float want = e.FullIntensity * fade;
+                if (e.Flick != null) e.Flick.SetBaseIntensity(want);
+                else e.Light.intensity = want;
+                e.LastFade = fade;
+                entries[index] = e;
+            }
+
             if (e.Light.enabled != on)
             {
                 e.Light.enabled = on;

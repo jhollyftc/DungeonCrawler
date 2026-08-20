@@ -1021,6 +1021,55 @@ the useful part: **the measurement noise is larger than the effect.** So décor 
 authoring decision, not a performance one — as long as new variants SHARE a material, since ten
 variants on ten materials is ten batches whatever the density, doubled by the outline pass (§6).
 
+**TORCHES FADE IN OVER DISTANCE RATHER THAN POPPING, AND THAT IS WHAT LETS THE CULL RADIUS COME
+IN** (`cullFadeDistance`). A hard on/off boundary is what forces a generous `cullDistance`; once
+the transition is invisible the radius can be much shorter, and every torch removed is a Forward+
+light with the nearest few costing a 6-face cubemap each.
+- **DISTANCE-DRIVEN, NEVER A TIMER.** A timed fade restarts awkwardly when you cross the boundary
+  twice — pace back and forth at the edge and it stutters. Derived from distance it is monotonic,
+  symmetric in both directions for free, needs no per-entry clock, and **is its own hysteresis**,
+  which is why it needs no margin where `DungeonRendererCulling` does.
+- **IT MUST GO THROUGH `TorchFlicker.SetBaseIntensity`, NEVER `Light.intensity`.** The flicker is
+  a write-only owner of that property (above), so a direct assignment is discarded a frame later
+  with no error — the same failure that once made `intensityScale` look dead. Torches with no
+  flicker are written directly, the only case where that is correct.
+- The authored intensity is captured at `Register`, which is only valid because `TorchPlacer`
+  assigns it and pushes it through `SetBaseIntensity` first. Reading it earlier would capture the
+  prefab's value rather than the room's palette.
+
+**SHADOW CASTER SLOTS ARE BIASED TOWARD WHAT YOU ARE LOOKING AT** (`viewBiasedShadows`), because
+ranking by raw distance spent about half of them on torches behind the player whose shadows land
+where nobody can see them. **It does not make shadows cheaper by itself** — same count, same
+cubemaps — **it lets `maxShadowCasters` be roughly HALVED for the same perceived quality**, and
+that does.
+- **IT IS SHADOWS ONLY. NEVER GATE THE LIGHTS THIS WAY.** A torch behind you genuinely
+  illuminates the wall in front of you, so view-culling the light would darken visible surfaces —
+  and it would POP as you turn, which the distance fade cannot smooth, being driven by distance
+  rather than angle.
+- **TWO TERMS, BECAUSE A FRUSTUM TEST ALONE IS A CLIFF, and the cliff was the bug.** The sphere
+  test (`shadowViewRadiusFactor`, a fraction of light range) only excludes torches far enough
+  behind to miss the view entirely; everything that passes then ranks on raw distance. Measured:
+  two torches ~3m BEHIND took both slots while one 4.8m in FRONT missed out, all three "in view".
+  `shadowFrontBias` adds a squared penalty on how far behind the camera a torch sits, which
+  expresses the actual intent smoothly and stops the radius factor needing a re-tune per room
+  shape. Squared so a sconce off your shoulder — still throwing your shadow down the corridor
+  ahead — keeps its slot.
+- **`shadowStealMargin` BECAME NECESSARY HERE, and §10b's note that it was not is now scoped.**
+  That entry says shadow casters need no steal margin where torch audio does; true while ranking
+  was position-only. Selection now depends on camera ROTATION, and turning reshuffles the set far
+  faster than walking ever did — without a margin, two torches either side of the frustum edge
+  trade a slot every update and their shadows blink.
+- **`debugShadowCasters` IS PERMANENT, AND IT EARNED THAT.** Four rounds of reasoning about this
+  from assumed geometry were all wrong; the log answered each in one line. It prints camera-space
+  Z (negative = behind you) beside the test radius actually used and the final score, which is
+  what separates "the flag is off" from "the range is so large everything passes" from "it works
+  and that shadow is another torch". **The `inView` it reports must be computed from the SAME
+  radius the score used** — reporting the raw range once made the log contradict the ranking it
+  was explaining, the failure `ComputeZones` avoids by backing both the placer and its gizmo.
+- Field lesson worth keeping: the authored `range` was **12m**, not the 7m default two rounds of
+  advice were reasoned from. That single number was why "torches behind me still cast" and every
+  explanation for it disagreed with what was on screen.
+
 **Torch culling (TorchCullingManager)** — sliced per-frame distance cull of torch
 lights + **disciplined shadows**: only the nearest `maxShadowCasters` (default 3)
 torches cast shadows; the rest are shadowless fill. **Point-light shadows are a
