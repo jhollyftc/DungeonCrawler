@@ -388,7 +388,7 @@ MonoBehaviour:
     floorPrefabs:
     - {fileID: 919132149155446097, guid: 96858aeb387787c4db583da72faf3840, type: 3}
     ceilingPrefabs:
-    - {fileID: 919132149155446097, guid: 78362f8b50845734b9868f3f3a0e313d, type: 3}
+    - {fileID: 919132149155446097, guid: 683c5e18ac200ad4485a7c6adc038a25, type: 3}
     lintelPrefabs: []
   roomOpenings:
   - type: 0
