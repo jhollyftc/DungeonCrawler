@@ -12,6 +12,11 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
+      name: Wall_Plain.002_Baked
+    second: {fileID: 2100000, guid: 89dff33a22668af429cdf5d30f1898ac, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
       name: dark gray stone
     second: {fileID: 2100000, guid: 0a41120931dd6864eaa47be662b6ffd6, type: 2}
   materials:

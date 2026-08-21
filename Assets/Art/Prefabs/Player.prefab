@@ -292,7 +292,7 @@ MonoBehaviour:
   climbHorizontalDamp: 0.35
   ladderFacingAngle: 75
   ladderReleaseAngle: 105
-  showControls: 1
+  showControls: 0
   overlayFontSize: 12
   maxDebugDepth: 20
   externalDamping: 7
