@@ -4383,6 +4383,40 @@ Cosmetic-first; combat is far off ("get the world together first").
   itself. Accepted residual risk: a pass throwing midway can leave shared state part-written (a
   half-claimed `WallFaceRegistry`, partial occupancy), which is the decide-before-mutating shape
   below — but those are cosmetic, and connectivity lives in the generator, which this never wraps.
+- **`if (x == null) x = GetComponent<T>()` CACHES SUCCESS BUT NOT FAILURE — A MISS RETRIES
+  FOREVER.** It reads as a cache and is one only when it works. Three sites had it; the worst was
+  in a method called from `OnGUI`, which Unity runs at least twice a frame. **A failed
+  GetComponent BUILDS ITS NULL-ERROR STRING**, so this measured as the single largest source of
+  garbage in the frame (39.4KB of 60.8KB) — from lookups whose result nobody could use. Latch the
+  attempt, not just the result. One retry after Awake is enough when the dependency self-installs
+  during Awake, because every Awake has run before the first Update.
+  **AND ONE OF THEM WAS HIDING A REAL BUG**: `ReverbDirector` looked for `PlayerRoomTracker` on
+  its OWN GameObject while its Awake admitted (via a `FindFirstObjectByType` fallback) that it
+  might not be on the visualizer, where the tracker self-installs. When they differed, `tracker`
+  stayed null, `Update` returned on the next line, and **reverb silently never ran**. §12's
+  "default whose failure is indistinguishable from correct wiring", in audio.
+- **`Renderer.sharedMaterials` ALLOCATES A COPY OF THE ARRAY ON EVERY ACCESS.** `NpcFace` read it
+  twice per eye slot per NPC per frame — once to bounds-check `.Length`, once while re-resolving —
+  and its comment called the method "cheap once correct (an index compare)", which was the wrong
+  model: the copy happens BEFORE the compare. Use `GetSharedMaterials(List<Material>)` into a
+  reused list, or cache the count. Total per-frame allocation fell 58KB → 2.3KB.
+- **GARBAGE IS NOT MERELY A CPU COST HERE — Unity runs incremental GC INSIDE
+  `TimeUpdate.WaitForLastPresentationAndUpdateTime`**, expecting idle time. A collection that
+  overruns eats the frame AND is reported under a name that reads like a GPU wait. Allocation
+  reduction is a stutter fix, not just hygiene.
+- **CHECK WHETHER A PROFILE IS THE EDITOR OR THE BUILD BEFORE READING ANYTHING ELSE.** Several
+  rounds of this investigation profiled the EDITOR while chasing a build-only stutter. The tells
+  are `EditorLoop` in the hierarchy and rows prefixed `EditorOnly` — and note that
+  `GetComponentNullErrorMessage` is `EditorOnly`, so a large allocation source visible in the
+  editor may not exist in a player at all. The Profiler's connection dropdown must say
+  `WindowsPlayer`, not `Playmode`.
+- **DEEP PROFILING ANSWERS *WHICH METHOD*, NEVER *HOW MUCH*.** It inflated
+  `InstancedDungeonRenderer.Update` ~15x (3.43ms deep vs 0.23ms real) and would have justified
+  building a spatial grid that measurement showed was worth 0.18ms. Use named `ProfilerMarker`s
+  and leave deep profiling off.
+- **"CPU Main Thread vs Render Thread" IN THE STATS PANEL IS A SPLIT OF CPU TIME BETWEEN THREADS,
+  NOT A SHARE OF THE FRAME.** Reading it as the latter produced a confident, wrong claim that the
+  main thread was the frame's floor, when scripts were 0.60ms against 1.89ms sitting idle.
 - **Two unrelated fixes in one file still get two commits.** Stage one, commit,
   restore the other, commit again — the history is what makes a field lesson findable
   later, and a combined commit buries one of them.

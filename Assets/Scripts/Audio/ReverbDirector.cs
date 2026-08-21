@@ -71,15 +71,45 @@ namespace DungeonGen
         {
             vis = GetComponent<DungeonVisualizer>();
             if (vis == null) vis = FindFirstObjectByType<DungeonVisualizer>();
-            tracker = GetComponent<PlayerRoomTracker>();
+            // A quiet first attempt: it legitimately fails when our Awake runs before the
+            // visualizer's, so it must NOT set triedTracker or warn — that is Update's one retry.
+            var host = vis != null ? vis.gameObject : gameObject;
+            tracker = host.GetComponent<PlayerRoomTracker>();
         }
+
+        /// <summary>
+        /// FROM THE VISUALIZER'S GameObject, NOT FROM THIS ONE — and that was a real bug, not a
+        /// tidy-up. `PlayerRoomTracker` self-installs from `DungeonVisualizer.Awake`, so it lives
+        /// wherever the VISUALIZER is; this component only usually shares that object, and Awake
+        /// above admits as much by falling back to a scene-wide search for the visualizer. When it
+        /// did not share it, `GetComponent` here returned null forever, `Update` returned early on
+        /// the next line, and **reverb silently never ran at all**.
+        ///
+        /// TRIED ONCE, THEN NEVER AGAIN, WHICH IS THE OTHER HALF. `if (x == null) x = GetComponent()`
+        /// looks like a cache but only caches SUCCESS: a failure retries for the lifetime of the
+        /// process. In a development build a failed GetComponent builds its null-error string
+        /// every time, which showed up as the single largest source of garbage in the frame —
+        /// 39.4KB, from a lookup whose result nobody could use. One retry after Awake is enough
+        /// by construction, because every Awake has run before the first Update.
+        /// </summary>
+        void ResolveTracker()
+        {
+            triedTracker = true;
+            var host = vis != null ? vis.gameObject : gameObject;
+            tracker = host.GetComponent<PlayerRoomTracker>();
+            if (tracker == null)
+                Debug.LogWarning("[Reverb] No PlayerRoomTracker on the DungeonVisualizer, so reverb " +
+                                 "cannot tell which space you are in and stays at its defaults.", this);
+        }
+        bool triedTracker;
 
         void Update()
         {
             if (mixer == null || vis == null) return;
-            // Re-resolve: PlayerRoomTracker self-installs from DungeonVisualizer.Awake, so on
-            // the first frame it may not exist yet. Same acquisition as AmbientDirector.
-            if (tracker == null) tracker = GetComponent<PlayerRoomTracker>();
+            // One retry after Awake: the tracker self-installs from DungeonVisualizer.Awake, which
+            // may run after ours. Bounded, because a failure that repeats is a warning, not a
+            // reason to keep asking.
+            if (tracker == null && !triedTracker) ResolveTracker();
             if (tracker == null) return;
 
             AudioSpace space = AudioSpace.Resolve(vis, tracker);

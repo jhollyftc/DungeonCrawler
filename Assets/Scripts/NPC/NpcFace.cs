@@ -77,6 +77,10 @@ namespace DungeonGen
         {
             [Tooltip("Renderer whose mesh includes the eye submesh — usually the SAME renderer as the rest of the goblin body (eyes are typically just one material SLOT among several on one SkinnedMeshRenderer, not a separate GameObject).")]
             public Renderer renderer;
+            /// <summary>How many material slots the renderer has, cached by ResolveEyeSlots so the
+            /// per-frame bounds check needs no allocating `sharedMaterials` read. NOT serialized:
+            /// it is derived runtime state, and a stale value from disk would be worse than none.</summary>
+            [NonSerialized] public int materialCount;
             [Tooltip("Material SLOT index (0-based, matches the order in the renderer's Materials list in the Inspector) that IS the eye material. -1 = auto-resolve from eyeMaterialAsset below by scanning this renderer's material list — leave it at -1 and just assign eyeMaterialAsset in the usual case.")]
             public int materialIndex;
         }
@@ -158,6 +162,8 @@ namespace DungeonGen
         Color pupilColorCur, scleraColorCur;
         float pupilSizeCur, scleraBrightCur;
         MaterialPropertyBlock eyeBlock;
+        // Reused by ResolveEyeSlots so GetSharedMaterials allocates nothing per call.
+        readonly List<Material> matScratch = new List<Material>();
         static readonly int PropBaseColor = Shader.PropertyToID("_BaseColor");
         static readonly int PropRimColor = Shader.PropertyToID("_RimColor");
         static readonly int PropRimAmount = Shader.PropertyToID("_RimAmount");
@@ -297,7 +303,10 @@ namespace DungeonGen
             {
                 Renderer r = eyeSlots[i].renderer;
                 int idx = eyeSlots[i].materialIndex;
-                if (r == null || idx < 0 || idx >= r.sharedMaterials.Length) continue;
+                // Bounds-checked against the COUNT CACHED by ResolveEyeSlots, which ran on the
+                // line above. Reading `r.sharedMaterials.Length` here allocated a whole copy of
+                // the material array just to look at its length — per slot, per NPC, per frame.
+                if (r == null || idx < 0 || idx >= eyeSlots[i].materialCount) continue;
 
                 r.GetPropertyBlock(eyeBlock, idx);
                 eyeBlock.SetColor(PropBaseColor, pupilColorCur);
@@ -325,13 +334,27 @@ namespace DungeonGen
                 EyeSlot slot = eyeSlots[i];
                 if (slot.renderer == null) continue;
 
-                Material[] mats = slot.renderer.sharedMaterials;
-                if (slot.materialIndex >= 0 && slot.materialIndex < mats.Length && mats[slot.materialIndex] == eyeMaterialAsset)
+                // `Renderer.sharedMaterials` ALLOCATES A FRESH ARRAY ON EVERY ACCESS, which made
+                // this method's "cheap once correct — an index compare" claim wrong: the copy
+                // happens BEFORE the compare. Called every frame, per eye slot, per visible NPC,
+                // it was a measurable share of the frame's garbage — and garbage is not free
+                // here, because Unity runs incremental GC inside the wait-for-presentation slot,
+                // so a collection that overruns eats the frame outright.
+                // GetSharedMaterials fills a reusable list instead and allocates nothing.
+                slot.renderer.GetSharedMaterials(matScratch);
+                if (slot.materialIndex >= 0 && slot.materialIndex < matScratch.Count
+                    && matScratch[slot.materialIndex] == eyeMaterialAsset)
+                {
+                    // Cached so ApplyEyes can bounds-check without touching the renderer at all.
+                    slot.materialCount = matScratch.Count;
+                    eyeSlots[i] = slot;
                     continue;   // already correct — no rescan needed
+                }
 
                 int found = -1;
-                for (int m = 0; m < mats.Length; m++)
-                    if (mats[m] == eyeMaterialAsset) { found = m; break; }
+                for (int m = 0; m < matScratch.Count; m++)
+                    if (matScratch[m] == eyeMaterialAsset) { found = m; break; }
+                slot.materialCount = matScratch.Count;
 
                 // Either way, WRITE BACK: on success the resolved index; on failure force
                 // -1 so ApplyEyes skips this slot instead of silently writing eye values

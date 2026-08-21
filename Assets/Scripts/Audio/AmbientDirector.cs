@@ -154,10 +154,25 @@ namespace DungeonGen
             tracker = GetComponent<PlayerRoomTracker>();
         }
 
+        bool triedTracker;
+
         void Update()
         {
             if (vis == null || vis.roomStyle == null) return;
-            if (tracker == null) tracker = GetComponent<PlayerRoomTracker>();
+            // ONE retry, then stop. `if (x == null) x = GetComponent()` caches only SUCCESS — a
+            // failure repeats every frame forever, and in a development build each failed
+            // GetComponent builds its null-error string, which measured as the largest single
+            // source of garbage in the frame. One retry after Awake is sufficient by
+            // construction: PlayerRoomTracker self-installs from DungeonVisualizer.Awake, and
+            // every Awake has run before the first Update.
+            if (tracker == null && !triedTracker)
+            {
+                triedTracker = true;
+                tracker = GetComponent<PlayerRoomTracker>();
+                if (tracker == null)
+                    Debug.LogWarning("[Ambient] No PlayerRoomTracker beside the DungeonVisualizer — " +
+                                     "ambience cannot tell which space you are in.", this);
+            }
 
             EnsureLayers();
 

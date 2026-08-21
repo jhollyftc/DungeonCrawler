@@ -574,13 +574,23 @@ namespace DungeonGen
         string CurrentRoomLabel()
         {
             if (dungeon == null || dungeon.Generator == null) return "-";
-            if (roomTracker == null) roomTracker = dungeon.GetComponent<PlayerRoomTracker>();
+            // ONE retry, then stop — this is called from OnGUI, which Unity runs at LEAST twice a
+            // frame (Layout and Repaint). `if (x == null) x = GetComponent()` caches only success,
+            // so a miss here repeated several times per frame forever, and a failed GetComponent
+            // in a development build builds its null-error string every time. Bounded, it is free.
+            if (roomTracker == null && !triedRoomTracker)
+            {
+                triedRoomTracker = true;
+                roomTracker = dungeon.GetComponent<PlayerRoomTracker>();
+            }
             if (roomTracker == null || !roomTracker.HasPlayer) return "-";
             roomTracker.Refresh();
             Room room = roomTracker.CurrentRoom;
             return room != null ? room.Type.ToString() : "Hallway";
         }
         PlayerRoomTracker roomTracker;
+        // Latched so a MISS is remembered too — see CurrentRoomLabel.
+        bool triedRoomTracker;
 
         /// <summary>
         /// Developer control list. Unity finds OnGUI by reflecting over the CLASS,
