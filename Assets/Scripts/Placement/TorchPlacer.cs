@@ -58,6 +58,10 @@ namespace DungeonGen
         [Range(0.05f, 1f)] public float shadowViewRadiusFactor = 0.35f;
         [Tooltip("How strongly to prefer torches IN FRONT of you when handing out caster slots. A torch is penalised by the square of how far behind the camera it sits.\n\nThe frustum test above is a CLIFF: once a torch passes it, ranking falls back to raw distance — measured, two torches ~3m BEHIND took both slots while one 4.8m in FRONT missed out, all three counting as in-view. This is the smooth version of the same intent, and it is what stops you re-tuning the radius factor every time room geometry changes.\n\nSquared, so it stays gentle for a sconce just off your shoulder — still throwing your shadow down the corridor ahead — and rises quickly for one you have walked well past. 0 disables it and leaves only the frustum cliff.")]
         [Range(0f, 8f)] public float shadowFrontBias = 2f;
+        [Tooltip("Seconds between recomputing WHICH torches cast shadows.\n\nEvery change to that set makes URP re-fit the additional-light shadow atlas, so this is the rate at which that work happens — raise it if shadow-related hitching appears, and it is the first thing to try (999 freezes the set entirely, which is the clean test for whether the churn is the cause).\n\nLower is more responsive as you turn and more re-fitting; higher means a torch can take a moment to start casting after it comes into view.")]
+        public float shadowUpdateInterval = 0.2f;
+        [Tooltip("How many torches may START casting shadows in a single update.\n\nPROMOTION IS THE EXPENSIVE PART — not holding the slot, and not the cubemap fill. Measured in a build, a spike frame spent 18.5ms of CPU in AdditionalLightsShadow against 2.8ms of GPU: Unity culling the whole scene against each newly-casting light, six times over for a point light's six faces. Steady state is cheap; the CHANGE is what costs.\n\n1 means turning a corner ramps its shadows in over a few updates rather than re-culling several lights in one frame. Raise it for snappier shadows and larger hitches; there is no point going above maxShadowCasters.")]
+        [Range(1, 8)] public int maxPromotionsPerUpdate = 1;
         [Tooltip("Log the ranked shadow-caster selection every update: distance, camera-space Z (negative = BEHIND you), the light range the frustum test uses, whether it counted as in-view, and the final score. This is the view that separates \"the flag is off\" from \"the range is so large everything passes\" from \"it is working and that shadow is another torch\".")]
         public bool debugShadowCasters;
         [Tooltip("Runtime toggle for ALL torch shadows, for A/B-ing the look against the cost without regenerating. None disables the key.\n\nThe state is STATIC and survives a regenerate — the same choice NpcPerceptionDebug's F4/F5 make, and for the same reason: a debug switch you have to re-press after every F1 gets used once and then abandoned.")]
@@ -116,6 +120,8 @@ namespace DungeonGen
                 culler.checksPerFrame = s.cullChecksPerFrame;
                 culler.disciplinedShadows = s.disciplinedShadows && s.shadows != LightShadows.None;
                 culler.maxShadowCasters = s.maxShadowCasters;
+                culler.shadowUpdateInterval = s.shadowUpdateInterval;
+                culler.maxPromotionsPerUpdate = s.maxPromotionsPerUpdate;
                 culler.viewBiasedShadows = s.viewBiasedShadows;
                 culler.shadowStealMargin = s.shadowStealMargin;
                 culler.shadowViewRadiusFactor = s.shadowViewRadiusFactor;
@@ -563,6 +569,8 @@ namespace DungeonGen
         public bool viewBiasedShadows = true;
         [Tooltip("Set by TorchPlacer. How much better a challenger must score to steal a caster slot.")]
         public float shadowStealMargin = 0.15f;
+        [Tooltip("Set by TorchPlacer. Max NEW casters admitted per update.")]
+        public int maxPromotionsPerUpdate = 1;
         [Tooltip("Set by TorchPlacer. Fraction of light range used by the frustum test.")]
         public float shadowViewRadiusFactor = 0.35f;
         [Tooltip("Set by TorchPlacer. How strongly to prefer torches in front of the camera.")]
@@ -886,10 +894,34 @@ namespace DungeonGen
 
             // Apply: the front `keep` cast, and anything that was casting but
             // isn't in the new set reverts to shadowless.
+            // PROMOTING A LIGHT TO CASTER IS THE EXPENSIVE OPERATION — NOT HOLDING THE SLOT, AND
+            // NOT THE CUBEMAP FILL. Measured in a build, a spike frame spent 18.5ms of CPU in
+            // `AdditionalLightsShadow` against 2.8ms of GPU: that is Unity culling the whole scene
+            // against the new light, six times over for a point light's six faces. Steady state
+            // is cheap; the CHANGE is what costs.
+            //
+            // So new casters are rationed. Incumbents are taken freely in ranked order and only
+            // `maxPromotionsPerUpdate` newcomers are admitted per pass, walking further down the
+            // ranking for incumbents to fill the remaining slots. Turning a corner then ramps its
+            // shadows in over a few updates instead of re-culling every light in one frame.
+            //
+            // A SHORT UPDATE INTERVAL IS NOT THE ALTERNATIVE FIX, though it looks like one:
+            // freezing the set (interval 999) removed the spikes and also meant a torch you walk
+            // up to never starts casting at all. Rationing keeps the responsiveness and drops the
+            // cost, which the interval alone cannot do.
             nextCasters.Clear();
-            for (int a = 0; a < keep; a++)
+            int promotions = 0;
+            for (int a = 0; a < shadowCandidates.Count && nextCasters.Count < keep; a++)
             {
                 var li = entries[shadowCandidates[a]].Light;
+                if (li == null) continue;
+
+                if (!currentCasters.Contains(li))
+                {
+                    if (promotions >= Mathf.Max(1, maxPromotionsPerUpdate)) continue;
+                    promotions++;
+                }
+
                 nextCasters.Add(li);
                 if (li.shadows != shadowMode) li.shadows = shadowMode;
                 currentCasters.Remove(li);

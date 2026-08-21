@@ -1154,6 +1154,39 @@ Remaining headroom is therefore GPU-side: triangle count (§28b — `Ceiling_Pla
 x 1006 instances is still 38% of the dungeon's geometry) and material count (399 set-pass calls
 against 472 draws).
 
+**ADDITIONAL-LIGHT SHADOW COST IS CASTER GEOMETRY x CASTING LIGHTS, AND IT IS PAID WHEN THE SET
+CHANGES — NOT CUBEMAP FILL, NOT ATLAS SIZE, NOT CASTER COUNT.** This is the corrected model; the
+per-batch `castShadows` entry above ("shadow-pass cost is geometry COUNT per cube face") was
+measured on the STATIC SHELL and is the wrong model for the caster set. Diagnosed from a
+development-build stutter over many rounds, so the eliminations are worth as much as the answer:
+- **NOT the atlas.** 4096 vs 1024 made no measurable difference to the spike (13.6ms both).
+  Atlas size is therefore a pure QUALITY dial here — raise it for crisper shadows at no cost.
+  Sizing rule: N casters x 6 faces must fit, so 10 casters = 60 tiles ≈ 512px per face at 4096.
+- **NOT garbage collection**, though it looked like it: Unity runs incremental GC INSIDE
+  `TimeUpdate.WaitForLastPresentationAndUpdateTime`, so a collection that overruns is reported
+  under a name that reads like a GPU wait. One capture genuinely was GC; most were not.
+- **NOT frame pacing**, though `DXGI.WaitOnSwapChain` at ~31ms against 4.7ms of GPU says exactly
+  that. `WaitForLastPresentation` sits at the START of a frame and waits on the PREVIOUS one, so
+  it is an ECHO of a slow frame, not a cause. vSync is off (`vSyncCount: 0`).
+- **NOT shader/PSO compilation.** Spikes reproduced identically on a second pass over the same
+  corridor; one-time compilation does not.
+- **IT IS `AdditionalLightsShadow`**, 18.5ms of CPU against 2.8ms of GPU on a spike frame — Unity
+  processing shadow casters against each newly-casting light, six times over for a point light.
+  It scales with the GEOMETRY eligible to cast: halving `shadowDistance` 18m → 10m halved it
+  (13.6 → 7.8ms), and at 10m even **10 casters** run clean where 3 casters at 18m spiked.
+  **So `shadowDistance` is the budget dial and `maxShadowCasters` is nearly free once it is
+  bounded** — the opposite of the assumption the disciplined-shadow system was built on.
+- **`maxPromotionsPerUpdate` rations the CHANGE**, because promotion is what costs and steady
+  state is cheap. Freezing the set (`shadowUpdateInterval` 999) also removes the spikes and is
+  NOT the fix: a torch you walk up to then never starts casting at all. Rationing keeps the
+  responsiveness and drops the cost; the interval alone can only trade one for the other.
+- **A CASTER RADIUS MUST EXCEED THE SHADOW-RECEIVE DISTANCE, because a caster sits BETWEEN the
+  light and what it shadows.** Roughly `m_ShadowDistance + light range` is the safe figure; in
+  practice it is far more conservative than what reads on screen (10m works against a 15m shadow
+  distance and a 12m range). Verify by looking at a torch near the edge of range, not by formula.
+- **`shadowViewRadiusFactor` IS A FRACTION OF LIGHT RANGE**, so retuning `TorchSettings.range`
+  silently moves the view-bias cutoff — 0.35 is 4.2m at range 12 and 3.15m at range 9.
+
 **Torch culling (TorchCullingManager)** — sliced per-frame distance cull of torch
 lights + **disciplined shadows**: only the nearest `maxShadowCasters` (default 3)
 torches cast shadows; the rest are shadowless fill. **Point-light shadows are a
