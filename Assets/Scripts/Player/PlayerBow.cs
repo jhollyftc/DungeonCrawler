@@ -222,7 +222,10 @@ namespace DungeonGen
             if (held)
             {
                 draw = Mathf.Min(1f, draw + Time.deltaTime / Mathf.Max(0.01f, drawTime));
-                if (controller != null) controller.moveScaleOverride = drawMoveScale;
+                // Requested every frame the draw is held. No matching reset anywhere: the request
+                // expires on its own, which is what stops a weapon swap or a death mid-draw from
+                // stranding the player slow — and what stops the melee charge clobbering it.
+                if (controller != null) controller.RequestMoveScale(drawMoveScale);
                 if (hasDrawAmount) animator.SetFloat(DrawAmountParam, draw);
                 return;
             }
@@ -427,7 +430,6 @@ namespace DungeonGen
             draw = 0f;
             if (hasDraw && animator != null) animator.SetBool(DrawParam, false);
             if (hasDrawAmount && animator != null) animator.SetFloat(DrawAmountParam, 0f);
-            if (controller != null) controller.moveScaleOverride = 1f;
         }
     }
 }

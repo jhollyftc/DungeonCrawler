@@ -19,6 +19,8 @@ namespace DungeonGen
         public float jumpHeight = 1.1f;
         public float gravity = -20f;
         public float lookSensitivity = 2.2f;
+        [Tooltip("Speed multiplier when moving BACKWARD. Scales with how backward the input is, so a pure retreat pays in full, a pure strafe pays nothing, and a diagonal is proportionate — a threshold would snap between the two and let you dodge the penalty by strafing at 89 degrees.\n\nBacking away should be a commitment, not a free reposition. 1 = no penalty.")]
+        [Range(0.2f, 1f)] public float backwardSpeedMultiplier = 0.5f;
         public float maxSlopeAngle = 45f;
         public float maxStepHeight = 0.5f;
 
@@ -63,8 +65,40 @@ namespace DungeonGen
         [Tooltip("Log per-frame intended vs actual horizontal displacement when it gets corrected — diagnostic for crowd-push investigations.")]
         public bool debugPush = false;
 
-        /// <summary>External move-speed multiplier (1 = normal). Set by e.g. PlayerMelee to slow the player while charging a heavy swing. Reset to 1 when done.</summary>
-        public float moveScaleOverride { get; set; } = 1f;
+        /// <summary>
+        /// Ask to be slowed this frame. Multipliers COMPOSE, and the request expires on its own.
+        ///
+        /// THIS REPLACES A SETTABLE `moveScaleOverride` THAT WAS ALREADY BROKEN WITH TWO WRITERS.
+        /// That property was a LATCH whose contract was "reset it to 1 when done" — so drawing the
+        /// bow (0.65) and then charging a heavy swing (0.5) had each clobber the other, and
+        /// releasing the charge reset the player to FULL SPEED while still drawing. The same latch
+        /// shape that stuck a sword mid-pose through `ViewmodelSway.SetAttackPose`, and the reason
+        /// `PlayerFov`, `CameraKick.SetSustained` and `PlayerVignette` are all frame-stamped.
+        ///
+        /// MULTIPLICATIVE, NOT ADDITIVE — unlike PlayerFov, whose offsets sum. Two independent
+        /// reasons to be at half speed should leave you at a quarter, not at zero: summing
+        /// penalties can reach a dead stop from two individually reasonable values, while
+        /// multiplying them cannot. It also means order never matters and no caller needs to know
+        /// what else is asking.
+        ///
+        /// Stop calling and full speed returns immediately, so a caller that dies mid-effect (a
+        /// weapon swap, the player dying, a regenerate) cannot strand the player crawling.
+        /// </summary>
+        public void RequestMoveScale(float multiplier)
+        {
+            if (moveScaleFrame != Time.frameCount)
+            {
+                moveScaleFrame = Time.frameCount;
+                pendingMoveScale = 1f;
+            }
+            pendingMoveScale *= Mathf.Clamp(multiplier, 0.01f, 1f);
+        }
+
+        float pendingMoveScale = 1f;
+        int moveScaleFrame = -1;
+
+        /// <summary>The combined multiplier asked for this frame, or 1 if nobody asked.</summary>
+        public float MoveScale => moveScaleFrame >= Time.frameCount - 1 ? pendingMoveScale : 1f;
 
         /// <summary>
         /// Add a one-shot horizontal velocity that decays over the next moment — a
@@ -311,7 +345,23 @@ namespace DungeonGen
             // Carrying something heavy drags you down — mass is the one dial for
             // weight across carry lag, throw force, and now movement.
             if (carry != null) speed *= carry.CarrySpeedMultiplier;
-            speed *= moveScaleOverride;   // e.g. charging a heavy swing
+            // Everything currently asking to slow us: a drawn bow, a charging heavy swing, a
+            // heavy weapon in hand. Composed by RequestMoveScale rather than fought over.
+            speed *= MoveScale;
+
+            // BACKPEDALLING IS SLOW, AND IT SCALES WITH HOW BACKWARD YOU ARE rather than being a
+            // flag. A threshold ("is z negative") would make a diagonal retreat snap between full
+            // and half speed as the stick crosses an invisible line, and would let a player
+            // sidestep the penalty entirely by strafing at 89 degrees. Interpolating on the
+            // backward COMPONENT means a pure retreat pays in full, a pure strafe pays nothing,
+            // and everything between is proportionate — which is also what makes backing away
+            // from a goblin feel committed rather than free.
+            //
+            // Applied to the whole vector, not just its z: at half speed a diagonal retreat should
+            // stay a diagonal, and scaling one axis would bend the direction you actually travel
+            // away from the direction you asked for.
+            if (backwardSpeedMultiplier < 1f && input.z < 0f)
+                speed *= Mathf.Lerp(1f, backwardSpeedMultiplier, Mathf.Clamp01(-input.z));
             Vector3 horizontal = transform.TransformDirection(input) * speed;
 
             // How hard we're TRYING to move (before the world blocks it) — the push

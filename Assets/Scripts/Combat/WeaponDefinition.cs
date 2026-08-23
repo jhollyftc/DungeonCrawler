@@ -55,6 +55,9 @@ namespace DungeonGen
         [Tooltip("Poise chipped per hit. Enough repeated hits break poise and cause a major stagger.")]
         public float poiseDamage = 25f;
 
+        [Tooltip("Move-speed multiplier while this weapon is held — a greatsword should cost mobility a dagger does not.\n\nHELD, not swung: it applies continuously, so weight is something you feel walking around rather than only at the moment of an attack. That is what makes choosing a heavy weapon a real trade instead of a pure upgrade, and it composes with the backpedal penalty, so retreating with a greatsword is genuinely committed.\n\nNOT pushed through ApplyTo — see the note there. This one describes the PLAYER's movement, not the blade's reach, so PlayerWeaponSlots requests it each frame instead. 1 = weightless.")]
+        [Range(0.3f, 1f)] public float moveSpeedMultiplier = 1f;
+
         [Header("Timing")]
         [Tooltip("Seconds from input to the sweep. Ignored when MeleeAttack.sweepFromAnimationEvent is on, where the clip's impact frame decides instead.")]
         public float windup = 0.45f;

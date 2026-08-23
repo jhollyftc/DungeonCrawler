@@ -2654,6 +2654,37 @@ Formula-driven with authored override points (the user's explicit choice).
     velocity the shield bash lunges with, so it folds into the one `cc.Move` and cannot push
     the player through a wall. **Forward, not recoil**: physically a heave shoves you back,
     but from inside the head that reads as being pushed rather than as throwing.
+- **MOVE SPEED HAS FOUR OWNERS AND THEY COMPOSE BY MULTIPLICATION
+  (`FirstPersonController.RequestMoveScale`).** Backpedalling, weapon weight
+  (`WeaponDefinition.moveSpeedMultiplier`), a drawn bow and a charging heavy swing all slow the
+  player, and each asks per frame rather than setting a value.
+  **IT REPLACED A `moveScaleOverride` LATCH THAT WAS ALREADY BROKEN WITH TWO WRITERS.** Its
+  contract was "reset it to 1 when done", so drawing the bow (0.65) and then charging a heavy
+  swing (0.5) clobbered each other, and releasing the charge restored FULL SPEED while the bow was
+  still drawn. Same latch shape as `ViewmodelSway.SetAttackPose` sticking a sword mid-pose, and
+  the reason `PlayerFov`, `CameraKick.SetSustained` and `PlayerVignette` are frame-stamped. Stop
+  asking and full speed returns, so a weapon swap or a death mid-charge cannot strand the player.
+  **MULTIPLICATIVE, DELIBERATELY UNLIKE `PlayerFov` WHOSE OFFSETS SUM.** Two independent reasons
+  to be at half speed should leave you at a quarter, not stopped: summed penalties reach a dead
+  stop from two individually reasonable values, and multiplying makes order irrelevant.
+  **BACKPEDAL SCALES WITH THE BACKWARD COMPONENT, NOT A THRESHOLD.** A flag would snap between
+  full and half speed as the stick crossed an invisible line, and would let a player dodge the
+  penalty entirely by strafing at 89 degrees. It multiplies the WHOLE vector, not just z, or a
+  diagonal retreat bends away from the direction actually requested.
+  **WEAPON WEIGHT IS NOT PUSHED THROUGH `ApplyTo`.** That method carries what describes the BLADE
+  into `MeleeAttack`; how fast the PLAYER walks is not a property of the swing. `PlayerWeaponSlots`
+  requests it each frame instead, and ONLY while the melee slot is active — `CurrentMelee` stays
+  set while the bow is out, so otherwise a greatsword on your back would slow you while holding a
+  bow and stack invisibly with the bow's own draw penalty.
+- **`PlayerVignette`** — the single owner of the screen vignette, same frame-stamped contract as
+  `PlayerFov`. Written as an owner on its FIRST consumer (the bow's aim) precisely because FOV was
+  not: that started as two lazily-captured bases and only broke when a third consumer appeared.
+  **It drives a RUNTIME `VolumeProfile`'s WEIGHT, never the project's shared profile** — a
+  `VolumeProfile` is an ASSET, so writing to the global one at runtime edits it on disk and the
+  change survives play mode. Weight also IS the fade (0 contributes nothing, 1 fully) and blends
+  over the global profile rather than overwriting it. Its GameObject's layer is DERIVED from the
+  camera's `volumeLayerMask`, because a volume on an excluded layer is ignored silently while
+  looking correctly configured — the same trap the viewmodel overlay avoids by copying its mask.
 - **Encumbrance** — one mass signal, `PlayerCarry.CarryLoad01` (0 below
   `freeCarryMass`, 1 at `heavyCarryMass`), drives EVERYTHING that means "heavy":
   carry lag, move-speed penalty (`CarrySpeedMultiplier`), turn-rate penalty

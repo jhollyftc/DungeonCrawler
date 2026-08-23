@@ -88,6 +88,34 @@ namespace DungeonGen
         Camera cam;
         CharacterController cc;
 
+        /// <summary>
+        /// A held weapon's weight, asked for every frame it is in hand.
+        ///
+        /// HERE RATHER THAN IN `WeaponDefinition.ApplyTo`, and the distinction is the one that
+        /// entry already draws: `ApplyTo` pushes what describes the BLADE — damage, reach, sweep
+        /// geometry — into `MeleeAttack`. How fast the PLAYER walks is not a property of the
+        /// weapon's swing, and pushing it through the attack component would put a movement
+        /// concern inside the thing that decides what a hit does.
+        ///
+        /// CONTINUOUS, NOT ON EQUIP, because it is a request rather than a setting: the controller
+        /// composes it with the backpedal penalty, a drawn bow and a charging heavy swing, and
+        /// none of them need to know about each other. It also means dropping the weapon, dying or
+        /// swapping mid-swing restores speed with nothing to remember to reset.
+        ///
+        /// ONLY WHILE THE MELEE SLOT IS ACTIVE. `CurrentMelee` stays set while the bow is out —
+        /// it is what you return TO — so weighing the player down for a greatsword on their back
+        /// while they hold a bow would be wrong, and would silently stack with the bow's own draw
+        /// penalty.
+        /// </summary>
+        void Update()
+        {
+            if (CurrentMelee == null || CurrentMelee.moveSpeedMultiplier >= 1f) return;
+            if (loadout != null && loadout.Current != PlayerLoadout.Slot.Melee) return;
+            if (controller == null) controller = GetComponentInParent<FirstPersonController>();
+            if (controller != null) controller.RequestMoveScale(CurrentMelee.moveSpeedMultiplier);
+        }
+        FirstPersonController controller;
+
         void Awake()
         {
             if (loadout == null) loadout = GetComponent<PlayerLoadout>();

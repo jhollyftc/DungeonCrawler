@@ -387,7 +387,7 @@ namespace DungeonGen
                 // WIND UP, then HOLD: chargeT walks the swing's own windup at its own
                 // pace and stops at windupEnd (the fully coiled pose). Not a snap —
                 // the sword visibly draws back and waits there, trembling.
-                if (controller != null) controller.moveScaleOverride = chargeMoveScale;
+                if (controller != null) controller.RequestMoveScale(chargeMoveScale);
                 chargeT = Mathf.Min(chargeT + Time.deltaTime / Mathf.Max(0.05f, heavySwing.duration),
                                     heavySwing.windupEnd);
 
@@ -400,8 +400,7 @@ namespace DungeonGen
                 return;
             }
 
-            // Released.
-            if (controller != null) controller.moveScaleOverride = 1f;
+            // Released. No move-scale reset needed — the request is frame-stamped and lapses.
             charging = false;
             tension = 0f;
 
@@ -1317,7 +1316,6 @@ namespace DungeonGen
                 guard.OnParried -= HandleGuardParried;
             }
             blockShakeTime = 0f;   // don't resume a half-finished ring after a weapon swap
-            if (charging && controller != null) controller.moveScaleOverride = 1f;
             charging = false;
             returning = false;
             tension = 0f;
