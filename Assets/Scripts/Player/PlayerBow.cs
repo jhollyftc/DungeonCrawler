@@ -75,6 +75,10 @@ namespace DungeonGen
         public float drawFovZoom = 9f;
         [Tooltip("FOV change speed (deg/sec) in and out of the aim zoom. Slower than the draw itself reads as the focus settling; faster than it reads as a snap-zoom.")]
         public float drawFovSpeed = 70f;
+        [Tooltip("How much of PlayerVignette's authored vignette to fade in at full draw. The darkened edges narrow attention toward the reticle, doing in the periphery what the FOV zoom does to the centre — and like the zoom it tracks the live draw, so letting down eases it away. 0 = off.\n\nThe COLOUR, INTENSITY and SMOOTHNESS live on PlayerVignette, not here: it is one screen effect with one look, and several systems will eventually want it (low health, drowning). This is only how hard the bow asks for it.")]
+        [Range(0f, 1f)] public float drawVignette = 1f;
+        [Tooltip("Vignette fade speed, in weight per second. Slower than the draw reads as the world closing in around the shot.")]
+        public float drawVignetteSpeed = 3f;
 
         [Header("Input")]
         public int fireMouseButton = 0;
@@ -99,6 +103,7 @@ namespace DungeonGen
         FirstPersonController controller;
         PlayerCarry carry;
         PlayerFov fov;      // the single owner of the WORLD camera FOV (never the viewmodel overlay)
+        PlayerVignette vignette;   // likewise the single owner of the screen vignette
         bool hasDraw, hasDrawAmount, hasRelease;
         bool releaseIsTrigger;          // see the parameter scan in Awake
         bool clearReleaseNextUpdate;    // bool-authored Release needs manual clearing
@@ -133,6 +138,7 @@ namespace DungeonGen
             // Same resolution order PlayerMelee uses for its bash FOV kick, so both find the
             // same WORLD camera and can't end up driving different ones.
             fov = PlayerFov.Ensure(this);
+            vignette = PlayerVignette.Ensure(this);
 
             if (animator != null && animator.runtimeAnimatorController != null)
             {
@@ -359,6 +365,14 @@ namespace DungeonGen
         /// </summary>
         void TickDrawFov()
         {
+            // The vignette rides the same live draw as the zoom — one is the centre of the frame
+            // tightening, the other the edges closing in, and they must ease together or they read
+            // as two effects. Requested every frame it is wanted and never cleared explicitly:
+            // PlayerVignette is frame-stamped, so letting down, swapping weapon, dying or
+            // regenerating all ease it away for free.
+            if (vignette != null && drawVignette > 0f && drawing && draw > 0f)
+                vignette.Request(drawVignette * draw, drawVignetteSpeed);
+
             if (fov == null || drawFovZoom == 0f) return;
 
             // REQUESTED, not written. PlayerFov owns the camera's FOV and eases home on its
