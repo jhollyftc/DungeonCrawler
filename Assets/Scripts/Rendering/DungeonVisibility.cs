@@ -120,10 +120,14 @@ namespace DungeonGen
             frontier.Clear();
             frontierDepth.Clear();
 
-            // STANDING SOMEWHERE THE GRID CALLS SOLID IS A REAL STATE, NOT AN ERROR. The camera is
-            // at eye height and can resolve to a cell whose floor is a storey down, and a crawlway
-            // bore is `Empty` to the grid while very much being somewhere you stand. Marking
+            // STANDING SOMEWHERE THE GRID CALLS SOLID IS A REAL STATE, NOT AN ERROR — the camera
+            // sits at eye height and can resolve to a cell whose floor is a storey down. Marking
             // everything visible is the right answer, per failing open above.
+            //
+            // A CRAWLWAY BORE USED TO LAND HERE AND NO LONGER DOES: `IsOpen` now recognises one,
+            // so crawling through a tube floods properly from inside it instead of giving up and
+            // drawing the whole dungeon. Worth knowing, because this fallback firing constantly
+            // was masking the bug — from inside a bore everything looked correct.
             if (!gen.Grid.InBounds(start) || !IsOpen(start))
             {
                 MarkAll();
@@ -155,7 +159,28 @@ namespace DungeonGen
             Dilate();
         }
 
-        bool IsOpen(Vector3Int c) => gen.Grid[c] != CellType.Empty;
+        /// <summary>
+        /// Can the fill travel through this cell — which is NOT the same question as
+        /// `Grid[c] != Empty`, and assuming it was is a bug this project has now produced
+        /// repeatedly.
+        ///
+        /// **A CRAWLWAY BORE IS `CellType.Empty`.** That is the whole point of its design (§4):
+        /// its cells stay Empty so the mesher, the kit placer, `NeedsSlabBetween`, the automap and
+        /// every `!= CellType.Empty` test treat it as solid rock and never emit 3m masonry into a
+        /// 1.5m tube. Identity lives in `IsCrawlwayCell`, not in the grid — so a visibility fill
+        /// keyed on CellType alone walls off the entire sewer network, and every pipe inside it
+        /// tests as hidden. Field-reported as pipes vanishing while plainly in view and popping in
+        /// only when you got close, which is the dilation reaching them or the fill's
+        /// standing-in-solid-rock fallback firing once you were inside the bore.
+        ///
+        /// Manhole shafts are bore cells too and were broken the same way.
+        ///
+        /// Everything else that is "grid-invisible" happens to be fine already: alcoves and sewer
+        /// chambers are typed `Hallway`, and pit interiors are typed `Room`. Crawlways are the one
+        /// space whose identity the grid genuinely does not carry — which is exactly why it is the
+        /// one that broke.
+        /// </summary>
+        bool IsOpen(Vector3Int c) => gen.Grid[c] != CellType.Empty || gen.IsCrawlwayCell(c);
 
         /// <summary>
         /// Grow the visible set by one cell in every direction, DIAGONALS INCLUDED.

@@ -449,6 +449,16 @@ GEOMETRY rather than by a rule anyone maintains** — an escape route they canno
   finds DISABLED components, so a merely-disabled grate still offers its prompt on an opening
   with no bars left to pull. Worth knowing for anything else being "turned off" that an
   interactor might still resolve.
+- **ANY TRAVERSAL OR VISIBILITY QUERY MUST ASK FOR CRAWLWAYS EXPLICITLY — `Grid[c] != Empty` IS
+  NOT "CAN I GO THERE".** `DungeonVisibility`'s flood fill keyed on CellType alone, so it walled
+  off the ENTIRE sewer network and every pipe inside tested as hidden; field-reported as pipes
+  vanishing in plain view and popping in at close range, which was the 26-neighbour dilation
+  reaching them. Manhole shafts broke identically. **And the bug hid itself**: standing INSIDE a
+  bore made the fill's start cell read as solid, firing its mark-everything-visible fallback, so
+  from inside a crawlway everything looked perfect and only the view from OUTSIDE was wrong.
+  Every other grid-invisible space is fine by accident — alcoves and chambers are typed `Hallway`,
+  pit interiors `Room` — so crawlways are the ONE space whose identity the grid does not carry,
+  which is why they are the one that breaks. Ask `IsCrawlwayCell`.
 - **`RecessFits` CANNOT SEE TUNNELS.** It tests `Grid[pos] != CellType.Empty`, and a bore cell
   IS Empty — the grid-invisible design again — so a chamber footprint will swallow the tunnel it
   hangs off and pipes render straight through the room. Filtered at the CALLER: teaching
