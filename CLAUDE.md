@@ -697,6 +697,20 @@ prior art — it likewise handles a face between two open cells):
   excludes the shaft's side walls for free: the sealed 13-cell stair envelope keeps everything
   below-outward solid, so no slab edge exists there.
 
+**`mesh.bounds.extents.magnitude` IS A RADIUS ABOUT `bounds.center`, NOT ABOUT THE PIVOT — and
+this project's pieces are BASE-ORIGIN, so the two are metres apart.** `InstancedDungeonRenderer`
+used it as a cull radius about the instance ORIGIN, which for a 3m stair or ladder fell short by
+the ~1.5m its bounds centre sits above the pivot: the sphere enclosed empty air below the piece
+instead of the piece. Field-reported as **stairs and ladders vanishing when you stand at the top
+and pitch down** — their pivot is at your feet and leaves the frustum long before the geometry
+does, so an undersized sphere culls something filling the screen. It surfaced on stairs and
+ladders because they are the tallest things you stand directly on top of; columns, arches and
+bridges had the same fault less visibly. The radius is `bounds.center.magnitude +
+bounds.extents.magnitude`. **PITCH WAS THE CLUE**: occlusion is cell-based and only rebuilds when
+you change cell, so a fault that triggers on looking around can only be the frustum test.
+The same value pads the shadow submission's tight bounds, so every base-origin caster was also
+under-padded — the flickering-contact-shadow failure that entry warns about, shipping unnoticed.
+
 **TWO ORIGIN CONVENTIONS COEXIST — check which one a new piece belongs to.** `Emit` adds
 `globalVisualOffset` to every piece routed through it (walls, floors, ceilings, arches,
 stairs, and **lintels**, which must line up with the walls and ceilings they blend). Pieces

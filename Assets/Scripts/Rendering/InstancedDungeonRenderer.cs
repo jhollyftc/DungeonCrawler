@@ -167,7 +167,22 @@ namespace DungeonGen
                 // divide and three floors, which is nothing once and ~20k times a frame is not.
                 b.Cells.Add(visibility != null ? visibility.IndexOf(p) : -1);
 
-                float r = part.mesh.bounds.extents.magnitude * MaxScale(m) + 0.5f;
+                // RADIUS ABOUT THE PIVOT, NOT ABOUT THE BOUNDING-BOX CENTRE — and the difference
+                // is a real bug, not a rounding concern. `bounds.extents.magnitude` alone is the
+                // radius of a sphere centred on `bounds.center`, while everything downstream
+                // (the frustum test, the shadow bounds padding) treats it as a radius about the
+                // INSTANCE ORIGIN. Kit pieces are base-origin by convention (golden rule 2), so a
+                // 3m stair or ladder carries a bounds centre ~1.5m above its pivot and the sphere
+                // fell short by exactly that — enclosing empty air below the piece instead of the
+                // piece.
+                //
+                // Field-reported as stairs and ladders vanishing when you stand at the top and
+                // pitch down: their pivot is at your feet and leaves the frustum long before the
+                // geometry does, so an under-sized sphere culls something filling the screen. It
+                // showed up on stairs and ladders first because they are the tallest things you
+                // stand directly on top of.
+                float r = (part.mesh.bounds.center.magnitude + part.mesh.bounds.extents.magnitude)
+                          * MaxScale(m) + 0.5f;
                 if (r > b.MaxRadius) b.MaxRadius = r;
                 var bb = new Bounds(p, Vector3.one * (r * 2f));
                 if (!b.HasBounds) { b.Bounds = bb; b.HasBounds = true; }
