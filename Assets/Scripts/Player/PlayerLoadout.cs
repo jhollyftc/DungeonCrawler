@@ -54,6 +54,12 @@ namespace DungeonGen
         public float swapCooldown = 0.25f;
         [Tooltip("Block swapping mid-action (a swing, a bash, a drawn bow). Off lets a swap cancel whatever is playing, which is faster but can strand an animation.")]
         public bool blockWhileBusy = true;
+        [Tooltip("Seconds to lower what is LEAVING before the weapons are exchanged. The exchange happens at the bottom of this motion, out of frame — that is what makes a swap read as putting one thing away and drawing another rather than one becoming the other.\n\nOnly what actually changes moves: sword→torch leaves the shield perfectly still, while melee→bow lowers sword AND shield because the bow takes both hands.\n\n0 restores the old instant swap.")]
+        public float swapLowerTime = 0.16f;
+        [Tooltip("Seconds for the arriving weapon to rise into rest. Eased out so it settles rather than snapping. Slightly longer than the lower reads as drawing being more deliberate than stowing.")]
+        public float swapRaiseTime = 0.22f;
+        [Tooltip("How far a stowed viewmodel drops, in CAMERA space — straight down the screen by default.\n\nNot local to the viewmodel: each carries its own authored orientation, so one offset sent the sword, shield and bow three different ways and a swap lowering two of them together had them visibly diverge. Not world either: world down ignores pitch, so looking up brought the weapon into your face and looking down buried it in the floor. Camera down is the same direction for all of them AND always off the bottom of the frame.\n\nMust clear the bottom of the frame — nothing is hidden during a swap, only moved out of view.")]
+        public Vector3 swapLowerOffset = new Vector3(0f, -0.6f, 0f);
 
         [Tooltip("Log swaps and refusals.")]
         public bool debugLoadout = false;
@@ -135,9 +141,105 @@ namespace DungeonGen
                 return;
             }
 
+            Slot previous = Current;
             Current = slot;
             readyAt = Time.time + swapCooldown;
+            BeginSwap(previous, slot);
+        }
+
+        /// <summary>
+        /// Lower what is leaving, exchange at the BOTTOM, then raise what is arriving.
+        ///
+        /// THE EXCHANGE HAPPENS OUT OF FRAME OR THE EFFECT IS POINTLESS — that is the entire
+        /// reason `ViewmodelHolster.Lower` takes a callback rather than the caller waiting a fixed
+        /// time. A timer would have to be kept in step with the animation by hand, and would show
+        /// the swap the first time someone retuned one and not the other.
+        ///
+        /// ONLY WHAT CHANGES MOVES. The shield rides every one-handed slot, so sword→torch lowers
+        /// the sword and raises the torch while the shield stays perfectly still; melee→bow lowers
+        /// sword AND shield, because the bow takes both hands. Lowering everything unconditionally
+        /// would make the shield bob for a swap it is not part of.
+        ///
+        /// INPUT SCRIPTS ARE DISABLED IMMEDIATELY, not at the exchange, so a lowering sword cannot
+        /// still be swung. That is the same "disable before showing" ordering `Apply` already used
+        /// to guarantee two weapons are never listening to the mouse at once — it just has to
+        /// happen at the START of the transition now that the transition has a duration.
+        /// </summary>
+        void BeginSwap(Slot from, Slot to)
+        {
+            if (melee != null) melee.enabled = to == Slot.Melee;
+            if (bow != null) bow.enabled = to == Slot.Bow;
+
+            // A second swap mid-transition retargets rather than stacking: the pending exchange
+            // is cancelled and rescheduled, so mashing 1-2-3 ends on the last key pressed instead
+            // of running three overlapping sequences.
+            CancelInvoke(nameof(FinishSwap));
+            pendingExchange = to;
+
+            if (swapLowerTime <= 0f) { FinishSwap(); return; }
+
+            bool lowering = false;
+            foreach (var go in VisibleRoots(from))
+            {
+                if (go == null || IsVisibleIn(go, to)) continue;   // stays on screen — leave it alone
+                var h = ViewmodelHolster.EnsureOn(go);
+                if (h == null) continue;
+                h.Lower(swapLowerTime, swapLowerOffset);
+                lowering = true;
+            }
+
+            // ONE timer for the whole set rather than a callback per holster. They share a
+            // duration so they land together, and hanging the exchange off each one would swap
+            // the loadout two or three times in the same frame.
+            if (lowering) Invoke(nameof(FinishSwap), swapLowerTime);
+            else FinishSwap();   // nothing to lower — a slot whose sets are all arriving
+        }
+
+        Slot? pendingExchange;
+
+        void FinishSwap()
+        {
+            if (pendingExchange == null) return;
+            Slot slot = pendingExchange.Value;
+            pendingExchange = null;
+
             Apply(slot, announce: true);
+
+            if (swapRaiseTime <= 0f) return;
+            foreach (var go in VisibleRoots(slot))
+            {
+                if (go == null) continue;
+                var h = ViewmodelHolster.EnsureOn(go);
+                // Already at rest and not lowered = it never left, so leave it: raising a shield
+                // that stayed in hand through a sword→torch swap would make it bob for no reason.
+                if (h == null || (!h.Lowered && h.transform.localPosition == Vector3.zero)) continue;
+                // Raise applies the low pose on this same call, before anything renders, so a set
+                // shown by Apply a moment ago cannot flash at rest for a frame.
+                h.Raise(0f, swapRaiseTime, swapLowerOffset);
+            }
+        }
+
+        /// <summary>Every viewmodel root that should be on screen in <paramref name="slot"/>.</summary>
+        System.Collections.Generic.IEnumerable<GameObject> VisibleRoots(Slot slot)
+        {
+            if (slot == Slot.Melee)
+            {
+                if (meleeViewmodels != null) foreach (var g in meleeViewmodels) yield return g;
+                if (dynamicMeleeViewmodel != null) yield return dynamicMeleeViewmodel;
+            }
+            if (slot == Slot.Bow && bowViewmodels != null)
+                foreach (var g in bowViewmodels) yield return g;
+            if (slot == Slot.Torch && torchViewmodels != null)
+                foreach (var g in torchViewmodels) yield return g;
+            // The off-hand rides every ONE-HANDED slot; the bow takes both hands.
+            if (slot != Slot.Bow && offhandViewmodels != null)
+                foreach (var g in offhandViewmodels) yield return g;
+        }
+
+        bool IsVisibleIn(GameObject go, Slot slot)
+        {
+            foreach (var g in VisibleRoots(slot)) if (g == go) return true;
+            return false;
         }
 
         bool IsBusy()

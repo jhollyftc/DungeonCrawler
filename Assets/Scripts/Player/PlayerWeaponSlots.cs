@@ -60,10 +60,8 @@ namespace DungeonGen
         public float equipDelay = 0.22f;
         [Tooltip("Seconds for the new weapon to rise into its rest pose. Eased out, so it settles rather than snapping.")]
         public float equipRaiseTime = 0.35f;
-        [Tooltip("Where the weapon starts, in the socket's local space. MUST sit below the frame: the weapon is genuinely present during the delay, just out of view, so an offset tuned too small parks it at the bottom of the screen instead of reading as empty hands. Slightly back reads as being lifted from the hip rather than rising through the floor.")]
-        public Vector3 equipLowerOffset = new Vector3(0.05f, -0.7f, -0.1f);
-        [Tooltip("Tilt the weapon starts at, in degrees. A nose-down blade rotating up to level is most of what makes this read as lifting rather than sliding.")]
-        public Vector3 equipLowerEuler = new Vector3(-35f, 0f, -12f);
+        [Tooltip("Where the weapon starts, in CAMERA space — straight down the screen by default. MUST sit below the frame: the weapon is genuinely present during the delay, just out of view, so an offset tuned too small parks it at the bottom of the screen instead of reading as empty hands.\n\nCamera space, and no rotation. Local to the viewmodel sends the sword, shield and bow three different ways, because their authored orientations disagree; world space ignores pitch, so looking up brings the weapon into your face and looking down buries it.")]
+        public Vector3 equipLowerOffset = new Vector3(0f, -0.7f, 0f);
 
         [Tooltip("Log equips and drops.")]
         public bool debugWeapons = false;
@@ -83,7 +81,7 @@ namespace DungeonGen
         public event System.Action<WeaponDefinition> OnWeaponDrawn;
 
         GameObject currentViewmodel;
-        ViewmodelEquipRaise raise;
+        ViewmodelHolster raise;
         Coroutine drawAnnounce;
         Camera cam;
         CharacterController cc;
@@ -151,7 +149,7 @@ namespace DungeonGen
             // the run holding it.
             var holderGo = new GameObject("WeaponRaise");
             holderGo.transform.SetParent(weaponSocket, false);
-            raise = holderGo.AddComponent<ViewmodelEquipRaise>();
+            raise = holderGo.AddComponent<ViewmodelHolster>();
             raise.enabled = false;
 
             // An authored sword is left alone when no starting weapon is set. The current
@@ -217,7 +215,7 @@ namespace DungeonGen
             // an animation nobody asked for on every load.
             if (raise != null)
             {
-                if (dropCurrent) raise.Begin(equipDelay, equipRaiseTime, equipLowerOffset, equipLowerEuler);
+                if (dropCurrent) raise.Raise(equipDelay, equipRaiseTime, equipLowerOffset);
                 else raise.Finish();
             }
 

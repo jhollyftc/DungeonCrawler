@@ -245,7 +245,7 @@ namespace DungeonGen
             holdLocalRotation = Quaternion.Inverse(CameraYaw()) * body.rotation;
 
             // Hands are full.
-            if (viewmodel != null) viewmodel.SetViewmodelVisible(false);
+            if (viewmodel != null) viewmodel.SetViewmodelStowed(true);
             return true;
         }
 
@@ -338,7 +338,7 @@ namespace DungeonGen
 
             if (thrown == null || body == null || eye == null)
             {
-                if (viewmodel != null) viewmodel.SetViewmodelVisible(true);   // nothing actually launched
+                if (viewmodel != null) viewmodel.SetViewmodelStowed(false);   // nothing actually launched
                 return;
             }
 
@@ -377,7 +377,7 @@ namespace DungeonGen
             if (viewmodel != null)
             {
                 if (viewmodelReturnDelay > 0f) StartCoroutine(RestoreViewmodelAfterThrow(viewmodelReturnDelay));
-                else viewmodel.SetViewmodelVisible(true);
+                else viewmodel.SetViewmodelStowed(false);
             }
         }
 
@@ -390,7 +390,7 @@ namespace DungeonGen
         IEnumerator RestoreViewmodelAfterThrow(float delay)
         {
             yield return new WaitForSeconds(delay);
-            if (viewmodel != null && !IsCarrying) viewmodel.SetViewmodelVisible(true);
+            if (viewmodel != null && !IsCarrying) viewmodel.SetViewmodelStowed(false);
         }
 
         /// <summary>
@@ -436,7 +436,7 @@ namespace DungeonGen
             heldColliders = null;
             nextPickupTime = Time.time + pickupCooldown;
 
-            if (restoreViewmodel && viewmodel != null) viewmodel.SetViewmodelVisible(true);
+            if (restoreViewmodel && viewmodel != null) viewmodel.SetViewmodelStowed(false);
         }
 
         // Regenerating the dungeon or respawning while holding a prop would

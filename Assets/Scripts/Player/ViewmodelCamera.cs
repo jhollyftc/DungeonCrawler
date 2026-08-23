@@ -72,6 +72,63 @@ namespace DungeonGen
                 if (root != null) root.gameObject.SetActive(visible);
         }
 
+        [Header("Stow feel")]
+        [Tooltip("Seconds to lower the hands out of frame when they are stowed — picking something up, gripping a grate. The roots are only HIDDEN once they are out of view, so the stow reads as putting your weapons down rather than them vanishing.\n\n0 restores the old instant hide.")]
+        public float stowLowerTime = 0.15f;
+        [Tooltip("Seconds for the hands to come back up after a drop or a throw.")]
+        public float stowRaiseTime = 0.2f;
+        [Tooltip("How far stowed hands drop, in CAMERA space — straight down the screen by default. Not local to each viewmodel (their authored orientations disagree, so one offset sends them three different ways) and not world (world down ignores pitch, so looking up brings the weapon into your face).")]
+        public Vector3 stowLowerOffset = new Vector3(0f, -0.6f, 0f);
+
+        int stowGeneration;
+
+        /// <summary>
+        /// Stow or restore the hands with the same lower/raise motion a weapon swap uses.
+        ///
+        /// SEPARATE FROM `SetViewmodelVisible`, WHICH STAYS INSTANT. Teardown paths — a disabled
+        /// component, a destroyed rig — must restore immediately and have no frames left to
+        /// animate in; giving them a duration would leave the hands stowed forever if the object
+        /// went away mid-move. Gameplay stows call this, cleanup calls the other.
+        ///
+        /// STILL HIDES, rather than relying on the low pose alone. A carried barrel is held right
+        /// where a lowered sword swings, so out-of-frame is not far enough — but the hide now
+        /// happens at the BOTTOM of the motion, which is the only part that was wrong before.
+        ///
+        /// A GENERATION COUNTER GUARDS THE CALLBACK. Grabbing something else during the stow, or
+        /// dropping before it finishes, must not have a stale completion hide hands that a newer
+        /// call just raised — the same stale-timer problem `RestoreViewmodelAfterThrow` already
+        /// solves by re-checking `IsCarrying`, generalised so every path is covered.
+        /// </summary>
+        public void SetViewmodelStowed(bool stowed)
+        {
+            if (viewmodelRoots == null) return;
+            if (stowLowerTime <= 0f && stowRaiseTime <= 0f) { SetViewmodelVisible(!stowed); return; }
+
+            int generation = ++stowGeneration;
+
+            foreach (Transform root in viewmodelRoots)
+            {
+                if (root == null) continue;
+                var holster = ViewmodelHolster.EnsureOn(root.gameObject);
+                if (holster == null) continue;
+
+                if (stowed)
+                {
+                    if (!root.gameObject.activeSelf) continue;   // already away
+                    holster.Lower(stowLowerTime, stowLowerOffset, () =>
+                    {
+                        if (generation != stowGeneration) return;   // superseded mid-move
+                        if (root != null) root.gameObject.SetActive(false);
+                    });
+                }
+                else
+                {
+                    root.gameObject.SetActive(true);
+                    holster.Raise(0f, stowRaiseTime, stowLowerOffset);
+                }
+            }
+        }
+
         /// <summary>
         /// Put a hierarchy spawned AFTER Awake onto the viewmodel layer.
         ///

@@ -2936,7 +2936,34 @@ Formula-driven with authored override points (the user's explicit choice).
     so the spawner made a sword the loadout had never heard of: the authored one was hidden, the
     spawned one showed in every slot, and the player held a torch and a sword at once.
     **A requirement that must be satisfied in two places to work will be half-satisfied.**
-  - **THE EQUIP RAISE ANIMATES A WRAPPER, NOT THE WEAPON** (`ViewmodelEquipRaise`).
+  - **EVERY WEAPON TRANSITION IS ONE MECHANISM — `ViewmodelHolster`** (was `ViewmodelEquipRaise`,
+    renamed with its `.meta` so the GUID travelled): lower out of frame, raise back. Slot swaps,
+    pickups, and stowing to carry a prop all drive it.
+    **A SLOT SWAP EXCHANGES AT THE BOTTOM OF THE MOTION**, which is why `Lower` takes a callback
+    rather than the caller waiting a fixed time — a timer would have to be kept in step with the
+    animation by hand and would show the swap the first time someone retuned one and not the other.
+    **ONLY WHAT CHANGES MOVES**: sword→torch leaves the shield perfectly still, melee→bow lowers
+    sword AND shield, and that falls out of comparing the visible set before and after rather than
+    being special-cased. Input scripts disable at the START of the transition, not at the exchange,
+    so a lowering sword cannot still be swung.
+    **THE OFFSET IS CAMERA SPACE, AND BOTH OBVIOUS ALTERNATIVES WERE TRIED AND ARE WRONG** — worth
+    knowing before anyone "simplifies" it. LOCAL to each viewmodel fails because their authored
+    orientations disagree, so one offset sends sword, shield and bow three different ways and a
+    swap lowering two of them has them visibly diverge. WORLD fixes that and breaks on PITCH:
+    looking up brings the weapon into your face, looking down buries it in the floor. Camera down
+    is the same direction for all of them AND always off the bottom of the frame. Re-resolved per
+    frame, or turning mid-swap leaves the weapon travelling along a stale direction.
+    **NO ROTATION.** An earlier version tilted the weapon nose-down and the note below claimed
+    that tilt was most of what made it read as lifting; with misaligned local axes it was as
+    inconsistent as the offset, so it is gone rather than corrected.
+    **`EnsureOn` INSERTS A PARENT**, which is safe even when `ViewmodelSway` is on the root itself —
+    sway writes its OWN transform and the wrapper is a different one above it. That is what lets
+    this be applied to authored hierarchies without knowing how they are built.
+    Carry/grate stows go through `ViewmodelCamera.SetViewmodelStowed`, which lowers and then hides
+    at the bottom — it still hides, because a carried barrel occupies exactly where a lowered
+    sword swings. `SetViewmodelVisible` stays INSTANT for teardown, which has no frames left to
+    animate in.
+  - **THE EQUIP RAISE ANIMATES A WRAPPER, NOT THE WEAPON** (`ViewmodelHolster`).
     `ViewmodelSway` rewrites its own `localPosition`/`localRotation` every LateUpdate from a
     captured rest pose — it is a write-only owner of that transform (§5), so anything else
     animating the same values is discarded a frame later with no error. The weapon is parented

@@ -226,7 +226,7 @@ namespace DungeonGen
             gripperViewmodel = interactor.GetComponentInParent<ViewmodelCamera>();
             if (gripperViewmodel == null && interactor.root != null)
                 gripperViewmodel = interactor.root.GetComponentInChildren<ViewmodelCamera>(true);
-            if (gripperViewmodel != null) gripperViewmodel.SetViewmodelVisible(false);
+            if (gripperViewmodel != null) gripperViewmodel.SetViewmodelStowed(true);
             gripperCarry = interactor.GetComponentInParent<PlayerCarry>();
             if (gripperCarry == null && interactor.root != null)
                 gripperCarry = interactor.root.GetComponentInChildren<PlayerCarry>();
@@ -272,7 +272,7 @@ namespace DungeonGen
             // path, which is the version you would ship without noticing.
             if (gripperViewmodel != null &&
                 (gripperCarry == null || !gripperCarry.IsCarrying))
-                gripperViewmodel.SetViewmodelVisible(true);
+                gripperViewmodel.SetViewmodelStowed(false);
             gripperViewmodel = null;
 
             IsGripped = false;

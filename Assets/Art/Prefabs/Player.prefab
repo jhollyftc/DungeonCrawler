@@ -278,6 +278,7 @@ MonoBehaviour:
   jumpHeight: 1.1
   gravity: -20
   lookSensitivity: 2.2
+  backwardSpeedMultiplier: 0.5
   maxSlopeAngle: 45
   maxStepHeight: 0.35
   crouchKey: 306
@@ -882,6 +883,8 @@ MonoBehaviour:
   drawMoveScale: 0.65
   drawFovZoom: 20
   drawFovSpeed: 70
+  drawVignette: 1
+  drawVignetteSpeed: 3
   fireMouseButton: 0
   debugBow: 0
 --- !u!114 &8712569445707390302
@@ -980,6 +983,9 @@ MonoBehaviour:
   - {fileID: 5736554175087904055}
   swapCooldown: 0.25
   blockWhileBusy: 1
+  swapLowerTime: 0.16
+  swapRaiseTime: 0.22
+  swapLowerOffset: {x: 0, y: -0.6, z: 0}
   debugLoadout: 0
 --- !u!114 &4210065287885442205
 MonoBehaviour:
@@ -1009,7 +1015,6 @@ MonoBehaviour:
   equipDelay: 0.22
   equipRaiseTime: 0.35
   equipLowerOffset: {x: 0.05, y: -0.7, z: -0.1}
-  equipLowerEuler: {x: -35, y: 0, z: -12}
   debugWeapons: 0
 --- !u!114 &2154642243566100594
 MonoBehaviour:
@@ -1141,7 +1146,7 @@ Light:
   m_InnerSpotAngle: 21.80208
   m_CookieSize2D: {x: 0.5, y: 0.5}
   m_Shadows:
-    m_Type: 0
+    m_Type: 2
     m_Resolution: -1
     m_CustomResolution: -1
     m_Strength: 1
@@ -1534,6 +1539,9 @@ MonoBehaviour:
   overlayRendererIndex: 1
   postProcessViewmodel: 1
   debugSetup: 1
+  stowLowerTime: 0.15
+  stowRaiseTime: 0.2
+  stowLowerOffset: {x: 0, y: -0.6, z: 0}
 --- !u!114 &4595080490211936034
 MonoBehaviour:
   m_ObjectHideFlags: 0
