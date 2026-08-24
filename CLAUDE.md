@@ -1935,7 +1935,92 @@ scatter just places nothing.
 - `sharesTile` (FloorScatter/CeilingHung): the entry doesn't reserve its tile
   AND may sit on an already-used one — a corner cobweb that co-exists with a
   hanging lantern on the same tile. Bypasses only the one-prop-per-tile visual
-  rule; physical blocking (collider tiers, flood-fill) still applies.
+  rule; physical blocking (collider tiers, flood-fill) still applies. **On a
+  StaticDecor entry it now ALSO opts into sub-cell packing** — see below.
+
+**SUB-CELL DÉCOR PACKING (`DecorPacking`)** — several small props in ONE 3m tile, arbitrated
+by clearance radius instead of by tile occupancy. What `sharesTile` always allowed was
+CO-EXISTENCE with nothing stopping two pieces of rubble occupying the same square metre;
+this is the arbitration that was missing.
+- **THE 3m GRID IS NOT THE CONSTRAINT AND MUST NOT CHANGE.** Golden rule 1 makes world
+  position literally `cell * cellSize`, and the mesher, every kit piece authored to a 3m
+  face, `HallwayPathfinder`'s sealed stair envelopes, `RecessFits`, `NeedsSlabBetween`,
+  `DungeonMapper`, `AudioSpace`, fog and the 1.5m crawlway bore are all written in cells.
+  A 1m grid is 27x the cells in 3D and a different project. What actually blocked several
+  props per tile was the OCCUPANCY MODEL, which lives entirely inside the three placers —
+  separable, and that is what this separates.
+- **A 1m SUB-LATTICE WAS CONSIDERED AND REJECTED.** `subCellJitter` defaults to 0.9
+  specifically to HIDE the 3m lattice, so quantising small props to 1m slots reintroduces
+  exactly that artifact one scale down — worst on scattered debris, which is the case the
+  feature exists for. Positions stay continuous; only OVERLAP is arbitrated.
+- **`PropTier.StaticDecor` IS THE SAFETY BOUNDARY, and it is what makes this contained
+  rather than risky.** Blocking props keep CELL-level occupancy untouched, so the threshold
+  flood-fill, the corridor connectivity BFS, `PropSnap.NearStair` and the navmesh never
+  learn packing exists and cannot be severed by it. **Extending packing to collider tiers
+  is REFUSED, not deferred** — it would put prop placement inside the connectivity
+  guarantee, the one thing the prop system may not weaken. A `sharesTile` collider entry
+  asking for `itemsPerCell > 1` gets a named warning rather than silently doing nothing.
+- **DUNGEON-SCOPED, NOT ROOM-SCOPED, deliberately.** `DungeonVisualizer` builds ONE
+  instance and hands it to all three passes, because they run recess → room → hallway and
+  a corridor prop routinely lands in the cell next to a room prop — the seam being the one
+  place an overlap would be noticed. **Packing order IS pass order**, so reordering those
+  passes for an unrelated reason will shuffle packed décor.
+- **EVERY DÉCOR PLACEMENT REGISTERS; ONLY A PACKED ENTRY CONSULTS.** That asymmetry is what
+  stops packed rubble landing inside an ordinary crate: a non-`sharesTile` prop reserves
+  its TILE, which a `sharesTile` entry ignores by definition, so without registration the
+  packed entry would have no idea the crate was there. `Add` draws nothing from any stream,
+  which is why registration is free of determinism consequences.
+- **THREE DETERMINISM RULES, all non-negotiable and all in `DecorPacking` rather than at the
+  call sites** — five call sites would each have had to remember them:
+  1. **`TryFit` ALWAYS consumes its full attempt count.** Breaking early on success would
+     make the number of draws depend on what was already placed, shifting every later
+     placement in the dungeon (golden rule 4). The FIT TEST is skipped, never the draw.
+  2. **`RollCount` draws once, unconditionally**, even when min == max. Rolling lazily would
+     make the draw count depend on AUTHORING, so widening one entry's range would reshuffle
+     everything after it — the lesson the recess variant roll already carries.
+  3. **In the packed path the order is prefab → rotation → attempts**, and the prefab is
+     drawn even when nothing fits. It has to come first because its clearance radius is what
+     candidates are tested against.
+  Caps (`want`, `maxPerRoom`) are therefore checked AFTER the draws as a `continue`, never
+  as a `break`.
+- **The UNPACKED draw order in each placer is untouched and differs BETWEEN them** —
+  `RoomPropPlacer` draws rotation then position, the hallway and recess passes draw position
+  then rotation. Historical, preserved deliberately, and the reason the shared
+  `Candidate()`/`Rotation()` locals exist rather than one merged expression.
+- **THE ONE BEHAVIOUR CHANGE: existing `sharesTile` décor entries shift position** on a
+  fixed seed, because they now go through the packed path. Counts stay similar; nothing else
+  in the dungeon moves. An entry that is not `sharesTile` places bit-identically.
+- **`snapToInsideCorner` PLACES EXACTLY ONE ITEM PER CORNER, whatever `itemsPerCell` says**,
+  and that is inherent rather than a bug. A corner offset is deterministic and draws nothing,
+  so every dart lands on the same point and the second item necessarily collides with the
+  first at distance zero. Corner entries still BENEFIT from packing — two different corner
+  entries can no longer stack on one corner, which is what `sharesTile` used to allow — but
+  raising their count does nothing. Raise it on jittered scatter instead.
+- **Radius derivation reads `MeshFilter.sharedMesh.bounds`, which works on a prefab ASSET**
+  — `Renderer.bounds` does not, needing an instance, and that distinction is the whole
+  reason `clearanceRadius = 0` (derive) is affordable: nothing is instantiated to measure.
+  Measured about the PIVOT, not about `bounds.center` — §5's standing lesson, learned when
+  stairs and ladders were culled by a radius measured from the wrong point — and including
+  the prefab root's own scale and rotation, since `PropInstancer` composes those. Cached per
+  prefab forever; the answer cannot change.
+- **`minSpacing` STAYS IN CELLS and must not be quietly reinterpreted.** It keeps same-Label
+  props apart at ROOM scale (two statues); `clearanceRadius` is in METRES and answers a
+  different question. The names already read differently, so no rename was needed.
+- **STARVATION IS SILENT PER ITEM AND LOUD IN AGGREGATE** (`LogSummary`, one line after the
+  hallway pass). Not fitting is a legitimate outcome for one prop, so it places nothing and
+  says nothing — but a radius far too large for the space would place almost nothing across
+  the whole run and read as a setting that "does nothing", which is the exact failure shape
+  §12 keeps recording. The counter lives in `TryFit`, the one place called once per packed
+  item. Refusal to ENGAGE is separately warned (`WarnIfRefused`), since a collider-tier entry
+  asking for `itemsPerCell > 1` otherwise just quietly keeps its old behaviour.
+- **Cost is an authoring decision, not a performance one** — §5 measured +705 instances as
+  free (804 → 757 draw calls, 7.7 → 7.6ms), because `BatchKey` knows nothing about count.
+  What WOULD cost is new MATERIALS: ten rubble variants on ten materials is ten batches
+  whatever the packing does, doubled by the outline pass (§6).
+- **`PropSetEntryDrawer` registration is not optional** — an unregistered field never renders
+  in the inspector at all, with no error. The three fields are yielded from one shared
+  `PackingFields`, gated on `sharesTile`, so the FloorScatter and CeilingHung cases cannot
+  drift the way their snapping fields once did.
 
 **Recesses — alcoves AND prison cells (`RecessPropPlacer`)** — one pass, because a prison
 and an alcove are the SAME generator primitive: both come out of `RecessFits`, both are
@@ -2224,10 +2309,12 @@ presentation only — Unity serializes by NAME, so regrouping never loses author
 **Built out:** every anchor above (floor scatter, ceiling scatter/grid/
 wall-snap/inside-corner, wall-mounted, feature, near-prop, near-wall),
 sockets (authored composites), hallway props, label spacing, tile sharing,
-and the wall-real-estate negotiation (§7) under all of it. **Not yet built:**
-procedural clump-scatter (variable-count piles that clump rather than spread
-— near-prop + spacing gets close but isn't a true clumper); a NearWallAsset
-that reads a wall feature on a NON-floor band.
+sub-cell décor packing, and the wall-real-estate negotiation (§7) under all of
+it. **Not yet built:** procedural clump-scatter (variable-count piles that clump
+rather than spread — it now falls out of packing, since placing k items in a disc
+around an anchor reuses the same `Fits` test, and was deliberately left second so
+packing could be proven neutral before distribution changed on top of it); a
+NearWallAsset that reads a wall feature on a NON-floor band.
 
 ---
 
@@ -3957,8 +4044,16 @@ Cosmetic-first; combat is far off ("get the world together first").
     → LadderClimbZone climbing)
 12. ✅ Props phase 4: wall-mounted, ceiling parity (zones/facing/grid/
     inside-corner), hallway props, near-prop + near-wall (labeled),
-    label spacing, tile sharing. Remaining prop idea: procedural
-    clump-scatter (see §8 "Not yet built").
+    label spacing, tile sharing.
+12c. ✅ **Sub-cell décor packing** (`DecorPacking`) — several small props in one 3m tile,
+    arbitrated by clearance radius rather than by tile occupancy, so `sharesTile` stops
+    meaning "no arbitration at all". Décor-only by construction, which is what keeps it
+    outside the connectivity guarantee; radii derive from prefab mesh bounds so authoring is
+    one checkbox. §8 has the model, the three determinism rules, and why a 1m sub-lattice was
+    rejected. The 3m grid is untouched. ⏳ open: **procedural clump-scatter** now falls out of
+    it (k items in a disc around an anchor, same `Fits` test) — deliberately second, so
+    packing could be proven neutral first; metres-based `minSpacing` if authoring ever wants
+    it; packing for collider tiers is REFUSED, not deferred.
 12b. ✅ **Kit sockets** (`KitSocketPlacer`) — `PropSocket` authored on WALL/CEILING/
     FLOOR kit pieces, so a piece declares where its fire, candles, sconce or hanging
     decor belong on its own geometry. Torch-claiming + spacing seed, per-room emissive

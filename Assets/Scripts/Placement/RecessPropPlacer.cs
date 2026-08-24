@@ -97,7 +97,8 @@ namespace DungeonGen
         /// <summary>Hallway alcoves, contents by AlcoveKind (RoomStyle.alcoveStyles).</summary>
         public static GameObject BuildAlcoves(DungeonGenerator gen, RoomStyle style, float cellSize,
                                               Transform parent, InstancedDungeonRenderer instancer,
-                                              WallFaceRegistry wallFaces = null)
+                                              WallFaceRegistry wallFaces = null,
+                                              DecorPacking packing = null)
         {
             // A crawlway mouth may land in an alcove — deliberately, since a grate at the back
             // of a collapsed dig is the best entrance the feature can have. But the alcove's own
@@ -122,7 +123,7 @@ namespace DungeonGen
                                              roll => style != null ? style.AlcoveProps(kind, roll) : null,
                                              noBlocking));
             }
-            return Build(gen, style, cellSize, parent, instancer, wallFaces,
+            return Build(gen, style, cellSize, parent, instancer, wallFaces, packing,
                          "DungeonAlcoveProps", "Alcoves", AlcoveSaltBase, targets);
         }
 
@@ -134,7 +135,8 @@ namespace DungeonGen
         /// </summary>
         public static GameObject BuildPrisons(DungeonGenerator gen, RoomStyle style, float cellSize,
                                               Transform parent, InstancedDungeonRenderer instancer,
-                                              WallFaceRegistry wallFaces = null)
+                                              WallFaceRegistry wallFaces = null,
+                                              DecorPacking packing = null)
         {
             var targets = new List<RecessTarget>();
             foreach (var p in gen.Prisons)
@@ -161,7 +163,7 @@ namespace DungeonGen
                                              roll => style != null ? style.PrisonProps(roll) : null,
                                              noBlocking));
             }
-            return Build(gen, style, cellSize, parent, instancer, wallFaces,
+            return Build(gen, style, cellSize, parent, instancer, wallFaces, packing,
                          "DungeonPrisonProps", "Prisons", PrisonSaltBase, targets);
         }
 
@@ -177,7 +179,8 @@ namespace DungeonGen
         /// </summary>
         public static GameObject BuildChambers(DungeonGenerator gen, RoomStyle style, float cellSize,
                                                Transform parent, InstancedDungeonRenderer instancer,
-                                               WallFaceRegistry wallFaces = null)
+                                               WallFaceRegistry wallFaces = null,
+                                               DecorPacking packing = null)
         {
             var targets = new List<RecessTarget>();
             foreach (var cw in gen.Crawlways)
@@ -193,17 +196,21 @@ namespace DungeonGen
                                                  noBlocking));
                 }
             }
-            return Build(gen, style, cellSize, parent, instancer, wallFaces,
+            return Build(gen, style, cellSize, parent, instancer, wallFaces, packing,
                          "DungeonChamberProps", "Chambers", ChamberSaltBase, targets);
         }
 
         static GameObject Build(DungeonGenerator gen, RoomStyle style, float cellSize, Transform parent,
                                 InstancedDungeonRenderer instancer, WallFaceRegistry wallFaces,
+                                DecorPacking packing,
                                 string rootName, string label, int saltBase, List<RecessTarget> targets)
         {
             var root = new GameObject(rootName);
             root.transform.SetParent(parent, false);
             if (style == null || targets.Count == 0) return root;
+            // Dungeon-scoped when the visualizer supplies one; a local instance keeps a
+            // standalone call arbitrating within itself rather than not at all.
+            packing = packing ?? new DecorPacking();
 
             var grid = gen.Grid;
             bool Open(Vector3Int p) => grid.InBounds(p) && grid[p] != CellType.Empty;
@@ -325,11 +332,13 @@ namespace DungeonGen
                             if (c != recess.MouthCell) entryCells.Add(c);
                     }
 
+                    packing.WarnIfRefused(e);
+
                     switch (e.anchor)
                     {
                         case PropAnchor.Feature:
                             total += PlaceFeature(e, recess, entryCells, cellSize, CellCentre, Pick, Place,
-                                                  featureStream, usedFloor, grid, wallFaces, CanBlock);
+                                                  featureStream, usedFloor, grid, wallFaces, CanBlock, packing);
                             break;
 
                         case PropAnchor.WallMounted:
@@ -343,13 +352,15 @@ namespace DungeonGen
                             // Ceiling plane: also exempt, for the same reason.
                             total += PlaceScatterLike(e, recess, entryCells, cellSize, CellCentre, Pick, Place,
                                                       ceilingStream, usedCeiling, grid, wallFaces, Open,
-                                                      ceiling: true, CanBlock: null, chanceMult: regionMult);
+                                                      ceiling: true, CanBlock: null, packing: packing,
+                                                      chanceMult: regionMult);
                             break;
 
                         default: // FloorScatter, and anything room-only degrades to scatter
                             total += PlaceScatterLike(e, recess, entryCells, cellSize, CellCentre, Pick, Place,
                                                       scatterStream, usedFloor, grid, wallFaces, Open,
-                                                      ceiling: false, CanBlock: CanBlock, chanceMult: regionMult);
+                                                      ceiling: false, CanBlock: CanBlock, packing: packing,
+                                                      chanceMult: regionMult);
                             break;
                     }
                 }
@@ -382,7 +393,7 @@ namespace DungeonGen
                                 System.Action<PropSet.PropEntry, GameObject, Vector3, Quaternion> Place,
                                 HashStream s, HashSet<Vector3Int> usedFloor,
                                 Grid3D<CellType> grid, WallFaceRegistry wallFaces,
-                                System.Func<Vector3Int, bool> CanBlock)
+                                System.Func<Vector3Int, bool> CanBlock, DecorPacking packing)
         {
             // Deepest free cell — cells is already sorted deepest-first, so a hero prop lands at
             // the back and the mouth is the LAST thing it would fall back to. In a 1x1 prison
@@ -418,6 +429,9 @@ namespace DungeonGen
 
             Place(e, prefab, pos, rot);
             if (!e.sharesTile) usedFloor.Add(cell);
+            // A recess's hero prop is usually the biggest thing in it, so registering it is
+            // what stops packed debris being scattered through the statue.
+            packing?.Floor.Add(cell, pos, DecorPacking.RadiusFor(e, prefab));
 
             // Claim the back face so a torch can't land on top of the idol.
             Vector3Int back = cell + a.Direction;
@@ -489,8 +503,14 @@ namespace DungeonGen
                                     HashStream s, HashSet<Vector3Int> used,
                                     Grid3D<CellType> grid, WallFaceRegistry wallFaces,
                                     System.Func<Vector3Int, bool> Open, bool ceiling,
-                                    System.Func<Vector3Int, bool> CanBlock, float chanceMult = 1f)
+                                    System.Func<Vector3Int, bool> CanBlock, DecorPacking packing,
+                                    float chanceMult = 1f)
         {
+            // The plane comes from `ceiling`, which this method already has — the callers
+            // should not have to pick a layer and risk handing the floor one to a ceiling
+            // entry, which nothing downstream could detect.
+            DecorPacking.Layer layer = packing == null ? null : (ceiling ? packing.Ceiling : packing.Floor);
+            bool packed = DecorPacking.Engaged(e);
             int salt = s.Next();
             // Filtered BEFORE the hash sort, so a refused cell doesn't consume a chance roll and
             // the reservation can't silently thin the scatter's effective density.
@@ -544,32 +564,61 @@ namespace DungeonGen
                 if (ceiling) baseCentre.y += cellSize;
 
                 float range = e.subCellJitter * (cellSize * 0.5f - 0.7f);
-                Vector3 pos;
-                Quaternion rot;
-                if (insideCorner)
+                Vector3Int cell = c;
+
+                // One dart, exactly as before — shared with the packed path below so the two
+                // cannot disagree about where this entry may land.
+                Vector3 Candidate()
                 {
-                    pos = baseCentre + PropSnap.CornerOffset(ca, cb, cellSize, e.wallGap);
-                    rot = Quaternion.LookRotation(PropSnap.CornerFacing(ca, cb).normalized)
-                          * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, s.Next01()), 0f);
+                    if (insideCorner) return baseCentre + PropSnap.CornerOffset(ca, cb, cellSize, e.wallGap);
+                    if (e.snapToWall && wallDir.HasValue)
+                    {
+                        Vector3 tan = new Vector3(-wallDir.Value.z, 0f, wallDir.Value.x);
+                        return baseCentre + (Vector3)wallDir.Value * (cellSize * 0.5f - e.wallGap)
+                               + tan * ((s.Next01() - 0.5f) * 2f * range);
+                    }
+                    return baseCentre + new Vector3((s.Next01() - 0.5f) * 2f * range, 0f,
+                                                    (s.Next01() - 0.5f) * 2f * range);
                 }
-                else if (e.snapToWall && wallDir.HasValue)
+                Quaternion Rotation() =>
+                    insideCorner
+                        ? Quaternion.LookRotation(PropSnap.CornerFacing(ca, cb).normalized)
+                          * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, s.Next01()), 0f)
+                        : Yaw(e, s, wallDir, a);
+
+                if (packed && layer != null)
                 {
-                    Vector3 tan = new Vector3(-wallDir.Value.z, 0f, wallDir.Value.x);
-                    pos = baseCentre + (Vector3)wallDir.Value * (cellSize * 0.5f - e.wallGap)
-                          + tan * ((s.Next01() - 0.5f) * 2f * range);
-                    rot = Yaw(e, s, wallDir, a);
+                    // Draw order fixed at prefab → rotation → attempts; see DecorPacking.TryFit
+                    // for why the attempt loop never breaks early.
+                    int items = DecorPacking.RollCount(e, s);
+                    for (int item = 0; item < items; item++)
+                    {
+                        GameObject pk = Pick(e, s);
+                        Quaternion prot = Rotation();
+                        bool fit = packing.TryFit(layer, cell,
+                            DecorPacking.RadiusFor(e, pk), e.packingAttempts,
+                            Candidate, out Vector3 ppos);
+                        if (!fit || pk == null) continue;
+                        if (placed >= want) continue;
+                        if (!e.guaranteed && e.maxPerRoom > 0 && placed >= e.maxPerRoom) continue;
+                        Place(e, pk, ppos, prot);
+                        layer.Add(cell, ppos, DecorPacking.RadiusFor(e, pk));
+                        placed++;
+                    }
+                    continue;
                 }
-                else
-                {
-                    pos = baseCentre + new Vector3((s.Next01() - 0.5f) * 2f * range, 0f,
-                                                   (s.Next01() - 0.5f) * 2f * range);
-                    rot = Yaw(e, s, wallDir, a);
-                }
+
+                // NB draw order here is POSITION then ROTATION; preserved so no existing
+                // recess seed shifts.
+                Vector3 pos = Candidate();
+                Quaternion rot = Rotation();
 
                 GameObject prefab = Pick(e, s);
                 if (prefab == null) continue;
                 Place(e, prefab, pos, rot);
                 if (!e.sharesTile) used.Add(c);
+                // Registers whether packed or not — see DecorPacking.
+                layer?.Add(cell, pos, DecorPacking.RadiusFor(e, prefab));
                 placed++;
             }
             return placed;

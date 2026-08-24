@@ -177,7 +177,7 @@ namespace DungeonGen
             public string hostLabel = "";
             [Tooltip("NearPropAsset / NearWallAsset: chance to place a prop beside each matching host (a labeled prop, or a feature wall).")]
             [Range(0f, 1f)] public float chancePerHost = 0.6f;
-            [Tooltip("Keep same-Label props at least this many cells apart (0 = off). E.g. two statue entries sharing Label 'Statue' won't clump. Floor/feature props only.")]
+            [Tooltip("Keep same-Label props at least this many CELLS apart (0 = off). E.g. two statue entries sharing Label 'Statue' won't clump. Floor/feature props only.\n\nIN CELLS, NOT METRES — Clearance Radius is the metres-based one, and the two answer different questions: this keeps two statues at opposite ends of a room, that stops two pieces of rubble intersecting inside one tile.")]
             public int minSpacing = 0;
 
 
@@ -212,8 +212,17 @@ namespace DungeonGen
             public bool snapToWall = false;
             [Tooltip("FloorScatter / CeilingHung: place ONLY at inside corners (where two perpendicular walls meet), tucked into the corner. Cobwebs, corner debris. Rooms + hallways (hallway corners = corridor bends/junctions). Ignores zones and the wall's Allow Props In Front flag. Takes precedence over Snap To Wall / Snap To Ceiling Wall. Uses Wall Gap.")]
             public bool snapToInsideCorner = false;
-            [Tooltip("FloorScatter / CeilingHung: this prop does NOT reserve its tile — another prop may occupy the same tile, and this one may sit on an already-used tile. E.g. a corner cobweb that shouldn't block a hanging lantern on that tile. Physical collision (blocking tiers) still applies; this only affects the one-prop-per-tile visual rule.")]
+            [Tooltip("FloorScatter / CeilingHung: this prop does NOT reserve its tile — another prop may occupy the same tile, and this one may sit on an already-used tile. E.g. a corner cobweb that shouldn't block a hanging lantern on that tile. Physical collision (blocking tiers) still applies; this only affects the one-prop-per-tile visual rule.\n\nON A STATIC DECOR ENTRY THIS ALSO OPTS INTO SUB-CELL PACKING (DecorPacking): the tile is shared, but placements are arbitrated by CLEARANCE RADIUS so the props sharing it can no longer intersect each other. That is what makes Items Per Cell meaningful — it is the difference between 'several pieces of rubble scattered in this tile' and 'several pieces of rubble in the same square metre'.\n\nOn a COLLIDER tier it keeps its original meaning only: packing is décor-only, so that a prop can never sever the dungeon.")]
             public bool sharesTile = false;
+
+            // ---- Sub-cell packing (décor only; gated on sharesTile) ----
+            [Tooltip("How many of this entry may share ONE 3m tile, rolled per cell between X and Y. Requires Shares Tile and a Static Decor tier.\n\nThe count is rolled ONCE per cell and never depends on what is already placed; each item then throws Packing Attempts darts and takes the first that clears everything nearby. Asking for more than will fit places fewer, silently — it is décor.\n\n(1,1) still gains the overlap arbitration, it just never places a second piece.\n\nHAS NO EFFECT WITH SNAP TO INSIDE CORNER: a corner offset is a single fixed point, so every attempt lands on the same spot and the second item always collides with the first. Corner entries still gain the arbitration against OTHER entries; they just cannot multiply.")]
+            public Vector2Int itemsPerCell = new Vector2Int(1, 1);
+            [Tooltip("Clearance disc around this prop, in METRES — the radius kept clear of other packed décor. 0 = DERIVE it from the prefab's mesh bounds, which is right for nearly everything and needs no authoring.\n\nDerivation measures about the prop's PIVOT and circumscribes its footprint, so it is deliberately conservative: a long thin prop reserves more than it visually occupies at most yaws. Override when that reads wrong — a wide flat mesh whose real footprint is smaller than its bounds, or a prop that should deliberately keep more space than it occupies.\n\nNOTE this is METRES, unlike Min Spacing, which is in CELLS and answers a different question (keeping two statues apart at room scale).")]
+            public float clearanceRadius = 0f;
+            [Tooltip("Darts thrown per item when packing: higher packs tighter but consumes more of the placement stream. 6 is a good default; there is little to gain above ~10, since a tile that refuses six random positions is usually genuinely full.")]
+            public int packingAttempts = 6;
+
             [Tooltip("Meters between the nominal wall plane and the prop origin when Snap To Wall is on. Tune per asset (account for the wall kit's relief depth). WallMounted also uses this as its distance off the wall face.")]
             public float wallGap = 0.1f;
 

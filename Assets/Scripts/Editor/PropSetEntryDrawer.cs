@@ -23,6 +23,24 @@ namespace DungeonGen
         // both layout and height.
         static bool IsHeader(string s) => s.Length > 0 && s[0] == '§';
 
+        /// <summary>
+        /// Sub-cell packing, shown only once `sharesTile` opts in — that flag IS the gate
+        /// (DecorPacking.Engaged), so showing these fields beside a cleared checkbox would
+        /// advertise three dials that do nothing.
+        ///
+        /// Shared by the FloorScatter and CeilingHung cases rather than written out twice: the
+        /// two paths already drifted once over which snapping fields they show, and an
+        /// unregistered field does not appear in the inspector AT ALL, with no error.
+        /// </summary>
+        static IEnumerable<string> PackingFields(SerializedProperty prop)
+        {
+            if (!prop.FindPropertyRelative("sharesTile").boolValue) yield break;
+            yield return "§Packing";
+            yield return "itemsPerCell";
+            yield return "clearanceRadius";
+            yield return "packingAttempts";
+        }
+
         static IEnumerable<string> VisibleFields(SerializedProperty prop)
         {
             yield return "label";
@@ -110,6 +128,7 @@ namespace DungeonGen
                     }
                     if (!ceilCorner) yield return "subCellJitter"; // corner ignores jitter
                     yield return "sharesTile";
+                    foreach (var f in PackingFields(prop)) yield return f;
                     break;
                 }
 
@@ -146,6 +165,7 @@ namespace DungeonGen
                     if (!insideCorner) yield return "subCellJitter"; // corner ignores jitter
                     yield return "minSpacing";
                     yield return "sharesTile";
+                    foreach (var f in PackingFields(prop)) yield return f;
                     break;
             }
 
@@ -159,6 +179,17 @@ namespace DungeonGen
                 yield return "tintMaterial";
                 yield return "tintIntensity";
             }
+        }
+
+        /// <summary>Packing state in the collapsed summary — otherwise the only way to tell a
+        /// packed entry from an ordinary one is to expand it.</summary>
+        static string PackLabel(SerializedProperty prop)
+        {
+            if (!prop.FindPropertyRelative("sharesTile").boolValue) return "";
+            var n = prop.FindPropertyRelative("itemsPerCell").vector2IntValue;
+            int lo = Mathf.Max(1, n.x), hi = Mathf.Max(lo, n.y);
+            if (hi <= 1) return " · packed";
+            return lo == hi ? $" · packed ×{hi}" : $" · packed ×{lo}-{hi}";
         }
 
         static string Header(SerializedProperty prop)
@@ -190,6 +221,7 @@ namespace DungeonGen
                         detail = "Ceiling · inside corner";
                     else
                         detail = prop.FindPropertyRelative("snapToCeilingWall").boolValue ? "Ceiling · wall" : "Ceiling";
+                    detail += PackLabel(prop);
                     break;
                 case PropAnchor.WallMounted:
                     detail = $"Wall-mounted · {prop.FindPropertyRelative("mountHeight").floatValue:0.#}m";
@@ -208,6 +240,7 @@ namespace DungeonGen
                     detail = prop.FindPropertyRelative("guaranteed").boolValue
                         ? $"Scatter ×{prop.FindPropertyRelative("count").intValue} · {zones}{corner}"
                         : $"Scatter · {zones}{corner}";
+                    detail += PackLabel(prop);
                     break;
             }
             return $"{name}  —  {detail}";

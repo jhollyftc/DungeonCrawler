@@ -202,14 +202,22 @@ namespace DungeonGen
             return rz;
         }
 
+        /// <summary>
+        /// `packing` is DUNGEON-SCOPED and shared with the hallway and recess passes — a
+        /// corridor prop can land in the cell next to a room prop, and a per-pass instance
+        /// would let those two overlap across the boundary. A null argument creates a local
+        /// one so a standalone call still arbitrates within itself.
+        /// </summary>
         public static GameObject Build(DungeonGenerator gen, DungeonKit kit, RoomStyle style,
                                        float cellSize, Transform parent,
                                        InstancedDungeonRenderer instancer,
-                                       WallFaceRegistry wallFaces = null)
+                                       WallFaceRegistry wallFaces = null,
+                                       DecorPacking packing = null)
         {
             var root = new GameObject("DungeonProps");
             root.transform.SetParent(parent, false);
             if (style == null) return root;
+            packing = packing ?? new DecorPacking();
 
             var grid = gen.Grid;
             bool Open(Vector3Int p) => grid.InBounds(p) && grid[p] != CellType.Empty;
@@ -338,6 +346,11 @@ namespace DungeonGen
                         tier, cellSize, root.transform,
                         replaceMat: tintFrom, withMat: tintTo);
                     if (!e.sharesTile) usedCells.Add(cell); // sharesTile doesn't reserve
+                    // EVERY floor prop registers, packed or not. A packed entry ignores tile
+                    // occupancy by definition, so without this it would happily drop rubble
+                    // inside an ordinary crate. Registration draws nothing, so an unpacked
+                    // dungeon is unaffected.
+                    packing.Floor.Add(cell, worldPos, DecorPacking.RadiusFor(e, prefab));
                     placedProps.Add((cell, e.label));       // for NearPropAsset + minSpacing
                     totalPlaced++;
                     FillSockets(prefab, worldPos, rot, cell.y, 0, e.tintIntensity);
@@ -529,6 +542,15 @@ namespace DungeonGen
                 {
                     GameObject prefab = PickPrefab(e, s);
                     if (prefab == null) return false;
+                    return TryPlaceWith(e, prefab, cell, rot, worldPos);
+                }
+
+                // Split out so the PACKED path can pick its prefab FIRST — it needs the
+                // prefab's clearance radius before it can test any candidate position, and
+                // picking it afterwards would mean the number of draws depended on whether a
+                // fit was found (golden rule 4).
+                bool TryPlaceWith(PropSet.PropEntry e, GameObject prefab, Vector3Int cell, Quaternion rot, Vector3 worldPos)
+                {
                     if (Blocking(e.tier))
                     {
                         // Keep the stair approach clear. ThresholdsConnected() below is a
@@ -818,6 +840,8 @@ namespace DungeonGen
                         bool wantsWall = cornerSnap ||
                                          e.facing == FacingRule.FaceAwayFromNearestWall ||
                                          e.facing == FacingRule.AlignWithWall;
+                        bool packed = DecorPacking.Engaged(e);
+                        packing.WarnIfRefused(e);
 
                         // Grid membership, anchored to the room corner. A
                         // PERIMETER cell steps ALONG its wall (every `stride`
@@ -861,48 +885,79 @@ namespace DungeonGen
                             // A corner-snap entry belongs against a wall: no
                             // (props-allowed) wall at the cell = skip.
                             if (cornerSnap && !wallDir.HasValue) continue;
-                            Quaternion rot;
-                            Vector3 pos;
-                            if (insideCorner)
+
+                            // One position / one rotation, exactly as before — shared with the
+                            // packed path so the two can never disagree about where a prop of
+                            // this entry may land. Packing changes only how many darts are
+                            // thrown and which is kept.
+                            Vector3 Candidate()
                             {
-                                pos = new Vector3((c.x + 0.5f) * cellSize, ceilWorldY, (c.z + 0.5f) * cellSize)
-                                      + PropSnap.CornerOffset(ca, cb, cellSize, e.wallGap) + parent.position;
-                                Vector3 f = PropSnap.CornerFacing(ca, cb);
-                                rot = Quaternion.LookRotation(f.normalized)
-                                      * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, ceilingStream.Next01()), 0f);
-                            }
-                            else if (cornerSnap)
-                            {
-                                rot = ScatterRotation(e, c, ceilingStream, wallDir);
                                 float range = e.subCellJitter * (cellSize * 0.5f - 0.7f);
-                                Vector3 tangent = new Vector3(-wallDir.Value.z, 0f, wallDir.Value.x);
-                                pos = new Vector3((c.x + 0.5f) * cellSize, ceilWorldY, (c.z + 0.5f) * cellSize)
-                                      + (Vector3)wallDir.Value * (cellSize * 0.5f - e.wallGap)
-                                      + tangent * ((ceilingStream.Next01() - 0.5f) * 2f * range)
-                                      + parent.position;
+                                Vector3 centre = new Vector3((c.x + 0.5f) * cellSize, ceilWorldY, (c.z + 0.5f) * cellSize);
+                                if (insideCorner)
+                                    return centre + PropSnap.CornerOffset(ca, cb, cellSize, e.wallGap) + parent.position;
+                                if (cornerSnap)
+                                {
+                                    Vector3 tangent = new Vector3(-wallDir.Value.z, 0f, wallDir.Value.x);
+                                    return centre + (Vector3)wallDir.Value * (cellSize * 0.5f - e.wallGap)
+                                           + tangent * ((ceilingStream.Next01() - 0.5f) * 2f * range)
+                                           + parent.position;
+                                }
+                                return new Vector3(centre.x + (ceilingStream.Next01() - 0.5f) * 2f * range,
+                                                   ceilWorldY,
+                                                   centre.z + (ceilingStream.Next01() - 0.5f) * 2f * range)
+                                       + parent.position;
                             }
-                            else
-                            {
-                                rot = ScatterRotation(e, c, ceilingStream, wallDir);
-                                float range = e.subCellJitter * (cellSize * 0.5f - 0.7f);
-                                pos = new Vector3((c.x + 0.5f) * cellSize + (ceilingStream.Next01() - 0.5f) * 2f * range,
-                                                  ceilWorldY,
-                                                  (c.z + 0.5f) * cellSize + (ceilingStream.Next01() - 0.5f) * 2f * range)
-                                      + parent.position;
-                            }
+                            Quaternion Rotation() =>
+                                insideCorner
+                                    ? Quaternion.LookRotation(PropSnap.CornerFacing(ca, cb).normalized)
+                                      * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, ceilingStream.Next01()), 0f)
+                                    : ScatterRotation(e, c, ceilingStream, wallDir);
+
                             // Ceiling plane: no floor blocking / flood-fill (a
                             // hanging prop doesn't obstruct walking), own used-set.
+                            void SpawnCeiling(GameObject prefab, Vector3 at, Quaternion r)
+                            {
+                                PropTier ctier = instancer != null ? e.tier : PropTier.FullGameObject;
+                                PropTint.Resolve(e, style, room, out var ceilTintFrom, out var ceilTintTo);
+                                PropInstancer.PlaceProps(instancer, prefab,
+                                    new[] { new PropPlacement { position = at, rotation = r } },
+                                    ctier, cellSize, root.transform,
+                                    replaceMat: ceilTintFrom, withMat: ceilTintTo);
+                                if (!e.sharesTile) usedCeilingCells.Add(c); // sharesTile doesn't reserve
+                                // Registers whether packed or not — see DecorPacking. The
+                                // ceiling is its own plane, so a hanging lantern never
+                                // arbitrates against the floor prop under it.
+                                packing.Ceiling.Add(c, at, DecorPacking.RadiusFor(e, prefab));
+                                totalPlaced++;
+                                placedCount++;
+                            }
+
+                            if (packed)
+                            {
+                                // Draw order fixed at prefab → rotation → attempts; see the
+                                // matching note in the FloorScatter path.
+                                int items = DecorPacking.RollCount(e, ceilingStream);
+                                for (int item = 0; item < items; item++)
+                                {
+                                    GameObject pk = PickPrefab(e, ceilingStream);
+                                    Quaternion prot = Rotation();
+                                    bool fit = packing.TryFit(packing.Ceiling, c,
+                                        DecorPacking.RadiusFor(e, pk), e.packingAttempts,
+                                        Candidate, out Vector3 ppos);
+                                    if (!fit || pk == null) continue;
+                                    if (placedCount >= want) continue;
+                                    if (!e.guaranteed && e.maxPerRoom > 0 && placedCount >= e.maxPerRoom) continue;
+                                    SpawnCeiling(pk, ppos, prot);
+                                }
+                                continue;
+                            }
+
+                            Quaternion rot = Rotation();
+                            Vector3 pos = Candidate();
                             GameObject cprefab = PickPrefab(e, ceilingStream);
                             if (cprefab == null) continue;
-                            PropTier ctier = instancer != null ? e.tier : PropTier.FullGameObject;
-                            PropTint.Resolve(e, style, room, out var ceilTintFrom, out var ceilTintTo);
-                            PropInstancer.PlaceProps(instancer, cprefab,
-                                new[] { new PropPlacement { position = pos, rotation = rot } },
-                                ctier, cellSize, root.transform,
-                                replaceMat: ceilTintFrom, withMat: ceilTintTo);
-                            if (!e.sharesTile) usedCeilingCells.Add(c); // sharesTile doesn't reserve
-                            totalPlaced++;
-                            placedCount++;
+                            SpawnCeiling(cprefab, pos, rot);
                         }
                     }
                     else if (e.anchor == PropAnchor.WallMounted)
@@ -955,6 +1010,8 @@ namespace DungeonGen
                         bool wantsWall = !insideCorner && (e.snapToWall ||
                                          e.facing == FacingRule.FaceAwayFromNearestWall ||
                                          e.facing == FacingRule.AlignWithWall);
+                        bool packed = DecorPacking.Engaged(e);
+                        packing.WarnIfRefused(e);
                         var cells = Eligible(e, scatterStream);
                         int placedCount = 0;
                         int want = e.guaranteed ? e.count : int.MaxValue;
@@ -978,22 +1035,53 @@ namespace DungeonGen
                             // no (props-allowed) wall is skipped, not placed
                             // floating at its center.
                             if (e.snapToWall && !insideCorner && !wallDir.HasValue) continue;
-                            Quaternion rot;
-                            Vector3 pos;
-                            if (insideCorner)
+
+                            // One position, the way it has always worked. Shared by the packed
+                            // path below as its dart-thrower, so the two can never disagree
+                            // about WHERE a prop of this entry may land — packing changes only
+                            // how many darts are thrown and which one is kept.
+                            Vector3 Candidate() =>
+                                insideCorner
+                                    ? new Vector3((c.x + 0.5f) * cellSize, c.y * cellSize, (c.z + 0.5f) * cellSize)
+                                      + PropSnap.CornerOffset(ca, cb, cellSize, e.wallGap) + parent.position
+                                    : e.snapToWall
+                                        ? FloorWorldSnapped(c, e, scatterStream, wallDir.Value)
+                                        : FloorWorld(c, e, scatterStream);
+                            Quaternion Rotation() =>
+                                insideCorner
+                                    ? Quaternion.LookRotation(PropSnap.CornerFacing(ca, cb).normalized)
+                                      * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, scatterStream.Next01()), 0f)
+                                    : ScatterRotation(e, c, scatterStream, wallDir);
+
+                            if (packed)
                             {
-                                pos = new Vector3((c.x + 0.5f) * cellSize, c.y * cellSize, (c.z + 0.5f) * cellSize)
-                                      + PropSnap.CornerOffset(ca, cb, cellSize, e.wallGap) + parent.position;
-                                rot = Quaternion.LookRotation(PropSnap.CornerFacing(ca, cb).normalized)
-                                      * Quaternion.Euler(0f, Mathf.Lerp(e.yawRange.x, e.yawRange.y, scatterStream.Next01()), 0f);
+                                // ---- SUB-CELL PACKED PATH ----
+                                // DRAW ORDER IS FIXED: count, then per item prefab → rotation →
+                                // attempts. The prefab must come FIRST because its clearance
+                                // radius is what every candidate is tested against, and it is
+                                // drawn even when nothing fits — so the number of draws per
+                                // item never depends on the outcome (golden rule 4).
+                                int items = DecorPacking.RollCount(e, scatterStream);
+                                for (int item = 0; item < items; item++)
+                                {
+                                    GameObject pk = PickPrefab(e, scatterStream);
+                                    Quaternion prot = Rotation();
+                                    bool fit = packing.TryFit(packing.Floor, c,
+                                        DecorPacking.RadiusFor(e, pk), e.packingAttempts,
+                                        Candidate, out Vector3 ppos);
+                                    // Caps are checked AFTER the draws, never as a break, so a
+                                    // full room doesn't shorten the stream for everything after
+                                    // it. Not fitting is silent: it is décor.
+                                    if (!fit || pk == null) continue;
+                                    if (placedCount >= want) continue;
+                                    if (!e.guaranteed && e.maxPerRoom > 0 && placedCount >= e.maxPerRoom) continue;
+                                    if (TryPlaceWith(e, pk, c, prot, ppos)) placedCount++;
+                                }
+                                continue;
                             }
-                            else
-                            {
-                                rot = ScatterRotation(e, c, scatterStream, wallDir);
-                                pos = e.snapToWall
-                                    ? FloorWorldSnapped(c, e, scatterStream, wallDir.Value)
-                                    : FloorWorld(c, e, scatterStream);
-                            }
+
+                            Quaternion rot = Rotation();
+                            Vector3 pos = Candidate();
                             if (TryPlaceAt(e, c, rot, pos, scatterStream)) placedCount++;
                         }
                     }

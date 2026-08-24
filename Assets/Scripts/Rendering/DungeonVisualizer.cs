@@ -524,6 +524,14 @@ namespace DungeonGen
             if (roomStyle != null)
                 RunPass("KitSockets", () => KitSocketPlacer.Build(gen, kit, socketSites, cellSize, transform, sharedInstancer, roomStyle, wallFaces, torches));
 
+            // ONE PACKING FOR THE WHOLE DUNGEON, NOT ONE PER PASS. Sub-cell décor arbitration
+            // (§8) has to span the recess → room → hallway order below, because a corridor prop
+            // routinely lands in the cell next to a room prop and the boundary between them is
+            // the one place an overlap would be noticed. Rebuilt per generate, so a regenerate
+            // starts empty; the packing ORDER is simply the pass order, and reordering these
+            // passes for any other reason will shuffle packed décor.
+            var packing = new DecorPacking();
+
             // RECESSES next, before torches. §8's most-constrained-first rule taken to its
             // conclusion: an alcove or prison cell has about three wall faces and one authored
             // hero prop, so it is the tightest consumer of wall real estate in the dungeon and
@@ -531,9 +539,9 @@ namespace DungeonGen
             // TorchSettings.torchesInPrisons is on). Everything after this honours those claims.
             if (roomStyle != null)
             {
-                RunPass("AlcoveProps", () => RecessPropPlacer.BuildAlcoves(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces));
-                RunPass("PrisonProps", () => RecessPropPlacer.BuildPrisons(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces));
-                RunPass("ChamberProps", () => RecessPropPlacer.BuildChambers(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces));
+                RunPass("AlcoveProps", () => RecessPropPlacer.BuildAlcoves(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces, packing));
+                RunPass("PrisonProps", () => RecessPropPlacer.BuildPrisons(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces, packing));
+                RunPass("ChamberProps", () => RecessPropPlacer.BuildChambers(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces, packing));
             }
 
             // GATES BEFORE TORCHES, for the same reason recesses are: a lever occupies a wall
@@ -546,8 +554,12 @@ namespace DungeonGen
 
             if (roomStyle != null)
             {
-                RunPass("RoomProps", () => RoomPropPlacer.Build(gen, kit, roomStyle, cellSize, transform, sharedInstancer, wallFaces));
-                RunPass("HallwayProps", () => HallwayPropPlacer.Build(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces));
+                RunPass("RoomProps", () => RoomPropPlacer.Build(gen, kit, roomStyle, cellSize, transform, sharedInstancer, wallFaces, packing));
+                RunPass("HallwayProps", () => HallwayPropPlacer.Build(gen, roomStyle, cellSize, transform, sharedInstancer, wallFaces, packing));
+                // Silent per item, deliberately (it is décor), but NOT silent in aggregate —
+                // an entry whose clearance radius is far too large for the space would place
+                // almost nothing and read as an authoring value that "does nothing".
+                packing.LogSummary();
             }
 
             // Push the authored occlusion settings into the runtime manager. Done at
