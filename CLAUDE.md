@@ -2812,6 +2812,55 @@ Formula-driven with authored override points (the user's explicit choice).
   the ceiling anchor with no need to sample the chain. Pairs with the existing
   `ImpactAudio` on the same body for a metallic clang on player contact — same
   continuous-vs-one-shot split `PhysicsDoorAudio` makes between its creak and thunk.
+- **`HangingChain`** — pays out extra chain at spawn so a cage hangs as far below a TALL
+  room's ceiling as it does below a single-storey one. The cages read perfectly at 3m and
+  sit two storeys overhead at 6m, which is the whole problem.
+  **OPT-IN AND CURRENTLY ATTACHED TO NOTHING — the feature is inert as it stands.** The cage
+  prefabs do not carry the component, so `Extend` returns immediately and every seed generates
+  exactly as before. Add it to a prefab root to turn it on for that prop, remove it to turn it
+  off; nothing else changes either way. **That is deliberate, because the physics half was
+  judged marginal in play**: at `dynamicLinks` 10 a chain that long carrying the 30kg cage
+  pushes PhysX harder than the look is worth. The default is now 4, single digits are the
+  usable range, and **0 is the fully stable configuration** — static fill only, the cage
+  pivoting on its authored short chain exactly as today, just lower down. That was the
+  recommendation before the hybrid was tried, and trying it confirmed it; kept here because a
+  negative result about a physics budget is worth as much as the feature.
+  **THE LINK PITCH IS 0.109m, SO ONE EXTRA STOREY IS ~28 LINKS, AND THAT NUMBER DECIDES THE
+  DESIGN.** A 28-joint PhysX chain carrying the 30kg cage stretches and jitters — the
+  competing-solver-terms problem `PhysicsDoor` already documents — and `Shrine_PropSet`
+  allows three cages per room. So the chain is SPLIT: the top section is **STATIC and goes on
+  the instanced path**, because a taut chain does not move and §5's rule is that only a
+  MOVING part cannot be instanced; the bottom `dynamicLinks` (default 10) are real
+  Rigidbody + HingeJoint links so the stretch nearest the cage is genuinely loose. Cost is
+  therefore flat in the drop: no rigidbodies, no joints and no draw calls however long it
+  gets. **A long drop is not a reason to reach for more joints — it is a reason to ask which
+  part of the thing actually moves.**
+- **IT DERIVES ITS STRUCTURE FROM THE JOINT GRAPH, with no authored references at all.** The
+  chain is exactly "the one hinge whose `connectedBody` is null, then whichever hinge
+  connects to that body, and so on"; the last body in that walk is the load and everything
+  above it is a link. Pitch, spacing and the alternating 90° link rotation are read off the
+  authored links. That is a DEFINITION, not a §12-style greedy search, and it means the
+  component is a drag-on with nothing to half-assign — the failure mode the equip system's
+  `SetMeleeViewmodel` records.
+- **TRANSFORM FIRST, THEN `connectedBody` — and re-assert `autoConfigureConnectedAnchor`
+  afterwards.** A HingeJoint computes its anchor from the CURRENT relative transforms at the
+  moment it is bound, so positioning a link after wiring it anchors it where the template
+  used to be. A body-to-body anchor lives in the CONNECTED body's local space and so survives
+  the whole assembly moving together, but the TOP link's anchor is in WORLD space while it
+  hangs off nothing, and that one is stale by the full drop. Re-asserting on every joint
+  costs nothing and removes the need to reason about which are affected. **Getting it wrong
+  does not error — the chain snaps back to the ceiling.**
+- **THE ROOT IS THE ANCHOR AND EVERYTHING UNDER IT IS THE HANGING ASSEMBLY**, so extending is
+  "shift every child down N pitches and fill the vacated slots". The point light and the
+  audio source are children at fixed local positions beside the cage, so they follow it down
+  for free — a per-child rule would have had to name them and would have missed the next one.
+- **The drop comes from the PLACER, through `PropPlacement.configure`**, which runs inside
+  `Instantiate` and before the first physics step — the only window in which the joints can
+  be re-anchored. `Bounds.yMax` is exclusive, so `(yMax - yMin - 1) * cellSize` is zero for a
+  single-storey room, which means **corridors, alcoves, prisons and chambers can never
+  trigger it** (all are one cell tall by a hard generator rule) and `RecessPropPlacer` needed
+  no changes. The hook is only attached when the drop is non-zero, so an ordinary ceiling
+  prop pays nothing.
 - **Ladder climbing** — `LadderClimbZone` (trigger marker authored on the
   ladder prefab; extend the trigger ~0.5m above the top opening so cresting
   feels right). FirstPersonController POLLS an overlap sphere each frame

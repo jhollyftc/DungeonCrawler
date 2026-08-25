@@ -830,6 +830,13 @@ namespace DungeonGen
                     {
                         int ceilY = room.Bounds.yMax; // top plane of the room
                         float ceilWorldY = ceilY * cellSize;
+
+                        // HOW MUCH FURTHER A HANGING PROP MUST DROP TO READ THE WAY IT DOES IN A
+                        // SINGLE-STOREY ROOM. `Bounds.yMax` is exclusive, so a 1-cell room is
+                        // exactly one storey and this is zero — which means corridors, alcoves,
+                        // prisons and chambers can never trigger it, since a hard generator rule
+                        // keeps all of them one cell tall. Only a tall ROOM pays anything out.
+                        float hangDrop = (room.Bounds.yMax - room.Bounds.yMin - 1) * cellSize;
                         // Inside-corner snap wins over grid/wall-snap.
                         bool insideCorner = e.snapToInsideCorner;
                         bool gridLayout = !insideCorner && e.ceilingLayout == CeilingLayout.Grid;
@@ -920,8 +927,16 @@ namespace DungeonGen
                             {
                                 PropTier ctier = instancer != null ? e.tier : PropTier.FullGameObject;
                                 PropTint.Resolve(e, style, room, out var ceilTintFrom, out var ceilTintTo);
+                                // A prop that hangs on a chain lengthens it here, through the
+                                // configure hook, so the joints are re-anchored in the same
+                                // frame they were built and before the first physics step. The
+                                // hook is only attached in a tall room, so an ordinary ceiling
+                                // prop never pays even a GetComponent for it.
+                                System.Action<GameObject> hang = hangDrop > 0.01f
+                                    ? (go => HangingChain.Extend(go, hangDrop, instancer))
+                                    : (System.Action<GameObject>)null;
                                 PropInstancer.PlaceProps(instancer, prefab,
-                                    new[] { new PropPlacement { position = at, rotation = r } },
+                                    new[] { new PropPlacement { position = at, rotation = r, configure = hang } },
                                     ctier, cellSize, root.transform,
                                     replaceMat: ceilTintFrom, withMat: ceilTintTo);
                                 if (!e.sharesTile) usedCeilingCells.Add(c); // sharesTile doesn't reserve
