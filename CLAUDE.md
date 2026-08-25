@@ -2019,8 +2019,23 @@ this is the arbitration that was missing.
   whatever the packing does, doubled by the outline pass (§6).
 - **`PropSetEntryDrawer` registration is not optional** — an unregistered field never renders
   in the inspector at all, with no error. The three fields are yielded from one shared
-  `PackingFields`, gated on `sharesTile`, so the FloorScatter and CeilingHung cases cannot
-  drift the way their snapping fields once did.
+  `PackingFields`, so the FloorScatter and CeilingHung cases cannot drift the way their
+  snapping fields once did.
+- **THE PACKING SECTION IS ALWAYS DRAWN AND OWNS `sharesTile`, because hiding it behind that
+  flag made it look like it did not exist** (field-reported: "the packing options are not
+  there on a new floor scatter prop"). The first version left `sharesTile` up under Snapping
+  and showed nothing until it was ticked, so a fresh entry had no Packing heading and no hint
+  that a checkbox by that name was what revealed one. The dials still hide until the gate is
+  on — advertising settings that do nothing is its own fault — but the SECTION and its
+  checkbox are always visible. §12's rule again: the fix for a setting that reads as absent is
+  to make it announce itself, never to document it harder. **When a feature is gated on an
+  existing flag, put the flag in the gated section**; leaving it where it was is what makes
+  the relationship invisible. NB Unity's list `+` duplicates the previous element, so a new
+  entry inherits the last one's flags — a real effect, but not what caused this.
+- **A collider tier with `sharesTile` on reports `· shares tile`, never `· packed`**, in both
+  the collapsed summary and the section heading, which names the tier as the reason. Packing
+  does not engage there (see the boundary above), and a label that claimed otherwise would
+  misreport it at exactly the glance a collapsed row exists for.
 
 **Recesses — alcoves AND prison cells (`RecessPropPlacer`)** — one pass, because a prison
 and an alcove are the SAME generator primitive: both come out of `RecessFits`, both are

@@ -24,9 +24,13 @@ namespace DungeonGen
         static bool IsHeader(string s) => s.Length > 0 && s[0] == '§';
 
         /// <summary>
-        /// Sub-cell packing, shown only once `sharesTile` opts in — that flag IS the gate
-        /// (DecorPacking.Engaged), so showing these fields beside a cleared checkbox would
-        /// advertise three dials that do nothing.
+        /// Sub-cell packing, and the OWNER of `sharesTile` for the two scatter anchors — that
+        /// flag is the gate (`DecorPacking.Engaged`), so it belongs beside what it gates rather
+        /// than up under Snapping where the relationship is invisible.
+        ///
+        /// The three dials stay hidden until the gate is on, since they would otherwise
+        /// advertise settings that do nothing — but the SECTION is always drawn, so a fresh
+        /// entry shows a Packing heading with the checkbox that opens it.
         ///
         /// Shared by the FloorScatter and CeilingHung cases rather than written out twice: the
         /// two paths already drifted once over which snapping fields they show, and an
@@ -34,8 +38,21 @@ namespace DungeonGen
         /// </summary>
         static IEnumerable<string> PackingFields(SerializedProperty prop)
         {
-            if (!prop.FindPropertyRelative("sharesTile").boolValue) yield break;
-            yield return "§Packing";
+            bool shares = prop.FindPropertyRelative("sharesTile").boolValue;
+            var tier = (PropTier)prop.FindPropertyRelative("tier").enumValueIndex;
+            bool decor = tier == PropTier.StaticDecor;
+
+            // THE SECTION IS ALWAYS PRESENT AND `sharesTile` LIVES INSIDE IT. It used to sit
+            // under Snapping with the packing fields hidden behind it, which meant a new
+            // FloorScatter entry showed no Packing section at all and nothing said that a
+            // checkbox named "Shares Tile" was the way to reveal one — field-reported as the
+            // options simply not being there. §12's rule: the fix for a setting that looks
+            // absent is to make it announce itself, not to document it harder.
+            yield return shares && !decor
+                ? $"§Packing  —  INACTIVE: tier is {tier}, and packing is Static Decor only"
+                : "§Packing";
+            yield return "sharesTile";
+            if (!shares || !decor) yield break;
             yield return "itemsPerCell";
             yield return "clearanceRadius";
             yield return "packingAttempts";
@@ -127,8 +144,7 @@ namespace DungeonGen
                         if (ceilCorner || prop.FindPropertyRelative("snapToCeilingWall").boolValue) yield return "wallGap";
                     }
                     if (!ceilCorner) yield return "subCellJitter"; // corner ignores jitter
-                    yield return "sharesTile";
-                    foreach (var f in PackingFields(prop)) yield return f;
+                    foreach (var f in PackingFields(prop)) yield return f; // owns sharesTile
                     break;
                 }
 
@@ -164,8 +180,7 @@ namespace DungeonGen
                     if (insideCorner || prop.FindPropertyRelative("snapToWall").boolValue) yield return "wallGap";
                     if (!insideCorner) yield return "subCellJitter"; // corner ignores jitter
                     yield return "minSpacing";
-                    yield return "sharesTile";
-                    foreach (var f in PackingFields(prop)) yield return f;
+                    foreach (var f in PackingFields(prop)) yield return f; // owns sharesTile
                     break;
             }
 
@@ -186,6 +201,11 @@ namespace DungeonGen
         static string PackLabel(SerializedProperty prop)
         {
             if (!prop.FindPropertyRelative("sharesTile").boolValue) return "";
+            // A collider tier with sharesTile on keeps the ORIGINAL meaning — no arbitration —
+            // so calling it "packed" in the summary would misreport it at a glance, which is
+            // the one thing a collapsed label must not do.
+            if ((PropTier)prop.FindPropertyRelative("tier").enumValueIndex != PropTier.StaticDecor)
+                return " · shares tile";
             var n = prop.FindPropertyRelative("itemsPerCell").vector2IntValue;
             int lo = Mathf.Max(1, n.x), hi = Mathf.Max(lo, n.y);
             if (hi <= 1) return " · packed";
