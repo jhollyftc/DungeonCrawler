@@ -35,6 +35,8 @@ namespace DungeonGen
         public float cellSize = 3f;
         [Tooltip("Meters to inset the collision mesh's wall faces from the nominal grid boundary, so the invisible collider sits flush with (not behind) the kit's decorative wall relief. 0 = flush with the grid, the old behavior.")]
         public float wallMargin = 0f;
+        [Tooltip("Log why KitSurface declined to pull an impact point onto the kit's real wall surface.\n\nEvery rejection is silent by design and they look identical on screen — an unrecorded face, a mesh without Read/Write Enabled, a ray that missed, and a hit deeper than the arrow's limit ALL present as 'the arrow stopped where the collider is'. This names which one it was.")]
+        public bool debugSurfaceRefine = false;
         [Tooltip("The prefab kit — every piece the dungeon is built from, grouped by ORIGIN CONVENTION. Read the header comments inside before assigning offsets; the kit has two independent conventions and getting either backwards puts a piece half a cell out.")]
         public DungeonKit kit = new DungeonKit();
 
@@ -409,6 +411,13 @@ namespace DungeonGen
             // cannot express PropTier — see DungeonKitPlacer.SocketSite.
             var socketSites = new List<DungeonKitPlacer.SocketSite>();
 
+            // WALL pieces and where they landed, so KitSurface can ray-test their real
+            // triangles after an impact lands on the greybox plane in front of them. Filled
+            // by the kit placer, installed once below. Cleared here so a mode with no kit
+            // leaves no stale map from the previous generate pointing at destroyed meshes.
+            var surfaceSites = new List<DungeonKitPlacer.SurfaceSite>();
+            KitSurface.Clear();
+
             if (geometryMode == GeometryMode.PrefabKit)
             {
                 DungeonKitPlacer.Build(gen, kit, cellSize, transform, roomStyle, wallFaces, socketSites);
@@ -494,7 +503,14 @@ namespace DungeonGen
                     PropInstancer.PlaceProps(ir, prefab,
                         new[] { new PropPlacement { position = worldPos, rotation = rot } },
                         PropTier.StaticCollider, cellSize, kitColliders.transform);
-                }, wallFaces, socketSites);
+                }, wallFaces, socketSites, surfaceSites);
+
+                // The GREYBOX collider is passed deliberately: a refinement only ever follows a
+                // hit on the shell, so an arrow that struck a crate standing against a wall is
+                // never dragged through the crate into the masonry behind it.
+                KitSurface.debug = debugSurfaceRefine;
+                KitSurface.Install(surfaceSites, cellSize, transform.position,
+                                   collision != null ? collision.GetComponent<Collider>() : null);
 
                 // Doors stay full GameObjects (they move). Archways split:
                 // mesh -> instancer, collider -> GameObject.

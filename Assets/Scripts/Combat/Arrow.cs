@@ -50,6 +50,8 @@ namespace DungeonGen
         public Transform tip;
         [Tooltip("Parent to the victim's ROOT instead of the exact collider hit. Costs the arrow riding an individual limb, but sidesteps bone transforms with extreme scales.")]
         public bool stickToRootOnly = false;
+        [Tooltip("How deep BEHIND the collider plane, in metres, the impact point may be pulled onto the kit's REAL surface after hitting the dungeon shell (KitSurface).\n\nCollision truth is the greybox, and it emits one flat quad per cell face inset by Wall Margin — so an arrow into a recessed niche stops on an invisible plane and hangs in front of the recess, and an ordinary wall hit lands Wall Margin proud of the masonry you can see. This re-tests the wall's actual triangles and moves the point onto them.\n\nMEASURED AS DEPTH ALONG THE FACE NORMAL, not as distance travelled, so it means the same thing however obliquely the arrow arrives. Size it to Wall Margin plus your deepest recess (Rock Depth) with a little margin.\n\nIt applies ONLY to hits on the greybox shell, never to props or NPCs, and anything deeper than this is discarded — a slightly proud arrow is a cosmetic miss, an arrow teleported inside masonry is a bug. 0 disables it.")]
+        public float maxSurfaceRefine = 0.75f;
 
         [Header("Effects")]
         [Tooltip("Shared SurfaceLibrary — an arrow thudding into wood should sound like everything else that hits wood.")]
@@ -71,9 +73,13 @@ namespace DungeonGen
         bool armed;
         bool stuck;
 
-        // Direction of travel, refreshed every physics step. Captured because the
-        // collision response overwrites linearVelocity before OnCollisionEnter sees it.
+        // Direction AND speed of travel, refreshed every physics step. Captured because the
+        // collision response overwrites linearVelocity before OnCollisionEnter sees it — the
+        // speed for the same reason as the direction, since passing through a gap has to put
+        // the shot back the way it was rather than merely let it continue.
         Vector3 lastFlightDir;
+        float lastFlightSpeed;
+        Collider[] myColliders = System.Array.Empty<Collider>();
         float tipAhead;   // pivot → tip distance along local forward; see `tip`
 
         // Stuck-to-a-mover state — see Stick() for why this isn't just parenting.
@@ -105,6 +111,8 @@ namespace DungeonGen
             body.isKinematic = false;
             body.linearVelocity = velocity;
             lastFlightDir = velocity.sqrMagnitude > 0.0001f ? velocity.normalized : transform.forward;
+            lastFlightSpeed = velocity.magnitude;   // seeded here too: a point-blank shot can
+                                                    // contact before its first FixedUpdate
 
             // We drive the arrow's facing from its velocity, so let PhysX handle position
             // only. Left free, integrated angular velocity fights those writes and the
@@ -123,11 +131,13 @@ namespace DungeonGen
 
             // Don't let the shot collide with whoever fired it — the spawn point sits
             // right at the camera, usually inside the player's own capsule.
+            // Gathered once and kept: the pass-through path needs them again, and
+            // GetComponentsInChildren allocates.
+            myColliders = GetComponentsInChildren<Collider>();
             if (firedBy != null)
             {
-                var mine = GetComponentsInChildren<Collider>();
                 foreach (var theirs in firedBy.GetComponentsInChildren<Collider>())
-                    foreach (var c in mine)
+                    foreach (var c in myColliders)
                         if (c != null && theirs != null) Physics.IgnoreCollision(c, theirs, true);
             }
 
@@ -149,7 +159,10 @@ namespace DungeonGen
             // post-bounce velocity, not the direction the arrow was travelling. Reading
             // it at impact is what produced arrows stuck at random angles.
             lastFlightDir = v.normalized;
+            lastFlightSpeed = v.magnitude;
             if (alignToVelocity) transform.rotation = Quaternion.LookRotation(lastFlightDir);
+
+            LookAheadForGaps();
         }
 
         /// <summary>
@@ -181,6 +194,39 @@ namespace DungeonGen
             // body.linearVelocity, which the collision response has already changed.
             Vector3 dir = lastFlightDir.sqrMagnitude > 0.01f ? lastFlightDir : transform.forward;
 
+            // ---- Is there actually anything in the way? ----
+            // A barred door's collider is a solid box while its geometry is mostly gaps, so ask
+            // the mesh rather than the collider. Probing from slightly BEFORE the contact so a
+            // bar sitting exactly on the collider surface is not missed by the epsilon.
+            var permeable = ProjectilePermeable.On(collision.collider);
+            if (permeable != null)
+            {
+                Vector3 probeFrom = point - dir * 0.05f;
+                if (permeable.Blocks(probeFrom, dir, out float meshT))
+                {
+                    // It DID hit a bar. Land on the bar rather than on the box collider's
+                    // surface — the same correction KitSurface makes for walls, for free,
+                    // since finding the geometry is what the test just did.
+                    point = probeFrom + dir * meshT;
+                    if (permeable.debugPermeable)
+                        Debug.Log($"[Permeable] '{permeable.name}' blocked the shot {meshT:0.000}m in.", permeable);
+                }
+                else
+                {
+                    PassThrough(permeable);
+                    return;   // no damage, no spark, no noise, still armed — nothing happened
+                }
+            }
+            // PULL THE POINT ONTO THE KIT'S REAL SURFACE before anything consumes it, so the
+            // stick, the spark and the noise all agree. The greybox is a flat quad per cell
+            // face and the visible wall can sit well behind it (a recess) or slightly behind it
+            // (wallMargin) — see KitSurface. Restricted to shell hits and clamped, and it
+            // fails open, so a miss leaves `point` exactly as PhysX reported it.
+            else if (maxSurfaceRefine > 0f && collision.contactCount > 0 &&
+                     KitSurface.Refine(collision.collider, point, contact.normal, dir, maxSurfaceRefine,
+                                       out Vector3 onSurface))
+                point = onSurface;
+
             bool damaged = TryDamage(collision.collider, point, dir);
 
             if (surfaceLibrary != null)
@@ -192,6 +238,82 @@ namespace DungeonGen
 
             OnImpact?.Invoke(point, damaged);
             Stick(collision.collider, point, dir);
+        }
+
+        /// <summary>
+        /// Decide about a permeable piece BEFORE PhysX generates a contact with it.
+        ///
+        /// WHY THIS EXISTS RATHER THAN JUST HANDLING IT AT THE COLLISION: by the time
+        /// OnCollisionEnter runs the impulse has already been applied to BOTH bodies, so a shot
+        /// passing between the bars still shoved the door — field-reported as gates twitching
+        /// open when arrows flew through them. Undoing that means guessing at `Collision.impulse`
+        /// signs; never generating the contact is exact. §8's post-bounce rule again: if you need
+        /// state from before an impact, you have to act before the impact.
+        ///
+        /// One ray per physics step per arrow, one step's travel long, on the layers the arrow
+        /// can actually hit minus its own. A thin ray can disagree with the arrow's swept
+        /// collider at the edges; either way round is harmless, because the collision path
+        /// still resolves the shot correctly — this only decides whether a contact is generated
+        /// at all.
+        /// </summary>
+        void LookAheadForGaps()
+        {
+            if (stuck) return;
+            float reach = lastFlightSpeed * Time.fixedDeltaTime + 0.2f;
+            if (!Physics.Raycast(transform.position, lastFlightDir, out RaycastHit ahead, reach,
+                                 ~(1 << gameObject.layer), QueryTriggerInteraction.Ignore))
+                return;
+
+            var permeable = ProjectilePermeable.On(ahead.collider);
+            if (permeable == null) return;
+            // Probe from slightly before the surface, the same margin the collision path uses,
+            // so geometry sitting exactly on the collider face is not missed by an epsilon.
+            if (permeable.Blocks(ahead.point - lastFlightDir * 0.05f, lastFlightDir, out _)) return;
+
+            IgnorePiece(permeable);
+            if (permeable.debugPermeable)
+                Debug.Log($"[Permeable] cleared '{permeable.name}' ahead of contact — no impulse.", permeable);
+        }
+
+        /// <summary>
+        /// Stop colliding with EVERY collider on the piece, not just the one in front. A door is
+        /// a compound; re-contacting a sibling box a millimetre later would stop the arrow
+        /// anyway and present as the pass-through working only sometimes.
+        /// </summary>
+        void IgnorePiece(ProjectilePermeable permeable)
+        {
+            var theirs = permeable.Colliders;
+            for (int i = 0; i < theirs.Count; i++)
+            {
+                if (theirs[i] == null) continue;
+                for (int j = 0; j < myColliders.Length; j++)
+                    if (myColliders[j] != null) Physics.IgnoreCollision(myColliders[j], theirs[i], true);
+            }
+        }
+
+        /// <summary>
+        /// Carry on through a gap. The collision has ALREADY been resolved by the time we get
+        /// here — PhysX applied its impulse before the callback ran (§8's post-bounce rule, the
+        /// same one `lastFlightDir` exists for) — so the shot has to be put back the way it was
+        /// rather than merely allowed to continue.
+        ///
+        /// `IgnoreCollision` against EVERY collider on the piece, not just the one struck: a
+        /// door is a compound, and re-contacting a sibling box a millimetre later would stop the
+        /// arrow anyway and look like the pass-through failing intermittently.
+        ///
+        /// Nothing else fires. No damage, no surface impact, no noise, and `armed` is untouched,
+        /// because from the game's point of view the arrow did not hit anything.
+        /// </summary>
+        void PassThrough(ProjectilePermeable permeable)
+        {
+            IgnorePiece(permeable);
+
+            // Restore the pre-impact velocity. Speed is cached alongside the direction for
+            // exactly the same reason the direction is: what PhysX reports now is post-bounce.
+            body.linearVelocity = lastFlightDir * (lastFlightSpeed * permeable.speedRetained);
+
+            if (permeable.debugPermeable)
+                Debug.Log($"[Permeable] passed through '{permeable.name}' at {lastFlightSpeed:0.0} m/s — still armed.", permeable);
         }
 
         bool TryDamage(Collider hit, Vector3 point, Vector3 dir)

@@ -227,6 +227,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: b2006b7b4cd74034aa4ce82f3de47885, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1160403715697650927}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: b2006b7b4cd74034aa4ce82f3de47885, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 633502246258656842}
   m_SourcePrefab: {fileID: 100100000, guid: b2006b7b4cd74034aa4ce82f3de47885, type: 3}
 --- !u!1 &3875648548454548469 stripped
 GameObject:
@@ -252,8 +255,23 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.020798951, y: 0.0031380453, z: 0.024910374}
-  m_Center: {x: -0.00000019456583, y: 0.0000018435753, z: 0.012922551}
+  m_Size: {x: 0.02079895, y: 0.0031380453, z: 0.021815237}
+  m_Center: {x: -0.00000019451122, y: 0.0000018435568, z: 0.014470119}
+--- !u!114 &633502246258656842
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3875648548454548469}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 787d78f385edb0b4d9339d3243ecdf1b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGen.ProjectilePermeable
+  maxPassDepth: 0.6
+  speedRetained: 1
+  debugPermeable: 0
 --- !u!4 &4504375326487615823 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: b2006b7b4cd74034aa4ce82f3de47885, type: 3}

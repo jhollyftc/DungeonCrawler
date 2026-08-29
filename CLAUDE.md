@@ -740,6 +740,139 @@ toward the room so the invisible collider sits flush with the kit's decorative
 wall relief (cobblestone etc.) instead of behind it. Size it to the kit's
 worst-case protrusion. Walls only; floors/ceilings/stairs untouched.
 
+**THE GREYBOX IS A FLAT QUAD PER FACE, SO THE VISIBLE SURFACE AND THE COLLIDER ARE DIFFERENT
+SHAPES — `KitSurface` is the fix, and it is NOT a collision system.** A kit wall with a RECESS
+(a niche, a barred window's reveal, `WallAsset.rockDepth`) has geometry running back behind
+that quad with no collision counterpart, so an arrow into a niche stops on an invisible plane
+and hangs in front of it; and because `wallMargin` insets the collider TOWARD the room, every
+ordinary wall hit also lands that far proud of the masonry you can see. Field-reported as
+arrows sticking in mid-air in front of a recess.
+- **COLLIDERS ARE ADDITIVE — YOU CANNOT SUBTRACT A RECESS OUT OF THE GREYBOX.** That is what
+  rules out the obvious fixes. The only way to let a projectile past that plane would be to
+  SUPPRESS the face and have the kit carry its own collider (the crawlway-mouth pattern), and
+  that is blocked: `DungeonMesher.Build` runs BEFORE the kit places walls, so the mesher cannot
+  know which faces got a recessed asset — the pick happens later, inside kit emission, partly
+  decided by the capped-asset reservation pre-pass. It would also make recesses physically
+  enterable, changing what the player and NPCs can occupy.
+- **SO NOTHING ABOUT COLLISION CHANGES.** The arrow still hits the greybox exactly as before
+  and then asks where the visible surface really was. Movement, pathing, LOS and occlusion are
+  untouched, which is the whole reason this was affordable.
+- **UNITY CANNOT RAYCAST A RENDERER.** `Physics` only knows colliders — there is no
+  trace-complex equivalent, and Unreal's flag would not help either, because it picks between
+  two representations OF THE SAME OBJECT and here the collider is a different surface entirely.
+  Worse, an instanced kit piece has no GameObject, MeshFilter or MeshRenderer at all; it is a
+  `Matrix4x4` in a batch. So the mesh is tested directly in script (Möller–Trumbore over
+  `mesh.triangles`). Brute force is right here because it runs ONCE PER IMPACT, not per frame —
+  one ray against `Wall_Plain`'s ~6.2k verts is microseconds, and a BVH would cost build time
+  to save nothing anyone is waiting on.
+- **IT ONLY EVER FOLLOWS A HIT ON THE SHELL**, which is why `Install` takes the greybox's own
+  collider rather than matching on a name or a layer. Without that, an arrow striking a crate
+  standing against a wall would resolve the face BEHIND the crate and be dragged through it
+  into the masonry — a far worse artifact than the one being fixed.
+- **EVERY RULE FAILS OPEN and the correction is CLAMPED** (`Arrow.maxSurfaceRefine`). An
+  unknown face, an unreadable mesh, a missed ray or an over-deep correction all leave the
+  original contact point untouched. The error is one-directional: a slightly proud arrow is a
+  cosmetic miss, an arrow teleported inside masonry is a bug.
+- **THE CLAMP IS DEPTH ALONG THE FACE NORMAL, NEVER DISTANCE TRAVELLED** (real bug, shipped in
+  the first version). A euclidean clamp conflates depth with lateral travel, so an OBLIQUE shot
+  covers the same depth over a longer path — 0.6m of recess needs 0.85m of travel at 45° — and
+  was discarded while a square-on shot into the identical niche passed. **The symptom was the
+  diagnosis: arrows straight into a recess landed correctly and angled ones stopped dead on the
+  greybox**, which is only possible if the rejection scales with incidence angle. Depth is
+  angle-independent and is the quantity that actually matters. Lateral travel needs no clamp of
+  its own — it is bounded by the extent of the ONE piece being tested, and for a legitimate
+  oblique shot it is exactly the offset the arrow should have.
+- **`DungeonVisualizer.debugSurfaceRefine` NAMES THE REJECTION REASON, and it earned its place
+  immediately.** All four failure paths present identically on screen as "the arrow stopped
+  where the collider is", so the first angled-shot report cost a round of guessing that one log
+  line would have answered — §12's instrument-before-hypothesising rule, which this project
+  keeps re-learning. It also reports the measured depth, which is what tells you whether to
+  raise the limit or go looking for a different cause. Known remaining gap it will surface: a
+  very oblique ray can exit its wall piece SIDEWAYS into the neighbouring face, which is not
+  tested, and that reads as "ray missed".
+- **THE MESHES MUST BE READ/WRITE ENABLED, and its absence is SILENT** — the same import flag,
+  and the same editor-works/build-fails shape, that once dropped the stairs out of the runtime
+  navmesh (§10). `KitSurface` warns once per mesh naming it rather than leaving it to be
+  discovered. Scoped to WALL pieces deliberately: they are the only ones whose visible surface
+  sits far behind the collider, and it keeps the readable-mesh requirement (and its retained
+  CPU copy) off ceilings, which are by far the heaviest meshes in the dungeon.
+- **Recorded RECORD-THEN-CONSUME from both emit paths.** `EmitReserved` bypasses `EmitPrefab`
+  entirely (§7's standing warning about the capped-asset path), and socket recording had to be
+  bolted on there separately after exactly that was missed once — so `RecordSurfaceSite` is one
+  helper called from both from the start. The instance matrix is composed exactly as the
+  visualizer's `PlaceCallback` composes it for `AddInstance`; two places building that matrix
+  differently is how the tested point and the rendered point would silently drift apart.
+- Arrows are only the first consumer. Melee sparks (`SurfaceImpact` at the contact point),
+  thrown props and any future decal land on the same invisible plane and can adopt `Refine`
+  unchanged — arrows merely made it obvious by being precise AND persistent, where a spark is
+  gone in 200ms.
+
+**`ProjectilePermeable` — SHOOTING THROUGH GAPS A COLLIDER DOES NOT HAVE.** The second thing
+that fell out of `MeshRay`: a barred prison door's collider is a solid box while its geometry is
+mostly air, so an arrow that strikes it asks whether real mesh lies in the way and, if not,
+passes through still armed and hits whatever is behind.
+- **IT CHANGES NOTHING ABOUT COLLISION, which is the whole point.** Boxing out each bar also
+  works and is right when you want the gaps to be physically real — but it changes what NPCs
+  see through (`sightBlockMask` is `~0`), what sound `AudioOcclusion` muffles, and how a thin
+  compound behaves against the capsule and against depenetration. This asks the finer question
+  of projectiles ONLY. Reach for bar colliders when the gap should be real for everything;
+  reach for this when only the shot should get through.
+- **A non-convex MeshCollider is not available here anyway** — the door is a non-kinematic
+  Rigidbody, which Unity forbids it on, and a CONVEX one is a hull that shrink-wraps the grille
+  and fills every gap.
+- **OPT-IN, because the assumption is dangerous in general.** Most props have a collider
+  slightly larger than their mesh, and letting projectiles through the difference would make
+  everything quietly permeable at its edges. A piece declares that its gaps are real.
+- **IT FAILS CLOSED — the OPPOSITE of `KitSurface`, deliberately.** An unreadable mesh or no
+  MeshFilters reports BLOCKED, so the shot behaves exactly as it does today. The error is
+  one-directional in both systems and the safe direction differs: a failed refinement leaves an
+  arrow slightly proud, which is cosmetic; a failed permeability check that opened would let
+  arrows through a solid door, which is a gameplay hole.
+- **THE COLLISION IS ALREADY RESOLVED BY THE TIME THE CALLBACK RUNS**, so passing through means
+  putting the shot BACK, not merely allowing it to continue — §8's post-bounce rule, the same
+  one `lastFlightDir` exists for. `Arrow` now caches `lastFlightSpeed` beside the direction for
+  exactly that, seeded at launch as well as per step because a point-blank shot can contact
+  before its first `FixedUpdate`.
+- **`IgnoreCollision` goes against EVERY collider on the piece, not just the one struck.** A
+  door is a compound; re-contacting a sibling box a millimetre later would stop the arrow
+  anyway and present as the pass-through working only sometimes.
+- **A blocked shot lands on the BAR, not on the box.** Finding the geometry is what the test
+  just did, so the same correction `KitSurface` makes for walls comes free — and without it a
+  hit on a bar would stick proud on the collider surface, which is the artifact this whole line
+  of work started from.
+- **THE PERMEABILITY DECISION IS MADE BEFORE THE CONTACT, NOT AT IT** (`Arrow.LookAheadForGaps`,
+  one ray per physics step). Handling it in `OnCollisionEnter` works but the impulse has ALREADY
+  been applied to both bodies by then, so a shot between the bars visibly shoved the gate open —
+  field-reported. Undoing it means guessing at `Collision.impulse` sign conventions; never
+  generating the contact is exact. §8's post-bounce rule once more: **if you need state from
+  before an impact, you have to act before the impact.** The collision-time path stays as a
+  fallback for the rare case the thin look-ahead ray disagrees with the arrow's swept collider.
+
+**MÖLLER–TRUMBORE'S PARALLEL EPSILON IS ABSOLUTE, SO THE TEST MUST RUN IN WORLD SPACE — a
+scaled prefab silently reports NO TRIANGLES AT ALL.** `MeshRay` first transformed the RAY into
+mesh-local space, which is cheaper and wrong: the determinant compared against a fixed `1e-8`
+scales as the CUBE of local-space size, and the prison door sits at **transform scale 300**, so
+a 0.3m edge came out at `det ≈ 3.3e-9` and EVERY triangle was rejected as parallel to the ray.
+- **The symptom was total, not partial**: every arrow passed through a barred door including
+  through its solid parts, which reads as a logic bug and is a numeric one.
+- **`KitSurface` was unaffected purely by luck** — kit walls are authored at scale 1, where the
+  determinant is nine orders of magnitude clear of the threshold. So the first feature worked
+  perfectly and the second, sharing the same code, failed completely. **A shared numeric routine
+  can be correct for one caller's magnitudes and broken for another's**, and this project has
+  several 100x–300x prefabs (the cages, the doors) that will keep finding it.
+- Vertices are now transformed to world once per mesh into a reused scratch buffer — one
+  `MultiplyPoint3x4` per VERTEX rather than per triangle-corner — so every quantity in the test
+  is a real metre and the caller's distances need no conversion.
+
+**FAILING OPEN AND FAILING CLOSED ARE PER-FEATURE DECISIONS, and these two are opposites.**
+`KitSurface.Refine` fails OPEN: a failure leaves an arrow slightly proud, which is cosmetic.
+`ProjectilePermeable.Blocks` fails CLOSED: a failure that opened would let arrows through a
+solid door, which is a gameplay hole. The first version of `Blocks` documented "fails closed"
+and then returned `false` when no mesh could be tested — **the doc comment and the code
+disagreed, and the code won**. `CastWorld` now reports `tested` separately from `hit` so
+"could not look" and "looked and saw a gap" cannot be collapsed, and the untestable case warns
+once naming the door.
+
 **InstancedDungeonRenderer** — batches by `(mesh, submesh, material,
 castShadows)` ONLY (NOT by chunk), so all like geometry consolidates into few
 large batches. Per-frame per-instance distance cull packs visible instances

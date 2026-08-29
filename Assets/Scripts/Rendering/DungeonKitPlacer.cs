@@ -264,12 +264,52 @@ namespace DungeonGen
             public bool isFloor;          // floor pieces may only take NON-BLOCKING children
         }
 
+        /// <summary>
+        /// Where a WALL piece actually got placed, so `KitSurface` can ray-test its real
+        /// triangles after a hit lands on the greybox plane in front of it. Walls only: they
+        /// are the pieces whose visible surface can sit a long way behind the collider (a
+        /// recessed niche, a barred window's reveal), and keeping it to walls bounds the
+        /// Read/Write Enabled requirement to the wall meshes.
+        ///
+        /// Record-then-consume, the same shape as SocketSite above — Enumerate stays free of
+        /// what the sites are FOR, and one pass serves both kit modes.
+        /// </summary>
+        public struct SurfaceSite
+        {
+            public GameObject Prefab;
+            public Vector3 PosCells;      // as handed to `place` — cell units, pre-offset
+            public Quaternion Rot;
+            public Vector3 OffsetMeters;  // includes globalVisualOffset
+            public Vector3Int Cell;
+            public Vector3Int FaceDir;
+        }
+
         public static void Enumerate(DungeonGenerator gen, DungeonKit kit, HashSet<string> missing, PlaceCallback place,
                                      RoomStyle style = null, PlaceCallback placeWithCollider = null,
                                      WallFaceRegistry wallFaces = null,
-                                     List<SocketSite> socketSites = null)
+                                     List<SocketSite> socketSites = null,
+                                     List<SurfaceSite> surfaceSites = null)
         {
             placeWithCollider ??= place;
+
+            // Called from BOTH emit paths, never inlined at one of them. EmitReserved bypasses
+            // EmitPrefab entirely (§7's standing warning about the capped-asset path), and
+            // socket recording had to be bolted on there separately after exactly that was
+            // missed once — so this exists as one helper from the start.
+            void RecordSurfaceSite(GameObject prefab, Vector3 posCells, Quaternion rot,
+                                   Vector3 offset, Vector3Int cell, Vector3Int faceDir)
+            {
+                if (surfaceSites == null || prefab == null || faceDir == Vector3Int.zero) return;
+                surfaceSites.Add(new SurfaceSite
+                {
+                    Prefab = prefab,
+                    PosCells = posCells,
+                    Rot = rot,
+                    OffsetMeters = offset,
+                    Cell = cell,
+                    FaceDir = faceDir,
+                });
+            }
 
             // Whether a prefab carries sockets, cached: this is asked once per emitted piece
             // (thousands per dungeon) and GetComponentsInChildren allocates.
@@ -555,6 +595,8 @@ namespace DungeonGen
                 place(reserved.prefab, facePos, rot, kit.wallOffset + kit.globalVisualOffset, c);
                 RecordSocketSite(reserved.prefab, facePos, rot,
                                  kit.wallOffset + kit.globalVisualOffset, c, d, false);
+                RecordSurfaceSite(reserved.prefab, facePos, rot,
+                                  kit.wallOffset + kit.globalVisualOffset, c, d);
                 // A labeled feature wall (fireplace etc.) — NearWallAsset props with a matching
                 // Host Label attach beside it. Unlabeled capped assets are NOT hosts.
                 if (!string.IsNullOrEmpty(reserved.featureLabel))
@@ -591,6 +633,7 @@ namespace DungeonGen
                 Vector3Int faceDir = slotName == "wall" ? RoundDir(rot * Vector3.back) : Vector3Int.zero;
                 RecordSocketSite(prefab, posCells, rot, offset + kit.globalVisualOffset, cell,
                                  faceDir, slotName == "floor");
+                RecordSurfaceSite(prefab, posCells, rot, offset + kit.globalVisualOffset, cell, faceDir);
                 return prefab;
             }
 

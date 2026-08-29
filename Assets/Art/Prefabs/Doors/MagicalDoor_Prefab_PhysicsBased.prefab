@@ -585,7 +585,7 @@ MonoBehaviour:
   slamTolerance: 3
   slamMinSpeed: 1.5
   logSwingTelemetry: 0
-  lockedRattleAngle: 0.5
+  lockedRattleAngle: 1
   lockedRattleTime: 0.18
   lockedRattleInterval: 0.3
 --- !u!82 &5310196877476623849
